@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   let user;
-  try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' }); }
+  try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' } }
 
   const { image_base64, media_type } = req.body;
   if (!image_base64) return res.status(400).json({ error: 'Missing image data' });
