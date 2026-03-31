@@ -43,23 +43,21 @@ module.exports = async function handler(req, res) {
       }]
     });
 
-    const raw = message.content[0].text.trim();
-    const clean = raw.replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
+    const raw = message.content[0].text;
+    // Strip markdown fences robustly
+    let jsonStr = raw.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/,'').trim();
+    }
+    // Find the outermost JSON object
+    const s = jsonStr.indexOf('{'), e = jsonStr.lastIndexOf('}');
+    if (s >= 0 && e > s) jsonStr = jsonStr.substring(s, e + 1);
     let data;
-    // Strip any text before first { and after last }
-    // Strip markdown fences first
-    let jsonStr = clean
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
-    // Then extract just the JSON object
-    const jsonStart = jsonStr.indexOf('{');
-    const jsonEnd = jsonStr.lastIndexOf('}');
-    if (jsonStart >= 0 && jsonEnd >= 0) jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-    try { data = JSON.parse(jsonStr); } catch(parseErr) {
-      console.error('Parse failed:', jsonStr.substring(0, 300));
+    try { data = JSON.parse(jsonStr); }
+    catch(parseErr) {
+      console.error('Parse failed:', jsonStr.substring(0, 200));
       return res.status(422).json({ error: 'Could not parse extracted data: ' + parseErr.message, preview: jsonStr.substring(0, 200) });
+    });
     }
 
     const entries = data.entries || [];
