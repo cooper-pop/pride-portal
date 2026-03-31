@@ -30,11 +30,11 @@ module.exports = async function handler(req, res) {
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image_base64 } }
       : { type: 'image', source: { type: 'base64', media_type: media_type || 'image/jpeg', data: image_base64 } };
 
-    const prompt = 'This is a C.A.T.2 Employee Production Report for a catfish processing facility. Extract ALL employee rows and return ONLY a JSON object with no markdown. Use this structure: {"report_date":"YYYY-MM-DD","report_time":"HH:MM","entries":[{"emp_number":"","full_name":"","trim_number":"","total_minutes":0,"incoming_lbs":0,"fillet_lbs":0,"fillet_yield_pct":0,"nugget_lbs":0,"nugget_yield_pct":0,"misccut_lbs":0,"misccut_yield_pct":0,"total_lbs":0,"total_yield_pct":0,"realtime_lbs_per_hour":0,"eighthour_lbs_per_hour":0,"hours_worked":0}],"grand_total":{}}. Extract every employee row. Do NOT include the Grand Total row in entries. Return ONLY the JSON.';
+    const prompt = 'This is a C.A.T.2 Employee Production Report for a catfish processing facility. Extract ALL employee rows and return ONLY a JSON object with no markdown. Use this structure: {"report_date":"YYYY-MM-DD","report_time":"HH:MM","entries":[{"emp_number":"","full_name":"","trim_number":"","total_minutes":0,"incoming_lbs":0,"fillet_lbs":0,"fillet_yield_pct":0,"nugget_lbs":0,"nugget_yield_pct":0,"misccut_lbs":0,"misccut_yield_pct":0,"total_lbs":0,"total_yield_pct":0,"realtime_lbs_per_hour":0,"eighthour_lbs_per_hour":0,"hours_worked":0}],"grand_total":{}}. Extract every employee row. Do NOT include the Grand Total row in entries. Return ONLY compact minified JSON with zero whitespace.';
 
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 16000,
+      max_tokens: 4096,
       messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }]
     });
 
