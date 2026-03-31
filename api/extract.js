@@ -29,10 +29,10 @@ module.exports = async function handler(req, res) {
       messages: [{
         role: 'user',
         content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: media_type || 'image/jpeg', data: image_base64 }
-          },
+          (media_type === 'application/pdf'
+            ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image_base64 } }
+            : { type: 'image', source: { type: 'base64', media_type: media_type || 'image/jpeg', data: image_base64 } }
+          ),
           {
             type: 'text',
             text: `This is a C.A.T.2 Employee Production Report Summary for a catfish processing facility. Extract ALL data and return ONLY valid JSON with no markdown or explanation.\n\nReturn this exact structure:\n{\n  "report_date": "YYYY-MM-DD",\n  "report_time": "HH:MM",\n  "entries": [\n    {\n      "emp_number": "string",\n      "full_name": "string",\n      "trim_number": "string",\n      "total_minutes": number,\n      "incoming_lbs": number,\n      "fillet_lbs": number,\n      "fillet_yield_pct": number,\n      "nugget_lbs": number,\n      "nugget_yield_pct": number,\n      "misccut_lbs": number,\n      "misccut_yield_pct": number,\n      "total_lbs": number,\n      "total_yield_pct": number,\n      "realtime_lbs_per_hour": number,\n      "eighthour_lbs_per_hour": number,\n      "hours_worked": number\n    }\n  ],\n  "grand_total": {\n    "total_minutes": number,\n    "incoming_lbs": number,\n    "fillet_lbs": number,\n    "fillet_yield_pct": number,\n    "nugget_lbs": number,\n    "nugget_yield_pct": number,\n    "misccut_lbs": number,\n    "misccut_yield_pct": number,\n    "total_lbs": number,\n    "total_yield_pct": number,\n    "realtime_lbs_per_hour": number,\n    "eighthour_lbs_per_hour": number,\n    "total_hours": number\n  }\n}\n\nRules: Extract every employee row. Use null for blank fields. All numbers as numbers. Do NOT include Grand Total in entries array. Return ONLY the JSON.`
