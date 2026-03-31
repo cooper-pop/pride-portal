@@ -46,7 +46,14 @@ module.exports = async function handler(req, res) {
     const raw = message.content[0].text.trim();
     const clean = raw.replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
     let data;
-    try { data = JSON.parse(clean); } catch { return res.status(422).json({ error: 'Could not parse extracted data', raw: clean }); }
+    // Strip any text before first { and after last }
+    const jsonStart = clean.indexOf('{');
+    const jsonEnd = clean.lastIndexOf('}');
+    const jsonOnly = jsonStart >= 0 && jsonEnd >= 0 ? clean.substring(jsonStart, jsonEnd + 1) : clean;
+    try { data = JSON.parse(jsonOnly); } catch(parseErr) {
+      console.error('Parse failed. Raw response:', raw.substring(0, 500));
+      return res.status(422).json({ error: 'Could not parse extracted data: ' + parseErr.message, preview: raw.substring(0, 200) });
+    }
 
     const entries = data.entries || [];
     const shiftAvgLbsHr = entries.reduce((s, e) => s + (e.realtime_lbs_per_hour || 0), 0) / (entries.length || 1);
