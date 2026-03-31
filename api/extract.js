@@ -1,3 +1,5 @@
+module.exports.config = { api: { bodyParser: { sizeLimit: '10mb' } } };
+
 const Anthropic = require('@anthropic-ai/sdk');
 const jwt = require('jsonwebtoken');
 
