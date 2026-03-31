@@ -27,7 +27,7 @@ module.exports = async function handler(req, res) {
   try {
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [{
         role: 'user',
         content: [
@@ -47,12 +47,19 @@ module.exports = async function handler(req, res) {
     const clean = raw.replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
     let data;
     // Strip any text before first { and after last }
-    const jsonStart = clean.indexOf('{');
-    const jsonEnd = clean.lastIndexOf('}');
-    const jsonOnly = jsonStart >= 0 && jsonEnd >= 0 ? clean.substring(jsonStart, jsonEnd + 1) : clean;
-    try { data = JSON.parse(jsonOnly); } catch(parseErr) {
-      console.error('Parse failed. Raw response:', raw.substring(0, 500));
-      return res.status(422).json({ error: 'Could not parse extracted data: ' + parseErr.message, preview: raw.substring(0, 200) });
+    // Strip markdown fences first
+    let jsonStr = clean
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+    // Then extract just the JSON object
+    const jsonStart = jsonStr.indexOf('{');
+    const jsonEnd = jsonStr.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd >= 0) jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+    try { data = JSON.parse(jsonStr); } catch(parseErr) {
+      console.error('Parse failed:', jsonStr.substring(0, 300));
+      return res.status(422).json({ error: 'Could not parse extracted data: ' + parseErr.message, preview: jsonStr.substring(0, 200) });
     }
 
     const entries = data.entries || [];
