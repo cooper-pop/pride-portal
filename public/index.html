@@ -145,8 +145,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .role-admin{background:var(--red)}.role-manager{background:var(--blue)}.role-supervisor{background:var(--green)}
 #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;padding:10px 22px;border-radius:30px;font-size:0.88rem;font-weight:600;opacity:0;pointer-events:none;transition:opacity .3s;z-index:999}
 #toast.show{opacity:1}
-.upload-drop-zone{border:2px dashed var(--border);border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:.2s;background:#fafbfc}
-.upload-drop-zone:hover{border-color:var(--blue);background:#f0f4ff}
 </style>
 </head>
 <body>
@@ -578,13 +576,15 @@ async function injRenderLog(){
   } catch(e){ document.getElementById('widget-content').innerHTML='<div class="log-empty">⚠️ '+e.message+'</div>'; }
 }
 
-async function injDelete(id){if(!confirm('Delete this// TRIMMER LOG — CAT2 POWERED
-// ══════════════════════════════════════════════════════
+async function injDelete(id){if(!confirm('Delete this batch?'))return;try{await apiCall('DELETE','/api/records?type=injection&id='+id);injRenderLog();}catch(e){toast('⚠️ Delete failed');}}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TRIMMER LOG
+// ══════════════════════════════════════════════════════════════════════════════
 var trimRows = [];
-var trimCharts = {};
 
 function buildTrimmerWidget() {
-  document.getElementById('widget-tabs').innerHTML = ['📷 Upload C.A.T.2','✂️ Manual Entry','📋 History','📊 Analytics'].map(function(t,i){
+  document.getElementById('widget-tabs').innerHTML = ['✂️ New Report','📋 History'].map(function(t,i){
     return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="trimShowTab('+i+')">'+t+'</div>';
   }).join('');
   trimRows = [trimEmptyRow()];
@@ -593,109 +593,37 @@ function buildTrimmerWidget() {
 
 function trimShowTab(idx) {
   document.querySelectorAll('.widget-tab').forEach(function(t,i){ t.classList.toggle('active',i===idx); });
-  if(idx===0) trimRenderUpload();
-  else if(idx===1) trimRenderForm();
-  else if(idx===2) trimRenderHistory();
-  else trimRenderAnalytics();
+  if (idx===0) trimRenderForm(); else trimRenderHistory();
 }
 
-// ── UPLOAD TAB ────────────────────────────────────────────────────────────────────────────────
-function trimRenderUpload() {
-  document.getElementById('widget-content').innerHTML =
-    '<div class="wcard"><h3>📷 Upload C.A.T.2 Report</h3>' +
-    '<p style="font-size:0.82rem;color:var(--sub);margin-bottom:14px">Take a photo or upload a PDF/image of your C.A.T.2 Employee Production Report. Claude will read every row and auto-fill the entry table for your review.</p>' +
-    '<div class="upload-drop-zone" id="trim-drop-zone" onclick="document.getElementById(\'trim-file-input\').click()">' +
-    '<div style="font-size:2rem;margin-bottom:8px">📄</div>' +
-    '<div style="font-weight:700;color:var(--blue);margin-bottom:4px">Tap to upload or take photo</div>' +
-    '<div style="font-size:0.75rem;color:var(--sub)">PDF, JPG, PNG supported</div>' +
-    '</div>' +
-    '<input type="file" id="trim-file-input" accept="image/*,application/pdf" style="display:none" onchange="trimHandleFile(this)"/>' +
-    '<div id="trim-upload-status" style="display:none;margin-top:12px"></div></div>';
-}
-
-async function trimHandleFile(input) {
-  var file = input.files[0];
-  if (!file) return;
-  var statusEl = document.getElementById('trim-upload-status');
-  statusEl.style.display = 'block';
-  statusEl.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><div>Reading report with AI — this takes about 15 seconds...</div></div>';
-  try {
-    var base64 = await new Promise(function(resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function(e) { resolve(e.target.result.split(',')[1]); };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    var mediaType = file.type === 'application/pdf' ? 'application/pdf' : (file.type || 'image/jpeg');
-    var result = await apiCall('POST', '/api/extract', { image_base64: base64, media_type: mediaType });
-    var entries = result.entries || [];
-    var flagged = result.flag_count || 0;
-    trimRows = entries.map(function(e) {
-      return {
-        emp_number: e.emp_number || '',
-        full_name: e.full_name || '',
-        trim_number: e.trim_number || '',
-        minutes_worked: e.total_minutes || e.minutes_worked || '',
-        incoming_lbs: e.incoming_lbs || '',
-        fillet_lbs: e.fillet_lbs || '',
-        nugget_lbs: e.nugget_lbs || '',
-        misccut_lbs: e.misccut_lbs || '',
-        fillet_yield_pct: e.fillet_yield_pct || '',
-        nugget_yield_pct: e.nugget_yield_pct || '',
-        misccut_yield_pct: e.misccut_yield_pct || '',
-        total_yield_pct: e.total_yield_pct || '',
-        realtime_lbs_per_hour: e.realtime_lbs_per_hour || '',
-        eighthour_lbs_per_hour: e.eighthour_lbs_per_hour || '',
-        hours_worked: e.hours_worked || '',
-        flagged: e.flagged || false,
-        validation_flags: e.validation_flags || []
-      };
-    });
-    if (!trimRows.length) trimRows = [trimEmptyRow()];
-    statusEl.innerHTML = '<div style="background:#e8f5e9;border-radius:8px;padding:10px 14px;font-size:0.85rem;color:#1b5e20;font-weight:600">✅ Extracted ' + entries.length + ' trimmers from report dated ' + (result.report_date || 'unknown') + (flagged > 0 ? ' — <span style="color:var(--gold)">⚠️ ' + flagged + ' row' + (flagged > 1 ? 's' : '') + ' flagged for review</span>' : '') + '</div>';
-    setTimeout(function() {
-      trimShowTab(1);
-      if (flagged > 0) toast('⚠️ ' + flagged + ' row' + (flagged > 1 ? 's need' : ' needs') + ' your review before saving');
-      if (result.report_date) { var d = document.getElementById('trim-date'); if (d) d.value = result.report_date; }
-    }, 1200);
-  } catch(e) {
-    statusEl.innerHTML = '<div style="background:#fef0f0;border-radius:8px;padding:10px 14px;font-size:0.85rem;color:var(--red)">⚠️ Extraction failed: ' + e.message + '</div>';
-  }
-}
-
-// ── MANUAL ENTRY TAB ───────────────────────────────────────────────────────────────────────────────────
 function trimEmptyRow() {
-  return { emp_number:'', full_name:'', trim_number:'', minutes_worked:'', incoming_lbs:'', fillet_lbs:'', nugget_lbs:'', misccut_lbs:'', flagged:false, validation_flags:[] };
+  return { emp_number:'', full_name:'', trim_number:'', minutes_worked:'', incoming_lbs:'', fillet_lbs:'', nugget_lbs:'', misccut_lbs:'' };
 }
 
 function trimRenderForm() {
   var nd = new Date();
-  var hasFlagged = trimRows.some(function(r){ return r.flagged; });
   var tableRows = trimRows.map(function(r, i) {
     var mins = parseFloat(r.minutes_worked) || 0;
     var inc = parseFloat(r.incoming_lbs) || 0;
-    var lph = r.realtime_lbs_per_hour || (mins > 0 && inc > 0 ? (inc / (mins/60)).toFixed(1) : '—');
-    var rowStyle = r.flagged ? 'background:#fffbe6;' : '';
-    var flagHtml = r.flagged && r.validation_flags && r.validation_flags[0] ? '<div style="font-size:0.65rem;color:var(--gold);margin-top:2px">⚠️ ' + r.validation_flags[0].message + '</div>' : '';
-    return '<tr style="' + rowStyle + '">' +
-      '<td><input type="text" value="' + (r.emp_number||'') + '" oninput="trimUpdate(' + i + ',\'emp_number\',this.value)" placeholder="Emp#" style="width:56px"/></td>' +
-      '<td><div><input type="text" value="' + (r.full_name||'') + '" oninput="trimUpdate(' + i + ',\'full_name\',this.value)" placeholder="Name" style="width:110px"/>' + flagHtml + '</div></td>' +
-      '<td><input type="text" value="' + (r.trim_number||'') + '" oninput="trimUpdate(' + i + ',\'trim_number\',this.value)" placeholder="Code" style="width:60px"/></td>' +
-      '<td><input type="number" value="' + (r.minutes_worked||'') + '" oninput="trimUpdate(' + i + ',\'minutes_worked\',this.value)" placeholder="0" step="1" style="width:58px"/></td>' +
-      '<td><input type="number" value="' + (r.incoming_lbs||'') + '" oninput="trimUpdate(' + i + ',\'incoming_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:70px"/></td>' +
-      '<td><input type="number" value="' + (r.fillet_lbs||'') + '" oninput="trimUpdate(' + i + ',\'fillet_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:70px"/></td>' +
-      '<td><input type="number" value="' + (r.nugget_lbs||'') + '" oninput="trimUpdate(' + i + ',\'nugget_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:70px"/></td>' +
-      '<td><input type="number" value="' + (r.misccut_lbs||'') + '" oninput="trimUpdate(' + i + ',\'misccut_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:70px"/></td>' +
-      '<td class="calc-cell">' + lph + '</td>' +
-      '<td class="del-cell"><button class="del-btn" onclick="trimDeleteRow(' + i + ')">✕</button></td>' +
+    var lph = mins > 0 && inc > 0 ? (inc / (mins/60)).toFixed(1) : '—';
+    return '<tr>' +
+      '<td><input type="text" value="'+r.emp_number+'" oninput="trimUpdate('+i+',\'emp_number\',this.value)" placeholder="Emp#" style="width:56px"/></td>' +
+      '<td><input type="text" value="'+r.full_name+'" oninput="trimUpdate('+i+',\'full_name\',this.value)" placeholder="Name" style="width:110px"/></td>' +
+      '<td><input type="text" value="'+r.trim_number+'" oninput="trimUpdate('+i+',\'trim_number\',this.value)" placeholder="#" style="width:48px"/></td>' +
+      '<td><input type="number" value="'+r.minutes_worked+'" oninput="trimUpdate('+i+',\'minutes_worked\',this.value)" placeholder="0" step="1" style="width:60px"/></td>' +
+      '<td><input type="number" value="'+r.incoming_lbs+'" oninput="trimUpdate('+i+',\'incoming_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:72px"/></td>' +
+      '<td><input type="number" value="'+r.fillet_lbs+'" oninput="trimUpdate('+i+',\'fillet_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:72px"/></td>' +
+      '<td><input type="number" value="'+r.nugget_lbs+'" oninput="trimUpdate('+i+',\'nugget_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:72px"/></td>' +
+      '<td><input type="number" value="'+r.misccut_lbs+'" oninput="trimUpdate('+i+',\'misccut_lbs\',this.value)" placeholder="0.0" step="0.1" style="width:72px"/></td>' +
+      '<td class="calc-cell">'+lph+'</td>' +
+      '<td class="del-cell"><button class="del-btn" onclick="trimDeleteRow('+i+')">✕</button></td>' +
       '</tr>';
   }).join('');
-  var flagBanner = hasFlagged ? '<div style="background:#fffbe6;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.83rem;color:#7a5500"><strong>⚠️ Flagged rows highlighted in yellow.</strong> Review and correct before saving.</div>' : '';
+
   document.getElementById('widget-content').innerHTML =
-    flagBanner +
-    '<div class="wcard"><h3>📅 Report Info</h3><div class="wrow"><div class="wfield"><label>Date</label><input type="date" id="trim-date" value="' + nd.toISOString().split('T')[0] + '"/></div><div class="wfield"><label>Shift</label><select id="trim-shift"><option>AM</option><option>PM</option></select></div></div><div class="wfield"><label>Notes (optional)</label><input type="text" id="trim-notes" placeholder="Any observations..."/></div></div>' +
-    '<div class="wcard"><h3>✂️ Trimmer Entries <span style="font-size:0.75rem;font-weight:400;color:var(--sub)">' + trimRows.length + ' rows</span></h3>' +
-    '<div class="trim-table-wrap"><table class="trim-table"><thead><tr><th>Emp#</th><th>Name</th><th>Trim Code</th><th>Min</th><th>Incoming lbs</th><th>Fillet lbs</th><th>Nugget lbs</th><th>Misc-cut lbs</th><th>Lbs/Hr</th><th></th></tr></thead><tbody id="trim-tbody">' + tableRows + '</tbody></table></div>' +
+    '<div class="wcard"><h3>📅 Report Info</h3><div class="wrow"><div class="wfield"><label>Date</label><input type="date" id="trim-date" value="'+nd.toISOString().split('T')[0]+'"/></div><div class="wfield"><label>Shift</label><select id="trim-shift"><option>AM</option><option>PM</option></select></div></div><div class="wfield"><label>Notes (optional)</label><input type="text" id="trim-notes" placeholder="Any observations..."/></div></div>' +
+    '<div class="wcard"><h3>✂️ Trimmer Entries</h3>' +
+    '<div class="trim-table-wrap"><table class="trim-table"><thead><tr><th>Emp#</th><th>Name</th><th>Trim#</th><th>Min</th><th>Incoming lbs</th><th>Fillet lbs</th><th>Nugget lbs</th><th>Misc-cut lbs</th><th>Lbs/Hr</th><th></th></tr></thead><tbody id="trim-tbody">'+tableRows+'</tbody></table></div>' +
     '<div class="wbtn-row" style="margin-top:10px"><button class="wbtn wbtn-outline" onclick="trimAddRow()">+ Add Row</button></div></div>' +
     '<div class="wbtn-row"><button class="wbtn wbtn-green" onclick="trimSave()">💾 Save Report</button><button class="wbtn wbtn-danger" onclick="trimReset()">Clear All</button></div>';
 }
@@ -706,13 +634,25 @@ function trimUpdate(i, field, val) {
   var inc = parseFloat(trimRows[i].incoming_lbs) || 0;
   var tbody = document.getElementById('trim-tbody');
   if (!tbody) return;
-  var row = tbody.rows[i];
-  if (row) row.cells[8].textContent = mins > 0 && inc > 0 ? (inc / (mins/60)).toFixed(1) : '—';
+  var cells = tbody.rows[i] ? tbody.rows[i].cells : null;
+  if (cells) cells[8].textContent = mins>0&&inc>0 ? (inc/(mins/60)).toFixed(1) : '—';
 }
 
-function trimAddRow() { trimRows.push(trimEmptyRow()); trimRenderForm(); }
-function trimDeleteRow(i) { if(trimRows.length<=1){trimRows[0]=trimEmptyRow();trimRenderForm();return;} trimRows.splice(i,1); trimRenderForm(); }
-function trimReset() { trimRows=[trimEmptyRow()]; trimRenderForm(); }
+function trimAddRow() {
+  trimRows.push(trimEmptyRow());
+  trimRenderForm();
+}
+
+function trimDeleteRow(i) {
+  if (trimRows.length <= 1) { trimRows[0] = trimEmptyRow(); trimRenderForm(); return; }
+  trimRows.splice(i, 1);
+  trimRenderForm();
+}
+
+function trimReset() {
+  trimRows = [trimEmptyRow()];
+  trimRenderForm();
+}
 
 async function trimSave() {
   var date = document.getElementById('trim-date').value;
@@ -720,153 +660,46 @@ async function trimSave() {
   if (!date) { toast('Set the date.'); return; }
   var validRows = trimRows.filter(function(r){ return r.full_name || r.emp_number; });
   if (!validRows.length) { toast('Add at least one trimmer entry.'); return; }
-  var flaggedRows = validRows.filter(function(r){ return r.flagged; });
-  if (flaggedRows.length && !confirm(flaggedRows.length + ' row' + (flaggedRows.length > 1 ? 's are' : ' is') + ' still flagged. Save anyway?')) return;
   setSyncBadge('syncing');
   try {
-    await apiCall('POST', '/api/records?type=trimmer', {
-      report_date: date, shift: shift,
+    await apiCall('POST','/api/records?type=trimmer',{
+      report_date: date,
+      shift: shift,
       notes: document.getElementById('trim-notes').value.trim(),
-      source: 'cat2_upload',
       entries: validRows
     });
     setSyncBadge('synced');
-    toast('✅ Report saved — ' + validRows.length + ' trimmers recorded!');
+    toast('✅ Report saved!');
     trimRows = [trimEmptyRow()];
     trimRenderForm();
-  } catch(e) { setSyncBadge('error'); toast('⚠️ Save failed: ' + e.message); }
+  } catch(e) { setSyncBadge('error'); toast('⚠️ Save failed: '+e.message); }
 }
 
-// ── HISTORY TAB ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function trimRenderHistory() {
   document.getElementById('widget-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
   try {
-    var reports = await apiCall('GET', '/api/records?type=trimmer');
-    var html = '<div class="wcard" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:0.82rem;font-weight:700;color:var(--blue)">' + reports.length + ' report' + (reports.length === 1 ? '' : 's') + '</span><button class="wbtn wbtn-danger" style="padding:5px 10px;font-size:0.73rem" onclick="trimRenderHistory()">🔄 Refresh</button></div>';
-    if (!reports.length) { html += '<div class="log-empty">No reports yet. Upload a C.A.T.2 report to get started.</div>'; }
+    var reports = await apiCall('GET','/api/records?type=trimmer');
+    var html = '<div class="wcard" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:0.82rem;font-weight:700;color:var(--blue)">'+reports.length+' report'+(reports.length===1?'':'s')+'</span><button class="wbtn wbtn-danger" style="padding:5px 10px;font-size:0.73rem" onclick="trimRenderHistory()">🔄 Refresh</button></div>';
+    if (!reports.length) { html += '<div class="log-empty">No reports yet.</div>'; }
     else {
-      reports.forEach(function(r) {
-        var dt = new Date(r.report_date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'});
+      reports.forEach(function(r){
+        var dt = new Date(r.report_date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
         var entries = r.entries || [];
-        var totalInc = entries.reduce(function(s,e){ return s + (parseFloat(e.incoming_lbs)||0); }, 0);
-        var avgLph = entries.length ? (entries.reduce(function(s,e){ return s + (parseFloat(e.realtime_lbs_per_hour||e.lbs_per_hour)||0); }, 0) / entries.length).toFixed(1) : '—';
-        var source = r.source === 'cat2_upload' ? ' 🤖 AI' : ' ✏️ Manual';
-        var rowsHtml = entries.map(function(e) {
-          var flagStyle = e.flagged ? 'background:#fffbe6;' : '';
-          return '<tr style="' + flagStyle + '"><td style="padding:4px 6px;font-size:0.75rem">' + (e.emp_number||'') + '</td>' +
-            '<td style="padding:4px 6px;font-weight:600;font-size:0.78rem">' + (e.full_name||'') + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + (e.trim_number||'') + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + (e.minutes_worked||'') + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + parseFloat(e.incoming_lbs||0).toFixed(0) + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + parseFloat(e.fillet_lbs||0).toFixed(0) + '<span style="color:var(--sub);font-size:0.68rem"> ' + (e.fillet_yield_pct||'') + '%</span></td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + parseFloat(e.nugget_lbs||0).toFixed(0) + '<span style="color:var(--sub);font-size:0.68rem"> ' + (e.nugget_yield_pct||'') + '%</span></td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + parseFloat(e.misccut_lbs||0).toFixed(0) + '<span style="color:var(--sub);font-size:0.68rem"> ' + (e.misccut_yield_pct||'') + '%</span></td>' +
-            '<td style="padding:4px 6px;font-weight:700;color:var(--green);font-size:0.78rem">' + (e.realtime_lbs_per_hour||e.lbs_per_hour||'—') + '</td></tr>';
+        var totalInc = entries.reduce(function(s,e){ return s+(parseFloat(e.incoming_lbs)||0); },0);
+        var avgLph = entries.length ? (entries.reduce(function(s,e){ return s+(parseFloat(e.lbs_per_hour)||0); },0)/entries.length).toFixed(1) : '—';
+        var rowsHtml = entries.map(function(e){
+          return '<tr><td style="padding:5px 8px">'+e.emp_number+'</td><td style="padding:5px 8px;font-weight:600">'+e.full_name+'</td><td style="padding:5px 8px">'+e.trim_number+'</td><td style="padding:5px 8px">'+e.minutes_worked+'</td><td style="padding:5px 8px">'+e.incoming_lbs+'</td><td style="padding:5px 8px">'+e.fillet_lbs+'</td><td style="padding:5px 8px">'+e.nugget_lbs+'</td><td style="padding:5px 8px">'+e.misccut_lbs+'</td><td style="padding:5px 8px;font-weight:700;color:var(--green)">'+(e.lbs_per_hour||'—')+'</td></tr>';
         }).join('');
-        html += '<div class="log-entry"><div class="log-hdr"><div>' +
-          '<div class="log-date">📅 ' + dt + ' — ' + (r.shift||'') + ' Shift' + source + '</div>' +
-          '<div style="font-size:0.72rem;color:var(--sub);margin-top:2px">' + entries.length + ' trimmers · ' + totalInc.toFixed(0) + ' lbs in · Avg ' + avgLph + ' lbs/hr · 👤 ' + r.recorded_by + '</div></div>' +
-          '<button class="wbtn wbtn-danger" style="padding:4px 8px" onclick="trimDelete(\'' + r.id + '\')">✕</button></div>' +
-          '<div class="trim-table-wrap" style="margin-top:10px"><table class="trim-table"><thead><tr><th>Emp#</th><th>Name</th><th>Code</th><th>Min</th><th>In lbs</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Lbs/Hr</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
-          (r.notes ? '<div class="log-notes" style="margin-top:8px"><strong>📝</strong> ' + r.notes + '</div>' : '') + '</div>';
+        html += '<div class="log-entry"><div class="log-hdr"><div><div class="log-date">📅 '+dt+' — '+r.shift+' Shift</div><div style="font-size:0.72rem;color:var(--sub);margin-top:2px">'+entries.length+' trimmers · '+totalInc.toFixed(0)+' lbs in · Avg '+avgLph+' lbs/hr · 👤 '+r.recorded_by+'</div></div><button class="wbtn wbtn-danger" style="padding:4px 8px" onclick="trimDelete(\''+r.id+'\')">✕</button></div>' +
+          '<div class="trim-table-wrap" style="margin-top:10px"><table class="trim-table"><thead><tr><th>Emp#</th><th>Name</th><th>Trim#</th><th>Min</th><th>Incoming</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Lbs/Hr</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>' +
+          (r.notes?'<div class="log-notes" style="margin-top:8px"><strong>📝</strong> '+r.notes+'</div>':'') + '</div>';
       });
     }
     document.getElementById('widget-content').innerHTML = html;
-  } catch(e) { document.getElementById('widget-content').innerHTML = '<div class="log-empty">⚠️ ' + e.message + '</div>'; }
+  } catch(e){ document.getElementById('widget-content').innerHTML='<div class="log-empty">⚠️ '+e.message+'</div>'; }
 }
 
-async function trimDelete(id) { if(!confirm('Delete this report?'))return; try { await apiCall('DELETE','/api/records?type=trimmer&id='+id); trimRenderHistory(); } catch(e){ toast('⚠️ Delete failed'); } }
-
-// ── ANALYTICS TAB ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-function trimRenderAnalytics() {
-  document.getElementById('widget-content').innerHTML =
-    '<div class="wcard" style="padding:10px 14px"><div style="font-size:0.78rem;font-weight:700;color:var(--blue);margin-bottom:10px">Time Range</div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    ['7','14','30','60','90'].map(function(d){ return '<button style="padding:5px 12px;border-radius:20px;border:none;background:'+(d==='30'?'var(--blue)':'#eee')+';color:'+(d==='30'?'#fff':'#555')+';font-size:0.78rem;font-weight:600;cursor:pointer" onclick="trimLoadAnalytics('+d+',this)">'+d+' days</button>'; }).join('') +
-    '</div></div>' +
-    '<div id="trim-analytics-body"><div class="spinner-wrap"><div class="spinner"></div>Loading analytics...</div></div>';
-  trimLoadAnalytics(30, null);
-}
-
-async function trimLoadAnalytics(days, btn) {
-  if (btn) {
-    btn.parentElement.querySelectorAll('button').forEach(function(b){ b.style.background='#eee'; b.style.color='#555'; });
-    btn.style.background = 'var(--blue)'; btn.style.color = '#fff';
-  }
-  var body = document.getElementById('trim-analytics-body');
-  if (!body) return;
-  body.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
-  try {
-    var data = await apiCall('GET', '/api/analytics?type=rankings&days=' + days);
-    var rankings = data.rankings || [];
-    if (!rankings.length) { body.innerHTML = '<div class="log-empty">No trimmer data yet. Upload C.A.T.2 reports to see analytics.</div>'; return; }
-    var html = '';
-    html += '<div class="wcard" style="padding:10px 14px"><div style="display:flex;gap:16px;flex-wrap:wrap">' +
-      '<div><div style="font-size:0.68rem;color:var(--sub);text-transform:uppercase;font-weight:600">Trimmers</div><div style="font-size:1.2rem;font-weight:700;color:var(--blue)">' + rankings.length + '</div></div>' +
-      '<div><div style="font-size:0.68rem;color:var(--sub);text-transform:uppercase;font-weight:600">Team Avg Lbs/Hr</div><div style="font-size:1.2rem;font-weight:700;color:var(--green)">' + data.shift_avg_lph + '</div></div>' +
-      '<div><div style="font-size:0.68rem;color:var(--sub);text-transform:uppercase;font-weight:600">Underperformers</div><div style="font-size:1.2rem;font-weight:700;color:var(--red)">' + rankings.filter(function(r){ return r.underperformer; }).length + '</div></div>' +
-      '</div></div>';
-    html += '<div class="wcard"><h3>📊 Rankings — Last ' + days + ' Days</h3>' +
-      '<div class="trim-table-wrap"><table class="trim-table"><thead><tr><th>#</th><th>Name</th><th>Lbs/Hr</th><th>Fillet%</th><th>Nugget%</th><th>Misc%</th><th>Days</th><th>Status</th></tr></thead><tbody>';
-    rankings.forEach(function(r, i) {
-      var flag = r.underperformer ? '<span style="background:#fef0f0;color:var(--red);border-radius:10px;padding:2px 7px;font-size:0.68rem;font-weight:700">⚠️ Review</span>' : '<span style="background:#e8f5e9;color:#2e7d32;border-radius:10px;padding:2px 7px;font-size:0.68rem;font-weight:700">✓ Good</span>';
-      html += '<tr style="' + (r.underperformer ? 'background:#fff8f8;' : '') + '">' +
-        '<td style="padding:5px 6px;font-weight:700;color:var(--sub)">' + (i+1) + '</td>' +
-        '<td style="padding:5px 6px;font-weight:600;font-size:0.82rem"><button style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:0.82rem;font-weight:600;padding:0;text-align:left" onclick="trimShowTrend(\'' + r.full_name + '\',' + days + ')">' + r.full_name + '</button></td>' +
-        '<td style="padding:5px 6px;font-weight:700;color:var(--blue)">' + r.avg_lph + '</td>' +
-        '<td style="padding:5px 6px">' + (r.avg_fillet_pct||'—') + '%</td>' +
-        '<td style="padding:5px 6px">' + (r.avg_nugget_pct||'—') + '%</td>' +
-        '<td style="padding:5px 6px;color:' + (parseFloat(r.avg_misccut_pct) > 10 ? 'var(--red)' : 'var(--text)') + '">' + (r.avg_misccut_pct||'—') + '%</td>' +
-        '<td style="padding:5px 6px;color:var(--sub)">' + r.days_worked + '</td>' +
-        '<td style="padding:5px 6px">' + flag + '</td></tr>';
-    });
-    html += '</tbody></table></div></div>';
-    html += '<div class="wcard"><h3>📈 Click a name above to see their trend</h3><div id="trim-trend-area"></div></div>';
-    body.innerHTML = html;
-  } catch(e) { body.innerHTML = '<div class="log-empty">⚠️ ' + e.message + '</div>'; }
-}
-
-async function trimShowTrend(name, days) {
-  var area = document.getElementById('trim-trend-area');
-  if (!area) return;
-  area.innerHTML = '<div class="spinner-wrap" style="padding:16px"><div class="spinner"></div></div>';
-  try {
-    var data = await apiCall('GET', '/api/analytics?type=trimmer_trends&trimmer_name=' + encodeURIComponent(name) + '&days=' + (days||90));
-    var trends = data.trends || [];
-    if (!trends.length) { area.innerHTML = '<div style="color:var(--sub);font-size:0.85rem;padding:10px">No trend data for ' + name + ' yet.</div>'; return; }
-    var labels = trends.map(function(t){ return new Date(t.report_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}); });
-    area.innerHTML = '<div style="font-weight:700;color:var(--blue);margin-bottom:8px;font-size:0.85rem">' + name + '</div>' +
-      '<div style="position:relative;height:180px;margin-bottom:10px"><canvas id="trim-chart-lph"></canvas></div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-      '<div style="position:relative;height:130px"><canvas id="trim-chart-fillet"></canvas></div>' +
-      '<div style="position:relative;height:130px"><canvas id="trim-chart-misc"></canvas></div>' +
-      '</div>';
-    Object.values(trimCharts).forEach(function(c){ try{ c.destroy(); }catch(e){} });
-    trimCharts = {};
-    trimCharts.lph = new Chart(document.getElementById('trim-chart-lph'), {
-      type: 'line',
-      data: { labels: labels, datasets: [{ label: 'Lbs/Hr', data: trends.map(function(t){ return t.realtime_lbs_per_hour; }), borderColor: '#1a3a6b', backgroundColor: '#1a3a6b22', fill: true, tension: 0.3, pointRadius: 3 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: {size:9}, maxRotation: 45, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { font: {size:10} } } } }
-    });
-    trimCharts.fillet = new Chart(document.getElementById('trim-chart-fillet'), {
-      type: 'line',
-      data: { labels: labels, datasets: [{ label: 'Fillet %', data: trends.map(function(t){ return t.fillet_yield_pct; }), borderColor: '#1d9e75', fill: false, tension: 0.3, pointRadius: 2 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: {size:9} } } }, scales: { x: { ticks: { font: {size:8}, maxRotation: 45, maxTicksLimit: 5 }, grid: { display: false } }, y: { ticks: { font: {size:9}, callback: function(v){ return v + '%'; } } } } }
-    });
-    trimCharts.misc = new Chart(document.getElementById('trim-chart-misc'), {
-      type: 'line',
-      data: { labels: labels, datasets: [{ label: 'Misc-cut %', data: trends.map(function(t){ return t.misccut_yield_pct; }), borderColor: '#c0392b', fill: false, tension: 0.3, pointRadius: 2 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: {size:9} } } }, scales: { x: { ticks: { font: {size:8}, maxRotation: 45, maxTicksLimit: 5 }, grid: { display: false } }, y: { ticks: { font: {size:9}, callback: function(v){ return v + '%'; } } } } }
-    });
-  } catch(e) {
-    area.innerHTML = '<div style="color:var(--red);font-size:0.85rem;padding:10px">' + e.message + '</div>';
-  }
-});
-    trimCharts.misc = new Chart(document.getElementById('trim-chart-misc'),{type:'line',data:{labels:labels,datasets:[{label:'Misc-cut %',data:trends.map(function(t){return t.misccut_yield_pct;}),borderColor:'#c0392b',fill:false,tension:0.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:9}}}},scales:{x:{ticks:{font:{size:8},maxRotation:45,maxTicksLimit:5},grid:{display:false}},y:{ticks:{font:{size:9},callback:function(v){return v+'%';}}}}}}}});
-  } catch(e) { area.innerHTML = '<div style="color:var(--red);font-size:0.85rem;padding:10px">⚠️ ' + e.message + '</div>'; }
-}
-
-ort?'))return;try{await apiCall('DELETE','/api/records?type=trimmer&id='+id);trimRenderHistory();}catch(e){toast('⚠️ Delete failed');}}
+async function trimDelete(id){if(!confirm('Delete this report?'))return;try{await apiCall('DELETE','/api/records?type=trimmer&id='+id);trimRenderHistory();}catch(e){toast('⚠️ Delete failed');}}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AI ANALYSIS
