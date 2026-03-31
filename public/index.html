@@ -841,9 +841,27 @@ async function trimShowTrend(name, days) {
       '<div style="position:relative;height:130px"><canvas id="trim-chart-fillet"></canvas></div>' +
       '<div style="position:relative;height:130px"><canvas id="trim-chart-misc"></canvas></div>' +
       '</div>';
-    Object.values(trimCharts).forEach(function(c){ try{ c.destroy(); }catch(e){} }); trimCharts = {};
-    trimCharts.lph = new Chart(document.getElementById('trim-chart-lph'),{type:'line',data:{labels:labels,datasets:[{label:'Lbs/Hr',data:trends.map(function(t){return t.realtime_lbs_per_hour;}),borderColor:'#1a3a6b',backgroundColor:'#1a3a6b22',fill:true,tension:0.3,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:9},maxRotation:45,maxTicksLimit:6},grid:{display:false}},y:{ticks:{font:{size:10}}}}}});
-    trimCharts.fillet = new Chart(document.getElementById('trim-chart-fillet'),{type:'line',data:{labels:labels,datasets:[{label:'Fillet %',data:trends.map(function(t){return t.fillet_yield_pct;}),borderColor:'#1d9e75',fill:false,tension:0.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:9}}}},scales:{x:{ticks:{font:{size:8},maxRotation:45,maxTicksLimit:5},grid:{display:false}},y:{ticks:{font:{size:9},callback:function(v){return v+'%';}}}}}}}});
+    Object.values(trimCharts).forEach(function(c){ try{ c.destroy(); }catch(e){} });
+    trimCharts = {};
+    trimCharts.lph = new Chart(document.getElementById('trim-chart-lph'), {
+      type: 'line',
+      data: { labels: labels, datasets: [{ label: 'Lbs/Hr', data: trends.map(function(t){ return t.realtime_lbs_per_hour; }), borderColor: '#1a3a6b', backgroundColor: '#1a3a6b22', fill: true, tension: 0.3, pointRadius: 3 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: {size:9}, maxRotation: 45, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { font: {size:10} } } } }
+    });
+    trimCharts.fillet = new Chart(document.getElementById('trim-chart-fillet'), {
+      type: 'line',
+      data: { labels: labels, datasets: [{ label: 'Fillet %', data: trends.map(function(t){ return t.fillet_yield_pct; }), borderColor: '#1d9e75', fill: false, tension: 0.3, pointRadius: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: {size:9} } } }, scales: { x: { ticks: { font: {size:8}, maxRotation: 45, maxTicksLimit: 5 }, grid: { display: false } }, y: { ticks: { font: {size:9}, callback: function(v){ return v + '%'; } } } } }
+    });
+    trimCharts.misc = new Chart(document.getElementById('trim-chart-misc'), {
+      type: 'line',
+      data: { labels: labels, datasets: [{ label: 'Misc-cut %', data: trends.map(function(t){ return t.misccut_yield_pct; }), borderColor: '#c0392b', fill: false, tension: 0.3, pointRadius: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: {size:9} } } }, scales: { x: { ticks: { font: {size:8}, maxRotation: 45, maxTicksLimit: 5 }, grid: { display: false } }, y: { ticks: { font: {size:9}, callback: function(v){ return v + '%'; } } } } }
+    });
+  } catch(e) {
+    area.innerHTML = '<div style="color:var(--red);font-size:0.85rem;padding:10px">' + e.message + '</div>';
+  }
+});
     trimCharts.misc = new Chart(document.getElementById('trim-chart-misc'),{type:'line',data:{labels:labels,datasets:[{label:'Misc-cut %',data:trends.map(function(t){return t.misccut_yield_pct;}),borderColor:'#c0392b',fill:false,tension:0.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:9}}}},scales:{x:{ticks:{font:{size:8},maxRotation:45,maxTicksLimit:5},grid:{display:false}},y:{ticks:{font:{size:9},callback:function(v){return v+'%';}}}}}}}});
   } catch(e) { area.innerHTML = '<div style="color:var(--red);font-size:0.85rem;padding:10px">⚠️ ' + e.message + '</div>'; }
 }
