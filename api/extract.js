@@ -14,9 +14,10 @@ function parseCSV(csv, startRow) {
   const entries = [];
   for (const line of lines) {
     const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g,''));
-    if (cols.length < 10 || !cols[0]) continue;
-    const emp = cols[0], name = cols[1], code = cols[2];
-    if (!name || name.toLowerCase().includes('total')) continue;
+    if (cols.length < 3 || !cols[0]) continue;
+    while (cols.length < 16) cols.push('0');
+    const emp = cols[0], name = cols[1], code = cols[2] || '';
+    if (!name || name.toLowerCase().includes('total') || name.toLowerCase().includes('grand')) continue;
     entries.push({
       emp_number: emp, full_name: name, trim_number: code,
       total_minutes: parseFloat(cols[3])||0,
