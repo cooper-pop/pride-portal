@@ -67,7 +67,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-5-20251001',
+      model: 'claude-sonnet-4-5',
       max_tokens: 8000,
       messages: [{ role:'user', content:[contentBlock,{type:'text',text:prompt}] }]
     });
