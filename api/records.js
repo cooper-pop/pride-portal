@@ -66,14 +66,14 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({error:'Unknown type'});
     }
-    if (req.method==='PATCH') {
-    const { report_date } = body;
+    if (req.req.method === 'PATCH') {
+    const { report_date } = req.body;
     if (!id || !report_date) return res.status(400).json({ error: 'Missing fields' });
     await sql`UPDATE trimmer_reports SET report_date=${report_date} WHERE id=${id} AND company_id=${user.company_id}`;
     return res.json({ success: true });
   }
 
-  if (method==='DELETE') {
+  if (req.method === 'DELETE') {
       if(!id)return res.status(400).json({error:'Missing id'});
       if(type==='yield')await sql`DELETE FROM yield_records WHERE id=${id} AND company_id=${user.company_id}`;
       else if(type==='injection')await sql`DELETE FROM injection_records WHERE id=${id} AND company_id=${user.company_id}`;
