@@ -668,17 +668,17 @@ async async function trimRenderHistory() {
   document.getElementById("widget-content").innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div>Loading...</div>";
   try {
     var rpts = await apiCall("GET", "/api/records?type=trimmer");
-    var html = "<div class=\"wcard\" style=\"padding:10px 14px;display:flex;justify-content:space-between;align-items:center\"><span style=\"font-size:0.82rem;font-weight:700;color:var(--blue)\">" + rpts.length + " report" + (rpts.length === 1 ? "" : "s") + "</span><button class=\"wbtn wbtn-danger\" style=\"padding:5px 10px;font-size:0.73rem\" onclick=\"trimRenderHistory()\">Refresh</button></div>";
+    var html = "<div class=\"wcard\" style=\"padding:10px 14px;display:flex;justify-content:space-between;align-items:center\"><span style=\"font-size:0.82rem;font-weight:700;color:var(--blue)\">" + rpts.length + " report" + (rpts.length===1?"":"s") + "</span><button class=\"wbtn wbtn-danger\" style=\"padding:5px 10px;font-size:0.73rem\" onclick=\"trimRenderHistory()\">Refresh</button></div>";
     if (!rpts.length) {
       html += "<div class=\"log-empty\">No reports yet. Upload a C.A.T.2 report to get started.</div>";
     } else {
       rpts.forEach(function(r) {
-        var dt = new Date(r.report_date).toLocaleDateString("en-US", {weekday:"short",month:"short",day:"numeric",year:"numeric"});
+        var dt = new Date(r.report_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"});
         var ents = r.entries || [];
-        var ti = ents.reduce(function(s,e){ return s+(parseFloat(e.incoming_lbs)||0); }, 0);
-        var ls = ents.reduce(function(s,e){ return s+(parseFloat(e.realtime_lbs_per_hour||e.lbs_per_hour)||0); }, 0);
+        var ti = ents.reduce(function(s,e){ return s+(parseFloat(e.incoming_lbs)||0); },0);
+        var ls = ents.reduce(function(s,e){ return s+(parseFloat(e.realtime_lbs_per_hour||e.lbs_per_hour)||0); },0);
         var al = ents.length ? (ls/ents.length).toFixed(1) : "-";
-        var sc = r.source === "cat2_upload" ? " [AI]" : " [Manual]";
+        var sc = r.source==="cat2_upload" ? " [AI]" : " [Manual]";
         var rh = ents.map(function(e) {
           var bg = e.flagged ? " style=\"background:#fffbe6\"" : "";
           return "<tr" + bg + ">" +
@@ -694,10 +694,11 @@ async async function trimRenderHistory() {
             "<td style=\"padding:4px 6px;font-size:0.75rem;color:#1a56db\">" + (e.total_yield_pct||0) + "%</td>" +
             "<td style=\"padding:4px 6px;font-weight:700;color:var(--green)\">" + (e.realtime_lbs_per_hour||e.lbs_per_hour||"-") + "</td></tr>";
         }).join("");
+        var delBtn = "<button class=\"wbtn wbtn-danger\" style=\"padding:4px 8px\" data-rid=\"" + r.id + "\" onclick=\"trimDelete(this.dataset.rid)\">&#x2715;</button>";
         html += "<div class=\"log-entry\"><div class=\"log-hdr\"><div>" +
           "<div class=\"log-date\">&#x1F4C5; " + dt + " - " + (r.shift||"") + " Shift" + sc + "</div>" +
           "<div style=\"font-size:0.72rem;color:var(--sub);margin-top:2px\">" + ents.length + " trimmers - " + ti.toFixed(0) + " lbs in - Avg " + al + " lbs/hr - " + r.recorded_by + "</div></div>" +
-          "<button class=\"wbtn wbtn-danger\" style=\"padding:4px 8px\" data-rid=\"" + r.id + "\" onclick=\"trimDelete(this.dataset.rid)\">&#x2715;</button></div>" +
+          delBtn + "</div>" +
           "<div class=\"trim-table-wrap\" style=\"margin-top:10px\"><table class=\"trim-table\"><thead><tr>" +
           "<th>Emp#</th><th>Name</th><th>Code</th><th>Min</th><th>In lbs</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Total lbs</th><th>Total %</th><th>Lbs/Hr</th>" +
           "</tr></thead><tbody>" + rh + "</tbody></table></div>" +
