@@ -147,6 +147,44 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .role-admin{background:var(--red)}.role-manager{background:var(--blue)}.role-supervisor{background:var(--green)}
 #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;padding:10px 22px;border-radius:30px;font-size:0.88rem;font-weight:600;opacity:0;pointer-events:none;transition:opacity .3s;z-index:999}
 #toast.show{opacity:1}
+
+#screen-passkey-setup,#screen-change-password,#screen-user-mgmt{align-items:center;justify-content:center;padding:24px}
+.passkey-box,.chpwd-box,.usermgmt-box{background:#fff;border-radius:16px;padding:32px 28px;width:100%;max-width:420px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+.passkey-icon{font-size:3rem;text-align:center;margin-bottom:12px}
+.passkey-title{font-size:1.3rem;font-weight:700;text-align:center;margin-bottom:8px}
+.passkey-sub{font-size:0.85rem;color:var(--sub);text-align:center;margin-bottom:24px}
+.passkey-btn{width:100%;padding:14px;border:none;border-radius:10px;background:var(--blue);color:#fff;font-size:1rem;font-weight:700;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px}
+.passkey-btn:hover{opacity:.9}
+.passkey-btn.secondary{background:#f0f0f5;color:var(--text)}
+.um-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.um-title{font-size:1.2rem;font-weight:700}
+.um-add-btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:600;cursor:pointer;font-size:0.85rem}
+.um-table{width:100%;border-collapse:collapse;font-size:0.85rem}
+.um-table th{background:#f5f5fa;padding:10px 8px;text-align:left;font-weight:600;color:var(--sub);border-bottom:2px solid #eee}
+.um-table td{padding:10px 8px;border-bottom:1px solid #f0f0f5;vertical-align:middle}
+.um-table tr:hover td{background:#fafafe}
+.role-badge{padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:600}
+.role-admin{background:#e8f0fe;color:#1a73e8}
+.role-manager{background:#e6f4ea;color:#1e8e3e}
+.role-supervisor{background:#fce8b2;color:#e37400}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.status-active{background:#34a853}
+.status-inactive{background:#ea4335}
+.um-action-btn{background:none;border:1px solid #ddd;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;margin-right:4px}
+.um-action-btn:hover{background:#f5f5fa}
+.um-action-btn.danger{border-color:#ea4335;color:#ea4335}
+.um-action-btn.danger:hover{background:#fce8e6}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
+.modal-box{background:#fff;border-radius:16px;padding:28px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal-title{font-size:1.1rem;font-weight:700;margin-bottom:20px}
+.modal-field{margin-bottom:14px}
+.modal-field label{display:block;font-size:0.78rem;font-weight:600;color:var(--sub);margin-bottom:4px;text-transform:uppercase}
+.modal-field input,.modal-field select{width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:0.9rem}
+.modal-field input:focus,.modal-field select:focus{outline:none;border-color:var(--blue)}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.modal-actions button{flex:1;padding:11px;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem}
+.modal-save{background:var(--blue);color:#fff}
+.modal-cancel{background:#f0f0f5;color:var(--text)}
 </style>
 </head>
 <body>
@@ -169,6 +207,67 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 
 <!-- LOGIN -->
+
+<!-- PASSKEY SETUP SCREEN -->
+<div id="screen-passkey-setup" class="screen" style="display:none">
+  <div class="passkey-box">
+    <div class="passkey-icon">🔐</div>
+    <div class="passkey-title">Set Up Face ID Login</div>
+    <div class="passkey-sub">Pride of the Pond uses Face ID (Passkey) for secure login. Set it up once and you're done — no codes needed.</div>
+    <button class="passkey-btn" onclick="setupPasskey()">📱 Set Up Face ID Now</button>
+    <button class="passkey-btn secondary" onclick="skipPasskeySetup()">Skip for now</button>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD SCREEN -->
+<div id="screen-change-password" class="screen" style="display:none">
+  <div class="chpwd-box">
+    <div class="passkey-icon">🔑</div>
+    <div class="passkey-title">Change Your Password</div>
+    <div class="passkey-sub">You must set a new password before continuing.</div>
+    <div class="lf"><label class="lf label">New Password</label><input type="password" id="new-pwd" placeholder="Min 8 characters" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:1rem;margin-bottom:12px"></div>
+    <div class="lf"><label class="lf label">Confirm Password</label><input type="password" id="confirm-pwd" placeholder="Repeat password" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:1rem;margin-bottom:16px"></div>
+    <div id="chpwd-error" style="color:var(--red);font-size:0.85rem;margin-bottom:10px;display:none"></div>
+    <button class="passkey-btn" onclick="submitPasswordChange()">Save Password</button>
+  </div>
+</div>
+
+<!-- USER MANAGEMENT SCREEN -->
+<div id="screen-user-mgmt" class="screen" style="display:none">
+  <div class="usermgmt-box" style="max-width:820px;width:100%">
+    <div class="um-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onclick="showScreen('screen-dash')" style="background:none;border:none;font-size:1.3rem;cursor:pointer">←</button>
+        <div class="um-title">👥 User Management</div>
+      </div>
+      <button class="um-add-btn" onclick="umShowAddModal()">+ Add User</button>
+    </div>
+    <div id="um-table-wrap">Loading...</div>
+  </div>
+</div>
+
+<!-- USER MODAL -->
+<div id="user-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">Add User</div>
+    <div class="modal-field"><label>Full Name</label><input id="um-full-name" placeholder="e.g. John Smith"></div>
+    <div class="modal-field"><label>Username</label><input id="um-username" placeholder="e.g. John"></div>
+    <div class="modal-field"><label>Email</label><input id="um-email" type="email" placeholder="email@example.com"></div>
+    <div class="modal-field"><label>Role</label>
+      <select id="um-role">
+        <option value="supervisor">Supervisor</option>
+        <option value="manager">Manager</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="modal-field" id="um-pwd-field"><label>Temporary Password</label><input id="um-password" type="password" placeholder="Auto-generated if blank"></div>
+    <div id="modal-error" style="color:var(--red);font-size:0.85rem;margin-top:4px;display:none"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="umCloseModal()">Cancel</button>
+      <button class="modal-save" onclick="umSaveUser()">Save</button>
+    </div>
+  </div>
+</div>
 <div id="screen-login" class="screen">
   <div class="login-box">
     <div class="login-logo-wrap"><img id="login-logo" class="login-logo" src="" alt=""/></div>
@@ -190,7 +289,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <p id="dash-role"></p>
     </div>
     <div id="dash-user" class="dash-user-badge"></div>
-    <button class="admin-btn" id="admin-btn" onclick="openWidget('admin','👥 User Management')" style="display:none">⚙️</button>
+    <button class="admin-btn" id="admin-btn" onclick="loadUserMgmt()" style="display:none">⚙️</button>
     <button class="logout-btn" id="logout-btn">Sign Out</button>
   </div>
   <div id="sync-badge" class="sync-badge synced" style="display:block;text-align:center;margin:6px auto;width:fit-content">💾 Connected</div>
@@ -888,9 +987,196 @@ async function adminDeleteUser(id, name) {
 // ── INIT ─────────────────────────────────────────────────────────────────────
 (function init() {
   if (loadSession() && authToken && currentUser && currentCompany) {
-    buildDash(); showScreen('screen-dash');
+    if (data.force_password_change) {
+      window._pendingPasskeySetup = data.needs_passkey_setup;
+      showScreen('screen-change-password');
+    } else if (data.needs_passkey_setup) {
+      buildDash(); showScreen('screen-passkey-setup');
+    } else {
+      buildDash(); showScreen('screen-dash');
+    }
   }
 })();
+
+
+// ── PASSKEY SETUP ──────────────────────────────────────────────────────────
+async function setupPasskey() {
+  try {
+    const ch = await apiCall('POST', '/api/passkey?action=register-challenge');
+    const credOpts = {
+      challenge: base64urlToBuffer(ch.challenge),
+      rp: ch.rp,
+      user: { id: base64urlToBuffer(ch.user.id), name: ch.user.name, displayName: ch.user.displayName },
+      pubKeyCredParams: ch.pubKeyCredParams,
+      authenticatorSelection: ch.authenticatorSelection,
+      timeout: ch.timeout,
+      attestation: ch.attestation
+    };
+    const cred = await navigator.credentials.create({ publicKey: credOpts });
+    await apiCall('POST', '/api/passkey?action=register-verify', {
+      credential: {
+        id: cred.id,
+        rawId: bufferToBase64url(cred.rawId),
+        type: cred.type,
+        response: {
+          clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+          attestationObject: bufferToBase64url(cred.response.attestationObject)
+        }
+      },
+      device_name: 'iPhone'
+    });
+    toast('✅ Face ID set up successfully!');
+    showScreen('screen-dash');
+  } catch(err) {
+    toast('Setup failed: ' + err.message);
+  }
+}
+
+function skipPasskeySetup() {
+  showScreen('screen-dash');
+  toast('You can set up Face ID later in Settings');
+}
+
+function base64urlToBuffer(b64) {
+  const s = b64.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(s);
+  const arr = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return arr.buffer;
+}
+function bufferToBase64url(buf) {
+  const arr = new Uint8Array(buf);
+  let s = '';
+  arr.forEach(b => s += String.fromCharCode(b));
+  return btoa(s).replace(/+/g,'-').replace(///g,'_').replace(/=/g,'');
+}
+
+// ── FORCE PASSWORD CHANGE ──────────────────────────────────────────────────
+async function submitPasswordChange() {
+  const np = document.getElementById('new-pwd').value;
+  const cp = document.getElementById('confirm-pwd').value;
+  const err = document.getElementById('chpwd-error');
+  err.style.display = 'none';
+  if (np.length < 8) { err.textContent='Password must be at least 8 characters'; err.style.display='block'; return; }
+  if (np !== cp) { err.textContent='Passwords do not match'; err.style.display='block'; return; }
+  try {
+    await apiCall('PATCH', '/api/users', { id: currentUser.id, password: np });
+    toast('Password updated!');
+    if (window._pendingPasskeySetup) { showScreen('screen-passkey-setup'); }
+    else { showScreen('screen-dash'); }
+  } catch(e) { err.textContent=e.message; err.style.display='block'; }
+}
+
+// ── USER MANAGEMENT ────────────────────────────────────────────────────────
+let umEditId = null;
+
+async function loadUserMgmt() {
+  showScreen('screen-user-mgmt');
+  const wrap = document.getElementById('um-table-wrap');
+  wrap.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Loading...</div>';
+  try {
+    const users = await apiCall('GET', '/api/users');
+    wrap.innerHTML = `<table class="um-table">
+      <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Passkey</th><th>Actions</th></tr></thead>
+      <tbody>${users.map(u => `<tr>
+        <td><strong>${u.full_name}</strong></td>
+        <td>${u.username}</td>
+        <td style="color:var(--sub);font-size:0.82rem">${u.email||'-'}</td>
+        <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+        <td><span class="status-dot status-${u.active?'active':'inactive'}"></span>${u.active?'Active':'Inactive'}</td>
+        <td id="pk-${u.id}" style="font-size:0.82rem;color:var(--sub)">...</td>
+        <td>
+          <button class="um-action-btn" onclick="umEditUser('${u.id}','${u.full_name}','${u.username}','${u.email||''}','${u.role}')">Edit</button>
+          <button class="um-action-btn" onclick="umResetPasskey('${u.id}','${u.full_name}')">Reset Key</button>
+          <button class="um-action-btn danger" onclick="umToggleActive('${u.id}',${u.active})">${u.active?'Deactivate':'Activate'}</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+    // Load passkey status per user
+    users.forEach(u => loadPasskeyStatus(u.id));
+  } catch(e) { wrap.innerHTML = '<div style="color:var(--red);padding:20px">Error: '+e.message+'</div>'; }
+}
+
+async function loadPasskeyStatus(uid) {
+  try {
+    const pks = await apiCall('GET', '/api/passkey?user_id='+uid);
+    const el = document.getElementById('pk-'+uid);
+    if (el) el.textContent = pks.length ? '✅ '+pks[0].device_name : '⚠️ Not set';
+  } catch(e) {}
+}
+
+function umShowAddModal() {
+  umEditId = null;
+  document.getElementById('modal-title').textContent = 'Add User';
+  document.getElementById('um-full-name').value = '';
+  document.getElementById('um-username').value = '';
+  document.getElementById('um-email').value = '';
+  document.getElementById('um-role').value = 'supervisor';
+  document.getElementById('um-password').value = '';
+  document.getElementById('um-pwd-field').style.display = 'block';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('user-modal').style.display = 'flex';
+}
+
+function umEditUser(id, name, username, email, role) {
+  umEditId = id;
+  document.getElementById('modal-title').textContent = 'Edit User';
+  document.getElementById('um-full-name').value = name;
+  document.getElementById('um-username').value = username;
+  document.getElementById('um-email').value = email;
+  document.getElementById('um-role').value = role;
+  document.getElementById('um-password').value = '';
+  document.getElementById('um-pwd-field').style.display = 'block';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('user-modal').style.display = 'flex';
+}
+
+function umCloseModal() { document.getElementById('user-modal').style.display = 'none'; }
+
+async function umSaveUser() {
+  const err = document.getElementById('modal-error');
+  err.style.display = 'none';
+  const full_name = document.getElementById('um-full-name').value.trim();
+  const username = document.getElementById('um-username').value.trim();
+  const email = document.getElementById('um-email').value.trim();
+  const role = document.getElementById('um-role').value;
+  const password = document.getElementById('um-password').value;
+  if (!full_name || !username) { err.textContent='Name and username required'; err.style.display='block'; return; }
+  try {
+    if (umEditId) {
+      const body = { id: umEditId, full_name, email, role };
+      if (password) body.password = password;
+      await apiCall('PATCH', '/api/users', body);
+      toast('User updated');
+    } else {
+      const pwd = password || username + Math.floor(100+Math.random()*900) + '!';
+      await apiCall('POST', '/api/users', { username, full_name, email, role, password: pwd });
+      toast('User created — temp password: ' + pwd);
+    }
+    umCloseModal();
+    loadUserMgmt();
+  } catch(e) { err.textContent=e.message; err.style.display='block'; }
+}
+
+async function umResetPasskey(uid, name) {
+  if (!confirm('Reset passkey for ' + name + '? They will need to set up Face ID again on next login.')) return;
+  try {
+    const pks = await apiCall('GET', '/api/passkey?user_id='+uid);
+    for (const pk of pks) await apiCall('DELETE', '/api/passkey?id='+pk.id);
+    toast('Passkey reset for ' + name);
+    loadUserMgmt();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+async function umToggleActive(uid, currentlyActive) {
+  const action = currentlyActive ? 'deactivate' : 'activate';
+  if (!confirm('Are you sure you want to ' + action + ' this user?')) return;
+  try {
+    await apiCall('PATCH', '/api/users', { id: uid, active: !currentlyActive });
+    toast('User ' + action + 'd');
+    loadUserMgmt();
+  } catch(e) { toast('Error: '+e.message); }
+}
 </script>
 </body>
 </html>
