@@ -35,8 +35,8 @@ module.exports = async function handler(req, res) {
 
   const results = [];
 
-  // Update existing admin account with email
-  await sql`UPDATE users SET email='cooper@prideofthepond.com', active=true WHERE username='admin' AND company_id=${company_id}`;
+  // Reactivate and update existing admin account
+  await sql`UPDATE users SET email='cooper@prideofthepond.com', active=true, force_password_change=false WHERE username='admin' AND company_id=${company_id}`;
 
   // Delete old hbattle account
   await sql`DELETE FROM users WHERE username='hbattle' AND company_id=${company_id}`;
