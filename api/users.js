@@ -42,7 +42,7 @@ module.exports = async function handler(req, res) {
 
   // GET - list all users for this company
   if (req.method === 'GET') {
-    const users = await sql`SELECT id, username, full_name, email, role, active, force_password_change, created_at FROM users WHERE company_id=${company_id} ORDER BY created_at ASC`;
+    const users = await sql`SELECT id, username, full_name, email, role, active, force_password_change, created_at FROM users WHERE company_id=${company_id} AND active=true ORDER BY created_at ASC`;
     return res.json(users);
   }
 
@@ -83,7 +83,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'DELETE') {
     const id = new URL(req.url, 'http://x').searchParams.get('id');
     if (!id) return res.status(400).json({ error: 'Missing id' });
-    await sql`DELETE FROM users WHERE id=${id} AND company_id=${company_id}`;
+    await sql`UPDATE users SET active=false WHERE id=${id} AND company_id=${company_id}`;
     return res.json({ success: true });
   }
 
