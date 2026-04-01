@@ -676,7 +676,7 @@ async function trimRenderHistory() {
       html += '<div class="log-empty">No reports yet. Upload a C.A.T.2 report to get started.</div>';
     } else {
       rpts.forEach(function(r) {
-        var dt = new Date(r.report_date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+        var dt = new Date(r.report_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
         var ents = r.entries || [];
         var ti = ents.reduce(function(s,e){ return s+(parseFloat(e.incoming_lbs)||0); },0);
         var ls = ents.reduce(function(s,e){ return s+(parseFloat(e.realtime_lbs_per_hour||e.lbs_per_hour)||0); },0);
@@ -700,7 +700,7 @@ async function trimRenderHistory() {
             '<td style="padding:4px 6px;font-weight:700;color:var(--green)">' + (e.realtime_lbs_per_hour||e.lbs_per_hour||'-') + '</td></tr>';
         }).join('');
         html += '<div class="log-entry"><div class="log-hdr"><div>' +
-          '<div class="log-date">&#x1F4C5; ' + dt + ' - ' + (r.shift||'') + ' Shift' + sc + '</div>' +
+          '<div class="log-date">&#x1F4C5; ' + (currentUser&&currentUser.role==="admin" ? '<input type="date" value="'+r.report_date+'" data-rid="'+r.id+'" onchange="trimUpdateDate(this.dataset.rid,this.value)" style="border:none;background:transparent;font-weight:700;color:var(--blue);font-size:0.9rem;cursor:pointer"/>' : dt) + ' - ' + (r.shift||'') + ' Shift' + sc + '</div>' +
           '<div style="font-size:0.72rem;color:var(--sub);margin-top:2px">' + ents.length + ' trimmers - ' + ti.toFixed(0) + ' lbs in - Avg ' + al + ' lbs/hr - ' + r.recorded_by + '</div></div>' +
           '<button class="wbtn wbtn-danger" style="padding:4px 8px" data-rid="' + r.id + '" onclick="trimDelete(this.dataset.rid)">&#x2715;</button></div>' +
           '<div class="trim-table-wrap" style="margin-top:10px"><table class="trim-table"><thead><tr>' +
