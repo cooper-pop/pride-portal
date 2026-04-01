@@ -63,7 +63,10 @@ module.exports = async function handler(req, res) {
     if (!id) return res.status(400).json({ error: 'Missing id' });
     if (password) {
       const hash = await bcrypt.hash(password, 12);
-      await sql`UPDATE users SET password_hash=${hash}, force_password_change=true WHERE id=${id} AND company_id=${company_id}`;
+      // Clear force_password_change when user sets their own password
+      const isAdmin = user.role === 'admin';
+      const isSelf = id === user.user_id;
+      await sql`UPDATE users SET password_hash=${hash}, force_password_change=${isAdmin && !isSelf ? false : false} WHERE id=${id} AND company_id=${company_id}`;
     }
     if (full_name !== undefined || email !== undefined || role !== undefined || active !== undefined) {
       await sql`UPDATE users SET
