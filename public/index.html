@@ -1,4 +1,4 @@
-<!DOCTYPE html>
++'<td style="padding:4px 6px;text-align:center;font-weight:600">'+(parseFloat(e.total_weight_lbs||e.total_lbs||0)||0).toFixed(0)+'</td>'+'<td style="padding:4px 6px;text-align:center;color:#1a56db">'+(e.total_yield_pct||0)+'%</td>'<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -665,6 +665,9 @@ async function trimSave() {
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
 async function trimRenderHistory() {
+  const c = document.getElementById('trim-history-content');
+  if (!c) { trimLoadHistory(); return; }
+  c.style.display = '';
   trimLoadHistory();
 }
 function trimRenderAnalytics() {
