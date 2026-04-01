@@ -705,9 +705,13 @@ function trimRenderUpload() {
     '<p style="font-size:0.82rem;color:var(--sub);margin-bottom:14px">Upload a PDF or photo of your C.A.T.2 report. Claude reads every row and auto-fills for review.</p>'+
     '<div class="upload-drop-zone" onclick="document.getElementById(\'trim-file-input\').click()">'+
     '<div style="font-size:2rem;margin-bottom:8px">&#x1F4C4;</div>'+
-    '<div style="font-weight:700;color:var(--blue);margin-bottom:4px">Tap to upload or take photo</div>'+
-    '<div style="font-size:0.75rem;color:var(--sub)">PDF, JPG, PNG supported</div></div>'+
+    '<div style="display:flex;gap:10px;margin-top:4px">'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">📁 Upload File</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">📷 Take Photo</button>'+
+    '</div>'+
+    '<div style="font-size:0.75rem;color:var(--sub);margin-top:6px">PDF, JPG, PNG supported</div></div>'+
     '<input type="file" id="trim-file-input" accept="image/*,application/pdf" style="display:none" onchange="trimHandleFile(this)"/>'+
+    '<input type="file" id="trim-camera-input" accept="image/*" capture="environment" style="display:none" onchange="trimHandleFile(this)"/>'+
     '<div id="trim-upload-status" style="display:none;margin-top:12px"></div></div>';
 }
 async function trimHandleFile(input) {
