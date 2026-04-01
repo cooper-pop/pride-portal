@@ -664,7 +664,7 @@ async function trimSave() {
   try{ await apiCall("POST","/api/records?type=trimmer",{report_date:date,shift:shift,notes:document.getElementById("trim-notes").value.trim(),source:"cat2_upload",entries:vr}); setSyncBadge("synced"); toast("Report saved - "+vr.length+" trimmers recorded!"); trimRows=[trimEmptyRow()]; trimRenderForm(); }
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
-async async function trimRenderHistory() {
+async function trimRenderHistory() {
   document.getElementById('widget-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     var rpts = await apiCall('GET', '/api/records?type=trimmer');
