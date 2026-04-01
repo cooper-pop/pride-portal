@@ -418,8 +418,14 @@ async function doLogin() {
     authToken = data.token;
     currentUser = data.user;
     saveSession();
-    buildDash();
-    showScreen('screen-dash');
+    if (data.force_password_change) {
+      window._pendingPasskeySetup = data.needs_passkey_setup;
+      showScreen('screen-change-password');
+    } else if (data.needs_passkey_setup) {
+      buildDash(); showScreen('screen-passkey-setup');
+    } else {
+      buildDash(); showScreen('screen-dash');
+    }
   } catch(e) {
     errEl.textContent = 'Incorrect username or password.';
     errEl.style.display = 'block';
