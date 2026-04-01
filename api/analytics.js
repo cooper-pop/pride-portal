@@ -59,7 +59,7 @@ module.exports = async function handler(req, res) {
           te.incoming_lbs, te.realtime_lbs_per_hour, te.eighthour_lbs_per_hour,
           te.fillet_lbs, te.fillet_yield_pct, te.nugget_lbs, te.nugget_yield_pct,
           te.misccut_lbs, te.misccut_yield_pct, te.total_yield_pct,
-          te.total_minutes, te.hours_worked, tr.shift
+          te.minutes_worked, te.hours_worked, tr.shift
         FROM trimmer_entries te JOIN trimmer_reports tr ON tr.id = te.report_id
         WHERE tr.company_id = ${user.company_id} AND tr.report_date >= ${sinceStr}
           AND te.full_name ILIKE ${'%' + (trimmer_name || '') + '%'}
