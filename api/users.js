@@ -83,7 +83,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'DELETE') {
     const id = new URL(req.url, 'http://x').searchParams.get('id');
     if (!id) return res.status(400).json({ error: 'Missing id' });
-    await sql`UPDATE users SET active=false WHERE id=${id} AND company_id=${company_id}`;
+    await sql`DELETE FROM users WHERE id=${id} AND company_id=${company_id}`;
     return res.json({ success: true });
   }
 
