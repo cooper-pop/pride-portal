@@ -34,7 +34,9 @@ module.exports = async function handler(req, res) {
 
   let user;
   try { user = verifyToken(req); } catch(e) { return res.status(401).json({ error: 'Unauthorized' }); }
-  if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  // Allow non-admins to change their own password only
+  const isSelfPatch = req.method === 'PATCH' && req.body?.id === user.user_id && Object.keys(req.body).filter(k=>k!=='id').every(k=>k==='password');
+  if (user.role !== 'admin' && !isSelfPatch) return res.status(403).json({ error: 'Admin only' });
 
   const company_id = user.company_id;
 
