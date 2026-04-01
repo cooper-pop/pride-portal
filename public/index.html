@@ -638,7 +638,8 @@ function trimRenderForm() {
       '<td><input type="number" value="'+(r.fillet_lbs||'')+'" oninput="trimUpdate('+i+',\'fillet_lbs\',this.value)" step="0.1" style="width:70px"/></td>'+
       '<td><input type="number" value="'+(r.nugget_lbs||'')+'" oninput="trimUpdate('+i+',\'nugget_lbs\',this.value)" step="0.1" style="width:70px"/></td>'+
       '<td><input type="number" value="'+(r.misccut_lbs||'')+'" oninput="trimUpdate('+i+',\'misccut_lbs\',this.value)" step="0.1" style="width:70px"/></td>'+
-      '<td class="calc-cell">'+lph+'</td>'+
+      '<td class='<td class="calc-cell">'+(parseFloat(r.fillet_lbs||0)+parseFloat(r.nugget_lbs||0)+parseFloat(r.misccut_lbs||0)).toFixed(0)+'</td>'+
+      "calc-cell">'+lph+'</td>'+
       '<td class="del-cell"><button class="del-btn" onclick="trimDeleteRow('+i+')">&#x2715;</button></td></tr>';
   }).join('');
   var fb=hf?'<div style="background:#fffbe6;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.83rem;color:#7a5500"><strong>&#x26A0; Flagged rows highlighted.</strong> Review before saving.</div>':"";
@@ -681,7 +682,7 @@ async function trimRenderHistory() {
         var sc = r.source==='cat2_upload' ? ' [AI]' : ' [Manual]';
         var rh = ents.map(function(e) {
           var bg = e.flagged ? ' style="background:#fffbe6"' : '';
-          var twl = (parseFloat(e.total_weight_lbs||e.total_lbs||0)||0).toFixed(0);
+          var twl = (parseFloat(e.total_weight_lbs||e.total_lbs||0)||0) > 0 ? (parseFloat(e.total_weight_lbs||e.total_lbs)).toFixed(0) : (parseFloat(e.fillet_lbs||0)+parseFloat(e.nugget_lbs||0)+parseFloat(e.misccut_lbs||0)).toFixed(0);
           var typ = e.total_yield_pct || 0;
           return '<tr' + bg + '>' +
             '<td style="padding:4px 6px;font-size:0.75rem">' + (e.emp_number||'') + '</td>' +
