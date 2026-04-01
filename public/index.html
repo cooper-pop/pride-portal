@@ -732,6 +732,13 @@ function trimRenderAnalytics() {
     '</div></div><div id="trim-analytics-body"><div class="spinner-wrap"><div class="spinner"></div>Loading...</div></div>';
   trimLoadAnalytics(30,null);
 }
+async function trimUpdateDate(id, newDate) {
+  try {
+    await apiCall('PATCH', '/api/records?type=trimmer&id='+id, { report_date: newDate });
+    trimRenderHistory();
+  } catch(err) { toast('Date update failed: '+err.message); }
+}
+
 async function trimLoadAnalytics(days,btn) {
   if(btn){btn.parentElement.querySelectorAll("button").forEach(function(b){b.style.background="#eee";b.style.color="#555";});btn.style.background="var(--blue)";btn.style.color="#fff";}
   var body=document.getElementById("trim-analytics-body"); if(!body)return;
