@@ -9,7 +9,7 @@ function verifyToken(req) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -66,14 +66,14 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({error:'Unknown type'});
     }
-    if (req. if (req.method === 'PATCH' && type === 'trimmer') {
-    const { report_date } = req.body;
-    if (!id || !report_date) return res.status(400).json({ error: 'Missing fields' });
-    await sql`UPDATE trimmer_reports SET report_date=${report_date} WHERE id=${id} AND company_id=${user.company_id}`;
-    return res.json({ success: true });
-  }
-
-  req.method === 'DELETE') {
+    if (req.method==='PATCH' && type==='trimmer') {
+      if (!id) return res.status(400).json({error:'Missing id'});
+      const { report_date } = req.body;
+      if (!report_date) return res.status(400).json({error:'Missing report_date'});
+      await sql`UPDATE trimmer_reports SET report_date=${report_date} WHERE id=${id} AND company_id=${user.company_id}`;
+      return res.json({success:true});
+    }
+    if (req.method==='DELETE') {
       if(!id)return res.status(400).json({error:'Missing id'});
       if(type==='yield')await sql`DELETE FROM yield_records WHERE id=${id} AND company_id=${user.company_id}`;
       else if(type==='injection')await sql`DELETE FROM injection_records WHERE id=${id} AND company_id=${user.company_id}`;
