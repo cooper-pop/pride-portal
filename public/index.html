@@ -712,6 +712,15 @@ async function trimRenderHistory() {
     document.getElementById('widget-content').innerHTML = '<div class="log-empty">Error: ' + err.message + '</div>';
   }
 }
+async function trimDelete(id) {
+  if (!confirm('Delete this report?')) return;
+  try {
+    await apiCall('DELETE', '/api/records?type=trimmer&id=' + id);
+    trimRenderHistory();
+  } catch(err) {
+    toast('Delete failed: ' + err.message);
+  }
+}
 function trimRenderAnalytics() {
   document.getElementById("widget-content").innerHTML=
     '<div class="wcard" style="padding:10px 14px"><div style="font-size:0.78rem;font-weight:700;color:var(--blue);margin-bottom:10px">Time Range</div>'+
