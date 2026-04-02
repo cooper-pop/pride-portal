@@ -69,7 +69,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8000,
       messages: [{ role:'user', content:[contentBlock,{type:'text',text:prompt}] }]
     });
@@ -81,7 +81,7 @@ module.exports = async function handler(req, res) {
 
     // Get report date from first line of raw or use a second quick call
     let reportDate = null;
-    const dateMatch = raw.match(/20dd-d{2}-d{2}/);
+    const dateMatch = raw.match(/20\d\d-\d{2}-\d{2}/);
     if (dateMatch) reportDate = dateMatch[0];
 
     // Quick date extraction if not found in CSV
@@ -91,7 +91,7 @@ module.exports = async function handler(req, res) {
         max_tokens: 20,
         messages: [{ role:'user', content:[contentBlock,{type:'text',text:'What is the date on this report? Reply with ONLY YYYY-MM-DD format.'}] }]
       });
-      const dm = dateMsg.content[0].text.trim().match(/d{4}-d{2}-d{2}/);
+      const dm = dateMsg.content[0].text.trim().match(/\d{4}-\d{2}-\d{2}/);
       if (dm) reportDate = dm[0];
     }
 
