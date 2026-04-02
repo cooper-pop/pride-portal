@@ -1,82 +1,3 @@
-
-  async function trimRenderAnalytics() {
-    const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div class="spinner-wrap"><div class="spinner"></div><div>Loading analytics…</div></div></div>';
-    let data;
-    try {
-      data = await apiCall('GET', '/api/analytics?type=rankings&days=30');
-    } catch(e) { wc.innerHTML = '<p style="color:#ef4444;padding:16px">Analytics failed: '+e.message+'</p>'; return; }
-    const rankings = data.rankings || [];
-    const shiftAvg = parseFloat(data.shift_avg_lph)||0;
-    let html = '<div style="padding:8px">';
-    html += '<div class="wcard" style="margin-bottom:12px">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
-    html += '<h3 style="margin:0;font-size:1rem">📈 Trimmer Rankings — Last 30 Days</h3>';
-    html += '<span style="font-size:0.78rem;color:var(--sub)">Team avg: '+shiftAvg.toFixed(1)+' lbs/hr</span></div>';
-    html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.78rem"><thead><tr>';
-    ['Rank','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','Tot Yield%',''].forEach(h=>{ html+='<th>'+h+'</th>'; });
-    html += '</tr></thead><tbody>';
-    rankings.forEach((r,i)=>{
-      const under = r.underperformer;
-      const color = under ? '#fef2f2' : (i<3 ? '#f0fdf4' : '');
-      html += '<tr style="background:'+color+'">';
-      html += '<td style="font-weight:700;text-align:center">'+(i+1)+'</td>';
-      html += '<td style="font-weight:600">'+(r.full_name||r.emp_number||'')+'</td>';
-      html += '<td style="text-align:center">'+(r.days_worked||0)+'</td>';
-      html += '<td style="text-align:center;font-weight:700;color:'+(under?'#ef4444':'#16a34a')+'">'+parseFloat(r.avg_lph||0).toFixed(1)+'</td>';
-      html += '<td style="text-align:center">'+parseFloat(r.avg_8hr_lph||0).toFixed(1)+'</td>';
-      html += '<td style="text-align:center">'+parseFloat(r.avg_fillet_pct||0).toFixed(1)+'%</td>';
-      html += '<td style="text-align:center">'+parseFloat(r.avg_nugget_pct||0).toFixed(1)+'%</td>';
-      html += '<td style="text-align:center">'+parseFloat(r.avg_total_yield||0).toFixed(1)+'%</td>';
-      html += '<td><button onclick="trimShowTrend(''+encodeURIComponent(r.full_name||r.emp_number||'')+'',this)" style="background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem;white-space:nowrap">Trend ▾</button></td>';
-      html += '</tr>';
-      if (under) html += '<tr style="background:#fef2f2"><td colspan="9" style="font-size:0.72rem;color:#ef4444;padding:2px 8px">⚠️ '+r.underperformer_reason+'</td></tr>';
-    });
-    html += '</tbody></table></div></div>';
-    html += '<p style="font-size:0.75rem;color:var(--sub);text-align:center;padding:4px">Click a name's Trend button for a performance chart</p>';
-    html += '<div id="trim-trend-area"></div>';
-    html += '</div>';
-    wc.innerHTML = html;
-  }
-
-  async function trimShowTrend(encodedName, btn) {
-    const name = decodeURIComponent(encodedName);
-    const area = document.getElementById('trim-trend-area');
-    if (!area) return;
-    area.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><div>Loading trend…</div></div>';
-    btn.disabled = true;
-    let data;
-    try {
-      data = await apiCall('GET', '/api/analytics?type=trimmer_trends&days=90&trimmer_name='+encodeURIComponent(name));
-    } catch(e) { area.innerHTML = '<p style="color:#ef4444">Trend failed: '+e.message+'</p>'; btn.disabled=false; return; }
-    const trends = data.trends || [];
-    if (!trends.length) { area.innerHTML = '<p style="color:var(--sub);text-align:center;padding:16px">No trend data for '+name+'</p>'; btn.disabled=false; return; }
-    let html = '<div class="wcard" style="margin-top:12px">';
-    html += '<h3 style="font-size:0.95rem;margin-bottom:10px">📉 '+name+' — Last 90 Days</h3>';
-    html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
-    ['Date','Shift','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Yield%','Lbs/Hr'].forEach(h=>{ html+='<th>'+h+'</th>'; });
-    html += '</tr></thead><tbody>';
-    trends.forEach(t=>{
-      html += '<tr>';
-      html += '<td>'+(t.report_date||'').slice(0,10)+'</td>';
-      html += '<td>'+(t.shift||'')+'</td>';
-      html += '<td>'+parseFloat(t.incoming_lbs||0).toFixed(0)+'</td>';
-      html += '<td>'+parseFloat(t.fillet_lbs||0).toFixed(1)+'</td>';
-      html += '<td>'+parseFloat(t.fillet_yield_pct||0).toFixed(1)+'%</td>';
-      html += '<td>'+parseFloat(t.nugget_lbs||0).toFixed(1)+'</td>';
-      html += '<td>'+parseFloat(t.nugget_yield_pct||0).toFixed(1)+'%</td>';
-      html += '<td>'+parseFloat(t.misccut_lbs||0).toFixed(1)+'</td>';
-      html += '<td>'+parseFloat(t.misccut_yield_pct||0).toFixed(1)+'%</td>';
-      html += '<td>'+parseFloat(t.total_yield_pct||0).toFixed(1)+'%</td>';
-      html += '<td style="font-weight:700">'+parseFloat(t.realtime_lbs_per_hour||0).toFixed(1)+'</td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table></div></div>';
-    area.innerHTML = html;
-    area.scrollIntoView({behavior:'smooth',block:'start'});
-    btn.disabled = false;
-  }
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -769,6 +690,84 @@ async function injDelete(id){if(!confirm('Delete this batch?'))return;try{await 
 // ============================================================
 var trimRows = [];
 var trimCharts = {};
+async function trimRenderAnalytics() {
+    const wc = document.getElementById('widget-content');
+    wc.innerHTML = '<div style="padding:8px"><div class="spinner-wrap"><div class="spinner"></div><div>Loading analytics…</div></div></div>';
+    let data;
+    try {
+      data = await apiCall('GET', '/api/analytics?type=rankings&days=30');
+    } catch(e) { wc.innerHTML = '<p style="color:#ef4444;padding:16px">Analytics failed: '+e.message+'</p>'; return; }
+    const rankings = data.rankings || [];
+    const shiftAvg = parseFloat(data.shift_avg_lph)||0;
+    let html = '<div style="padding:8px">';
+    html += '<div class="wcard" style="margin-bottom:12px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    html += '<h3 style="margin:0;font-size:1rem">📈 Trimmer Rankings — Last 30 Days</h3>';
+    html += '<span style="font-size:0.78rem;color:var(--sub)">Team avg: '+shiftAvg.toFixed(1)+' lbs/hr</span></div>';
+    html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.78rem"><thead><tr>';
+    ['Rank','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','Tot Yield%',''].forEach(h=>{ html+='<th>'+h+'</th>'; });
+    html += '</tr></thead><tbody>';
+    rankings.forEach((r,i)=>{
+      const under = r.underperformer;
+      const color = under ? '#fef2f2' : (i<3 ? '#f0fdf4' : '');
+      html += '<tr style="background:'+color+'">';
+      html += '<td style="font-weight:700;text-align:center">'+(i+1)+'</td>';
+      html += '<td style="font-weight:600">'+(r.full_name||r.emp_number||'')+'</td>';
+      html += '<td style="text-align:center">'+(r.days_worked||0)+'</td>';
+      html += '<td style="text-align:center;font-weight:700;color:'+(under?'#ef4444':'#16a34a')+'">'+parseFloat(r.avg_lph||0).toFixed(1)+'</td>';
+      html += '<td style="text-align:center">'+parseFloat(r.avg_8hr_lph||0).toFixed(1)+'</td>';
+      html += '<td style="text-align:center">'+parseFloat(r.avg_fillet_pct||0).toFixed(1)+'%</td>';
+      html += '<td style="text-align:center">'+parseFloat(r.avg_nugget_pct||0).toFixed(1)+'%</td>';
+      html += '<td style="text-align:center">'+parseFloat(r.avg_total_yield||0).toFixed(1)+'%</td>';
+      html += '<td><button onclick="trimShowTrend(''+encodeURIComponent(r.full_name||r.emp_number||'')+'',this)" style="background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem;white-space:nowrap">Trend ▾</button></td>';
+      html += '</tr>';
+      if (under) html += '<tr style="background:#fef2f2"><td colspan="9" style="font-size:0.72rem;color:#ef4444;padding:2px 8px">⚠️ '+r.underperformer_reason+'</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    html += '<p style="font-size:0.75rem;color:var(--sub);text-align:center;padding:4px">Click a name's Trend button for a performance chart</p>';
+    html += '<div id="trim-trend-area"></div>';
+    html += '</div>';
+    wc.innerHTML = html;
+  }
+
+  async function trimShowTrend(encodedName, btn) {
+    const name = decodeURIComponent(encodedName);
+    const area = document.getElementById('trim-trend-area');
+    if (!area) return;
+    area.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><div>Loading trend…</div></div>';
+    btn.disabled = true;
+    let data;
+    try {
+      data = await apiCall('GET', '/api/analytics?type=trimmer_trends&days=90&trimmer_name='+encodeURIComponent(name));
+    } catch(e) { area.innerHTML = '<p style="color:#ef4444">Trend failed: '+e.message+'</p>'; btn.disabled=false; return; }
+    const trends = data.trends || [];
+    if (!trends.length) { area.innerHTML = '<p style="color:var(--sub);text-align:center;padding:16px">No trend data for '+name+'</p>'; btn.disabled=false; return; }
+    let html = '<div class="wcard" style="margin-top:12px">';
+    html += '<h3 style="font-size:0.95rem;margin-bottom:10px">📉 '+name+' — Last 90 Days</h3>';
+    html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
+    ['Date','Shift','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Yield%','Lbs/Hr'].forEach(h=>{ html+='<th>'+h+'</th>'; });
+    html += '</tr></thead><tbody>';
+    trends.forEach(t=>{
+      html += '<tr>';
+      html += '<td>'+(t.report_date||'').slice(0,10)+'</td>';
+      html += '<td>'+(t.shift||'')+'</td>';
+      html += '<td>'+parseFloat(t.incoming_lbs||0).toFixed(0)+'</td>';
+      html += '<td>'+parseFloat(t.fillet_lbs||0).toFixed(1)+'</td>';
+      html += '<td>'+parseFloat(t.fillet_yield_pct||0).toFixed(1)+'%</td>';
+      html += '<td>'+parseFloat(t.nugget_lbs||0).toFixed(1)+'</td>';
+      html += '<td>'+parseFloat(t.nugget_yield_pct||0).toFixed(1)+'%</td>';
+      html += '<td>'+parseFloat(t.misccut_lbs||0).toFixed(1)+'</td>';
+      html += '<td>'+parseFloat(t.misccut_yield_pct||0).toFixed(1)+'%</td>';
+      html += '<td>'+parseFloat(t.total_yield_pct||0).toFixed(1)+'%</td>';
+      html += '<td style="font-weight:700">'+parseFloat(t.realtime_lbs_per_hour||0).toFixed(1)+'</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+    area.innerHTML = html;
+    area.scrollIntoView({behavior:'smooth',block:'start'});
+    btn.disabled = false;
+  }
+
 function buildTrimmerWidget() {
   var tabs = ["&#x1F4F7; Upload C.A.T.2","&#x2702;&#xFE0F; Manual Entry","&#x1F4CB; History","&#x1F4CA; Analytics"];
   document.getElementById("widget-tabs").innerHTML = tabs.map(function(t,i){ return '<div class="widget-tab'+(i===0?" active":"")+'" onclick="trimShowTab('+i+')">'+t+'</div>'; }).join("");
