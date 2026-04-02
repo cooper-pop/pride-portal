@@ -816,79 +816,98 @@ async function trimDeleteReport(reportId) {
     trimRenderHistory();
   } catch(e) { toast('❌ '+e.message); }
 }
-function trimRenderHistory() {
-  document.getElementById('widget-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
-  try {
-    var rpts = await apiCall('GET', '/api/records?type=trimmer');
-    var admin = currentUser && currentUser.role === 'admin';
-    var html = '<div class="wcard" style="padding:10px 14px 6px">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-    html += '<h3 style="margin:0;font-size:1rem">Trimmer Log History</h3>';
-    if (admin) html += '<span style="font-size:0.72rem;color:var(--blue);background:#e8f0ff;padding:3px 8px;border-radius:12px">✏️ Admin Edit Mode</span>';
-    html += '</div>';
-    rpts.sort((a,b)=>new Date(b.report_date)-new Date(a.report_date));
-    rpts.forEach(function(r) {
-      var dateStr = (r.report_date||'').slice(0,10);
-      var entries = r.entries||[];
-      if (!entries.length) return;
-      html += '<div style="margin-bottom:14px">';
-      html += '<div style="font-weight:700;color:var(--blue);font-size:0.85rem;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between">';
-      html += '<span>' + dateStr + ' — ' + r.shift + ' shift (' + entries.length + ' trimmers)</span>';
-      if (admin) html += '<button onclick="trimDeleteReport(\''+r.id+'\')" style="background:#fff0f0;border:1px solid #ffcccc;color:#c00;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem">🗑 Delete Report</button>';
+function trimRenderHistory(reports) {
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const wrap = document.getElementById('trim-history-wrap');
+    if (!reports || !reports.length) { wrap.innerHTML = '<p style="color:var(--sub);text-align:center;padding:24px">No reports found.</p>'; return; }
+    const sorted = [...reports].sort((a,b) => new Date(b.report_date) - new Date(a.report_date));
+    let html = '';
+    sorted.forEach(rpt => {
+      const d = (rpt.report_date||'').slice(0,10);
+      const entries = rpt.entries || [];
+      const totalLbs = entries.reduce((s,e) => s+(parseFloat(e.total_lbs)||0),0);
+      html += '<div class="wcard" style="margin-bottom:16px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+      html += '<div><div style="font-weight:700">' + d + ' — ' + (rpt.shift||'') + ' Shift</div>';
+      html += '<div style="font-size:0.78rem;color:var(--sub)">' + entries.length + ' trimmers · ' + totalLbs.toFixed(1) + ' total lbs</div></div>';
+      if (isAdmin) html += '<button onclick="trimDeleteReport(\'' + rpt.id + '\')" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">🗑 Delete Report</button>';
       html += '</div>';
-      html += '<div class="trim-table-wrap"><table class="trim-table"><thead><tr>';
-      html += '<th>Emp#</th><th>Name</th><th>Min</th><th>In Lbs</th><th>Fillet</th><th>Flt%</th><th>Nugget</th><th>Nug%</th><th>MiscCut</th><th>Misc%</th><th>Total Lbs</th><th>Tot%</th>';
-      if (admin) html += '<th>Save</th>';
+      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">✏️ Click any cell to edit. Changes save automatically.</div>';
+      html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
+      ['Emp#','Name','Code','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>' + h + '</th>'; });
       html += '</tr></thead><tbody>';
-      entries.forEach(function(e) {
-        var eid = e.id;
-        if (admin) {
-          html += '<tr id="erow-'+eid+'">';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="emp_number" value="'+(e.emp_number||'')+'" style="width:52px"/></td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="full_name" value="'+(e.full_name||'')+'" style="width:120px"/></td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="minutes_worked" type="number" value="'+(e.minutes_worked||0)+'" style="width:44px"/></td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="incoming_lbs" type="number" value="'+(e.incoming_lbs||0)+'" style="width:52px"/></td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="fillet_lbs" type="number" value="'+(e.fillet_lbs||0)+'" style="width:52px"/></td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.fillet_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="nugget_lbs" type="number" value="'+(e.nugget_lbs||0)+'" style="width:52px"/></td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.nugget_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="misccut_lbs" type="number" value="'+(e.misccut_lbs||0)+'" style="width:52px"/></td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.misccut_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="total_lbs" type="number" value="'+(e.total_lbs||0)+'" style="width:52px"/></td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.total_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td><button onclick="trimSaveEntry(\''+eid+'\',\''+r.id+'\')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.72rem">💾</button>';
-          html += ' <button onclick="trimDeleteEntry(\''+eid+'\',\''+r.id+'\')" style="background:#fff0f0;border:1px solid #ffcccc;color:#c00;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.72rem">✕</button></td>';
-          html += '</tr>';
+      entries.forEach(e => {
+        html += '<tr>';
+        if (isAdmin) {
+          const inp = (id,field,val,w) => '<td><input class="hist-edit" data-id="'+id+'" data-field="'+field+'" value="'+(val||'')+'" style="width:'+w+'px;font-size:0.74rem;border:none;border-bottom:1px solid #e2e8f0;background:transparent;text-align:center;padding:2px" onchange="trimSaveCell(this)"/></td>';
+          html += inp(e.id,'emp_number',e.emp_number,44);
+          html += inp(e.id,'full_name',e.full_name,105);
+          html += inp(e.id,'trim_number',e.trim_number,54);
+          html += inp(e.id,'minutes_worked',e.minutes_worked,38);
+          html += inp(e.id,'incoming_lbs',e.incoming_lbs,50);
+          html += inp(e.id,'fillet_lbs',e.fillet_lbs,46);
+          html += '<td>'+(parseFloat(e.fillet_yield_pct)||0).toFixed(1)+'%</td>';
+          html += inp(e.id,'nugget_lbs',e.nugget_lbs,46);
+          html += '<td>'+(parseFloat(e.nugget_yield_pct)||0).toFixed(1)+'%</td>';
+          html += inp(e.id,'misccut_lbs',e.misccut_lbs,46);
+          html += '<td>'+(parseFloat(e.misccut_yield_pct)||0).toFixed(1)+'%</td>';
+          html += '<td>'+(parseFloat(e.total_lbs)||0).toFixed(1)+'</td>';
+          html += '<td>'+(parseFloat(e.total_yield_pct)||0).toFixed(1)+'%</td>';
+          html += '<td>'+(parseFloat(e.realtime_lbs_per_hour)||0).toFixed(1)+'</td>';
+          html += '<td><button onclick="trimDeleteEntry(\'' + e.id + '\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">✕</button></td>';
         } else {
-          html += '<tr>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.emp_number||'')+'</td>';
-          html += '<td style="padding:4px 6px;font-weight:600;font-size:0.78rem">'+(e.full_name||'')+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.minutes_worked||0)+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.incoming_lbs||0)+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.fillet_lbs||0)+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.fillet_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.nugget_lbs||0)+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.nugget_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.misccut_lbs||0)+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.misccut_yield_pct||0).toFixed(1)+'%</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.total_lbs||0)+'</td>';
-          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.total_yield_pct||0).toFixed(1)+'%</td>';
-          html += '</tr>';
+          html += '<td>'+(e.emp_number||'')+'</td><td>'+(e.full_name||'')+'</td><td>'+(e.trim_number||'')+'</td>';
+          html += '<td>'+(e.minutes_worked||0)+'</td><td>'+(e.incoming_lbs||0)+'</td>';
+          html += '<td>'+(e.fillet_lbs||0)+'</td><td>'+(parseFloat(e.fillet_yield_pct)||0).toFixed(1)+'%</td>';
+          html += '<td>'+(e.nugget_lbs||0)+'</td><td>'+(parseFloat(e.nugget_yield_pct)||0).toFixed(1)+'%</td>';
+          html += '<td>'+(e.misccut_lbs||0)+'</td><td>'+(parseFloat(e.misccut_yield_pct)||0).toFixed(1)+'%</td>';
+          html += '<td>'+(parseFloat(e.total_lbs)||0).toFixed(1)+'</td><td>'+(parseFloat(e.total_yield_pct)||0).toFixed(1)+'%</td>';
+          html += '<td>'+(parseFloat(e.realtime_lbs_per_hour)||0).toFixed(1)+'</td><td></td>';
         }
+        html += '</tr>';
       });
       html += '</tbody></table></div></div>';
     });
-    html += '</div>';
-    document.getElementById('widget-content').innerHTML = html;
-    // Style inputs
-    Array.from(document.querySelectorAll('.hist-inp')).forEach(function(inp){
-      inp.style.cssText='border:1px solid #ddd;border-radius:4px;padding:2px 4px;font-size:0.73rem;width:'+inp.style.width;
-    });
-  } catch(err) {
-    document.getElementById('widget-content').innerHTML = '<div class="wcard"><p style="color:red">Error: '+err.message+'</p></div>';
+    wrap.innerHTML = html;
   }
-}
-async function trimDelete(id) {
+
+  async function trimSaveCell(input) {
+    const id = input.dataset.id;
+    const field = input.dataset.field;
+    const val = input.value.trim();
+    input.style.borderBottom = '2px solid #f59e0b';
+    try {
+      const numFields = ['minutes_worked','incoming_lbs','fillet_lbs','nugget_lbs','misccut_lbs','total_lbs'];
+      const body = { id };
+      body[field] = numFields.includes(field) ? (parseFloat(val)||0) : val;
+      await apiCall('PATCH', '/api/records?type=trimmer-entry', body);
+      input.style.borderBottom = '2px solid #22c55e';
+      setTimeout(()=>{ input.style.borderBottom='1px solid #e2e8f0'; trimLoadHistory(); },1200);
+    } catch(e) {
+      input.style.borderBottom = '2px solid #ef4444';
+      toast('Save failed');
+    }
+  }
+
+  async function trimDeleteReport(id) {
+    if (!confirm('Delete this entire report and all its entries? Cannot be undone.')) return;
+    try {
+      await apiCall('DELETE', '/api/records?type=trimmer&id='+id);
+      toast('Report deleted');
+      trimLoadHistory();
+    } catch(e) { toast('Delete failed: '+e.message); }
+  }
+
+  async function trimDeleteEntry(id, btn) {
+    if (!confirm('Delete this trimmer entry?')) return;
+    try {
+      await apiCall('DELETE', '/api/records?type=trimmer-entry&id='+id);
+      btn.closest('tr').remove();
+      toast('Entry deleted');
+    } catch(e) { toast('Delete failed: '+e.message); }
+  }
+
+  async function trimDelete(id) {
   if (!confirm('Delete this report?')) return;
   try {
     await apiCall('DELETE', '/api/records?type=trimmer&id=' + id);
