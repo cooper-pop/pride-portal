@@ -85,5 +85,18 @@ module.exports = async function handler(req, res) {
     return res.json({ success: true, results });
   }
 
-  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, or fixroles' });
+  if (action === 'fixempnums') {
+    // Fix known wrong employee numbers -> correct canonical numbers
+    const fixes = [
+      { wrong: '5912', correct: '5744', name: 'Phyllis Sturdivant' },
+    ];
+    const results = [];
+    for (const f of fixes) {
+      const r = await sql`UPDATE trimmer_entries SET emp_number=${f.correct} WHERE emp_number=${f.wrong}`;
+      results.push(f.name + ': emp ' + f.wrong + ' -> ' + f.correct);
+    }
+    return res.json({ success: true, results });
+  }
+
+  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, or fixempnums' });
 };
