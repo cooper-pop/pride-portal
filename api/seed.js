@@ -56,6 +56,9 @@ module.exports = async function handler(req, res) {
     // Fix emp 7954 Judith Rico -> 7854
     const empFix6 = await sql`UPDATE trimmer_entries SET emp_number='7854' WHERE emp_number='7954' AND full_name='Judith Rico' RETURNING id`;
     if (empFix6.length) results.push('7954->7854 Judith Rico ('+empFix6.length+')');
+    // Fix emp 2550 Raquel Monroy -> 2560
+    const empFix7 = await sql`UPDATE trimmer_entries SET emp_number='2560' WHERE emp_number='2550' AND full_name='Raquel Monroy' RETURNING id`;
+    if (empFix7.length) results.push('2550->2560 Raquel Monroy ('+empFix7.length+')');
     return res.json({ success:true, results });
   }
 
