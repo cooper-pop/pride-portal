@@ -1,7 +1,6 @@
 const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 
-// One-time seed endpoint - secured with a secret key
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -11,57 +10,30 @@ module.exports = async function handler(req, res) {
   if (req.body.secret !== 'potp-seed-2026') return res.status(403).json({ error: 'Forbidden' });
 
   const sql = neon(process.env.DATABASE_URL);
+  const action = req.body.action || 'seed';
 
-  // Run migrations first
-  try {
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT`;
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true`;
-    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT false`;
-    await sql`CREATE TABLE IF NOT EXISTS passkeys (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-      credential_id TEXT UNIQUE NOT NULL,
-      public_key TEXT NOT NULL,
-      counter BIGINT DEFAULT 0,
-      device_name TEXT,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`;
-  } catch(e) {}
-
-  // Get company
-  const [company] = await sql`SELECT id FROM companies WHERE slug='pride-of-the-pond'`;
-  if (!company) return res.status(404).json({ error: 'Company not found' });
-  const company_id = company.id;
-
-  const results = [];
-
-  // Reactivate and update existing admin account
-  await sql`UPDATE users SET email='cooper@prideofthepond.com', active=true, force_password_change=false WHERE username='admin' AND company_id=${company_id}`;
-
-  // Delete old hbattle account
-  await sql`DELETE FROM users WHERE username='hbattle' AND company_id=${company_id}`;
-
-  const newUsers = [
-    { username:'Cooper', full_name:'Cooper Battle', email:'cooper@prideofthepond.com', role:'admin', password:'Cooper210%' },
-    { username:'Houston', full_name:'Houston Battle', email:'houston@prideofthepond.com', role:'manager', password:'Houston689@' },
-    { username:'Tonya', full_name:'Tonya Murphree', email:'tonya@prideofthepond.com', role:'manager', password:'Tonya345@' },
-    { username:'Mary', full_name:'Mary Gomez', email:'mary@prideofthepond.com', role:'manager', password:'Mary787!' },
-    { username:'Lawrence', full_name:'Lawrence Escamilla', email:'lawrence@prideofthepond.com', role:'supervisor', password:'Lawrence253#' },
-    { username:'Erica', full_name:'Erica Garcia', email:'eg9088890@gmail.com', role:'supervisor', password:'Erica880%' },
-    { username:'Ramon', full_name:'Ramon Gutierrez', email:'dgutierrez2004.rg@gmail.com', role:'supervisor', password:'Ramon162$' },
-  ];
-
-  for (const u of newUsers) {
-    const hash = await bcrypt.hash(u.password, 12);
-    const existing = await sql`SELECT id FROM users WHERE username=${u.username} AND company_id=${company_id}`;
-    if (existing.length) {
-      await sql`UPDATE users SET full_name=${u.full_name}, email=${u.email}, role=${u.role}, password_hash=${hash}, active=true, force_password_change=true WHERE username=${u.username} AND company_id=${company_id}`;
-      results.push({ username: u.username, action: 'updated' });
-    } else {
-      await sql`INSERT INTO users (company_id, username, full_name, email, role, password_hash, active, force_password_change) VALUES (${company_id}, ${u.username}, ${u.full_name}, ${u.email}, ${u.role}, ${hash}, true, true)`;
-      results.push({ username: u.username, action: 'created' });
-    }
+  // ACTION: fix data - delete Lawrence entries, fix Latasska spelling
+  if (action === 'fixdata') {
+    // 1. Delete all trimmer_entries where full_name contains Escamilla or Lawrence (as trimmer, not manager)
+    const deleted = await sql`DELETE FROM trimmer_entries WHERE LOWER(full_name) LIKE '%escamilla%' RETURNING id, full_name`;
+    // 2. Fix Latasska -> Latasha Craig
+    const fixed = await sql`UPDATE trimmer_entries SET full_name='Latasha Craig', trim_number='L Craig' WHERE LOWER(full_name) LIKE '%latasska%' RETURNING id, full_name`;
+    // 3. Also fix trim_number duplicates by normalizing
+    return res.json({ 
+      success: true, 
+      deleted: deleted.length + ' Lawrence/Escamilla entries removed',
+      fixed: fixed.length + ' Latasska Craig entries fixed to Latasha Craig'
+    });
   }
 
-  return res.json({ success: true, results });
+  // ACTION: build emp# lookup table
+  if (action === 'empdump') {
+    const entries = await sql`SELECT DISTINCT emp_number, full_name, COUNT(*) as cnt FROM trimmer_entries WHERE emp_number IS NOT NULL AND emp_number != '' GROUP BY emp_number, full_name ORDER BY emp_number, cnt DESC`;
+    return res.json({ success: true, entries });
+  }
+
+  // Default: original seed
+  const [company] = await sql`SELECT id FROM companies WHERE slug='pride-of-the-pond'`;
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+  return res.json({ success: true, message: 'Use action: fixdata or empdump' });
 };
