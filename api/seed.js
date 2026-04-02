@@ -67,5 +67,23 @@ module.exports = async function handler(req, res) {
     return res.json({ success:true, entries });
   }
 
-  return res.json({ success:true, message:'Use action: fixdata, fixnames, or empdump' });
+  if (action === 'fixroles') {
+    // Reset correct roles for all users by username
+    const roles = [
+      { username: 'Houston', role: 'manager' },
+      { username: 'Tonya', role: 'manager' },
+      { username: 'Mary', role: 'manager' },
+      { username: 'Lawrence', role: 'supervisor' },
+      { username: 'Erica', role: 'supervisor' },
+      { username: 'Ramon', role: 'supervisor' },
+    ];
+    const results = [];
+    for (const r of roles) {
+      const res2 = await sql`UPDATE users SET role=${r.role} WHERE username=${r.username} RETURNING username, role`;
+      if (res2.length) results.push(res2[0].username + ' -> ' + res2[0].role);
+    }
+    return res.json({ success: true, results });
+  }
+
+  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, or fixroles' });
 };
