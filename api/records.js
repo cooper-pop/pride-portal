@@ -80,7 +80,48 @@ module.exports = async function handler(req, res) {
       else if(type==='trimmer')await sql`DELETE FROM trimmer_reports WHERE id=${id} AND company_id=${user.company_id}`;
       return res.json({success:true});
     }
-    return res.status(405).json({error:'Method not allowed'});
+      // PATCH individual trimmer entry fields (admin only)
+  if (req.method === 'PATCH' && type==='trimmer-entry') {
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { id, ...fields } = req.body;
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    const allowed = ['emp_number','full_name','trim_number','minutes_worked','incoming_lbs','fillet_lbs','nugget_lbs','misccut_lbs','total_lbs'];
+    const updates = Object.keys(fields).filter(k => allowed.includes(k));
+    if (!updates.length) return res.status(400).json({ error: 'No valid fields' });
+    for (const k of updates) {
+      const v = fields[k];
+      if (k === 'emp_number' || k === 'full_name' || k === 'trim_number') {
+        await sql`UPDATE trimmer_entries SET ${sql.unsafe(k)}=${String(v)} WHERE id=${id}`;
+      } else {
+        await sql`UPDATE trimmer_entries SET ${sql.unsafe(k)}=${parseFloat(v)||0} WHERE id=${id}`;
+      }
+    }
+    // Recalculate yields after update
+    const [e] = await sql`SELECT * FROM trimmer_entries WHERE id=${id}`;
+    if (e) {
+      const inc = parseFloat(e.incoming_lbs)||1;
+      const fil_pct = ((parseFloat(e.fillet_lbs)||0)/inc*100);
+      const nug_pct = ((parseFloat(e.nugget_lbs)||0)/inc*100);
+      const mis_pct = ((parseFloat(e.misccut_lbs)||0)/inc*100);
+      const tot = (parseFloat(e.fillet_lbs)||0)+(parseFloat(e.nugget_lbs)||0)+(parseFloat(e.misccut_lbs)||0);
+      const tot_pct = (tot/inc*100);
+      const mins = parseFloat(e.minutes_worked)||1;
+      const lph = mins>0 ? (tot/(mins/60)) : 0;
+      await sql`UPDATE trimmer_entries SET fillet_yield_pct=${fil_pct},nugget_yield_pct=${nug_pct},misccut_yield_pct=${mis_pct},total_yield_pct=${tot_pct},total_lbs=${tot},realtime_lbs_per_hour=${lph} WHERE id=${id}`;
+    }
+    return res.json({ success: true });
+  }
+
+  // DELETE individual trimmer entry (admin only)
+  if (req.method === 'DELETE' && type==='trimmer-entry') {
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    await sql`DELETE FROM trimmer_entries WHERE id=${id}`;
+    return res.json({ success: true });
+  }
+
+  return res.status(405).json({error:'Method not allowed'});
   }catch(err){
     console.error('Records error:',err);
     return res.status(500).json({error:'Server error: '+err.message});
