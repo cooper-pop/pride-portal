@@ -733,7 +733,7 @@ async function trimHandleFile(input) {
 }
 function trimEmptyRow(){ return {emp_number:"",full_name:"",trim_number:"",minutes_worked:"",incoming_lbs:"",fillet_lbs:"",nugget_lbs:"",misccut_lbs:"",flagged:false,validation_flags:[],total_lbs:''}; }
 function trimRenderForm() {
-  var nd=new Date(); var hf=trimRows.some(function(r){return r.flagged;});
+  var nd=new Date(); var _ed=document.getElementById('trim-date')?.value; if(_ed) nd=new Date(_ed+'T12:00:00'); var hf=trimRows.some(function(r){return r.flagged;});
   var tr2=trimRows.map(function(r,i){
     var mins=parseFloat(r.minutes_worked)||0,inc=parseFloat(r.incoming_lbs)||0;
     var lph=r.realtime_lbs_per_hour||(mins>0&&inc>0?(inc/(mins/60)).toFixed(1):"-");
@@ -876,6 +876,18 @@ async function trimRenderHistory() {
       html += '</tbody></table></div></div>';
     });
     wrap.innerHTML = html;
+  }
+
+  async function trimUpdateDate(input) {
+    const reportId = input.dataset.id;
+    const newDate = input.value;
+    if (!newDate) return;
+    input.style.borderBottom = '2px solid #f59e0b';
+    try {
+      await apiCall('PATCH', '/api/records?type=trimmer&id='+reportId, { report_date: newDate });
+      input.style.borderBottom = '2px solid #22c55e';
+      setTimeout(()=>{ input.style.borderBottom='2px solid var(--blue)'; },1500);
+    } catch(e) { input.style.borderBottom='2px solid #ef4444'; toast('Date save failed'); }
   }
 
   async function trimSaveCell(input) {
