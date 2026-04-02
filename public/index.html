@@ -690,7 +690,15 @@ async function injDelete(id){if(!confirm('Delete this batch?'))return;try{await 
 // ============================================================
 var trimRows = [];
 var trimCharts = {};
-async function trimRenderAnalytics() {
+
+
+function buildTrimmerWidget() {
+  var tabs = ["&#x1F4F7; Upload C.A.T.2","&#x2702;&#xFE0F; Manual Entry","&#x1F4CB; History","&#x1F4CA; Analytics"];
+  document.getElementById("widget-tabs").innerHTML = tabs.map(function(t,i){ return '<div class="widget-tab'+(i===0?" active":"")+'" onclick="trimShowTab('+i+')">'+t+'</div>'; }).join("");
+  trimRows=[trimEmptyRow()]; trimShowTab(0);
+}
+
+  async function trimRenderAnalytics() {
     const wc = document.getElementById('widget-content');
     wc.innerHTML = '<div style="padding:8px"><div class="spinner-wrap"><div class="spinner"></div><div>Loading analytics…</div></div></div>';
     let data;
@@ -768,11 +776,7 @@ async function trimRenderAnalytics() {
     btn.disabled = false;
   }
 
-function buildTrimmerWidget() {
-  var tabs = ["&#x1F4F7; Upload C.A.T.2","&#x2702;&#xFE0F; Manual Entry","&#x1F4CB; History","&#x1F4CA; Analytics"];
-  document.getElementById("widget-tabs").innerHTML = tabs.map(function(t,i){ return '<div class="widget-tab'+(i===0?" active":"")+'" onclick="trimShowTab('+i+')">'+t+'</div>'; }).join("");
-  trimRows=[trimEmptyRow()]; trimShowTab(0);
-}
+
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
   if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else trimRenderAnalytics();
