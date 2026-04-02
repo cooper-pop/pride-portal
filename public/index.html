@@ -776,52 +776,116 @@ async function trimSave() {
   try{ await apiCall("POST","/api/records?type=trimmer",{report_date:date,shift:shift,notes:document.getElementById("trim-notes").value.trim(),source:"cat2_upload",entries:vr}); setSyncBadge("synced"); toast("Report saved - "+vr.length+" trimmers recorded!"); trimRows=[trimEmptyRow()]; trimRenderForm(); }
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
-async function trimRenderHistory() {
+async 
+async function trimSaveEntry(entryId, reportId) {
+  var row = document.getElementById('erow-'+entryId);
+  var inputs = row.querySelectorAll('.hist-inp');
+  var data = { entry_id: entryId };
+  inputs.forEach(function(inp){ data[inp.dataset.field] = inp.value; });
+  // recalc yields
+  var inc = parseFloat(data.incoming_lbs)||0;
+  var fil = parseFloat(data.fillet_lbs)||0;
+  var nug = parseFloat(data.nugget_lbs)||0;
+  var mis = parseFloat(data.misccut_lbs)||0;
+  data.fillet_yield_pct  = inc>0?(fil/inc*100):0;
+  data.nugget_yield_pct  = inc>0?(nug/inc*100):0;
+  data.misccut_yield_pct = inc>0?(mis/inc*100):0;
+  data.total_lbs = fil+nug+mis;
+  data.total_yield_pct = inc>0?(data.total_lbs/inc*100):0;
+  data.minutes_worked = parseFloat(data.minutes_worked)||0;
+  data.realtime_lbs_per_hour = data.minutes_worked>0?(data.total_lbs/(data.minutes_worked/60)):0;
+  try {
+    await apiCall('PATCH', '/api/records', { type:'entry', ...data });
+    toast('✅ Saved');
+    trimRenderHistory();
+  } catch(e) { toast('❌ Save failed: '+e.message); }
+}
+async function trimDeleteEntry(entryId, reportId) {
+  if (!confirm('Delete this trimmer entry?')) return;
+  try {
+    await apiCall('DELETE', '/api/records?entry_id='+entryId);
+    toast('Deleted');
+    trimRenderHistory();
+  } catch(e) { toast('❌ '+e.message); }
+}
+async function trimDeleteReport(reportId) {
+  if (!confirm('Delete this ENTIRE report and all its entries?')) return;
+  try {
+    await apiCall('DELETE', '/api/records?id='+reportId);
+    toast('Report deleted');
+    trimRenderHistory();
+  } catch(e) { toast('❌ '+e.message); }
+}
+function trimRenderHistory() {
   document.getElementById('widget-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     var rpts = await apiCall('GET', '/api/records?type=trimmer');
-    var html = '<div class="wcard" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:0.82rem;font-weight:700;color:var(--blue)">' + rpts.length + ' report' + (rpts.length===1?'':'s') + '</span><button class="wbtn wbtn-danger" style="padding:5px 10px;font-size:0.73rem" onclick="trimRenderHistory()">Refresh</button></div>';
-    if (!rpts.length) {
-      html += '<div class="log-empty">No reports yet. Upload a C.A.T.2 report to get started.</div>';
-    } else {
-      rpts.forEach(function(r) {
-        var dt = new Date(r.report_date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-        var ents = r.entries || [];
-        var ti = ents.reduce(function(s,e){ return s+(parseFloat(e.incoming_lbs)||0); },0);
-        var ls = ents.reduce(function(s,e){ return s+(parseFloat(e.realtime_lbs_per_hour||e.lbs_per_hour)||0); },0);
-        var al = ents.length ? (ls/ents.length).toFixed(1) : '-';
-        var sc = r.source==='cat2_upload' ? ' [AI]' : ' [Manual]';
-        var rh = ents.map(function(e) {
-          var bg = e.flagged ? ' style="background:#fffbe6"' : '';
-          var twl = (parseFloat(e.total_weight_lbs||e.total_lbs||0)||0) > 0 ? (parseFloat(e.total_weight_lbs||e.total_lbs)).toFixed(0) : (parseFloat(e.fillet_lbs||0)+parseFloat(e.nugget_lbs||0)+parseFloat(e.misccut_lbs||0)).toFixed(0);
-          var typ = e.total_yield_pct || 0;
-          return '<tr' + bg + '>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + (e.emp_number||'') + '</td>' +
-            '<td style="padding:4px 6px;font-weight:600;font-size:0.78rem">' + (e.full_name||'') + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + (e.trim_number||'') + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem">' + (e.minutes_worked||'') + '</td>' +
-            '<td style="padding:4px 6px">' + parseFloat(e.incoming_lbs||0).toFixed(0) + '</td>' +
-            '<td style="padding:4px 6px">' + parseFloat(e.fillet_lbs||0).toFixed(0) + ' <span style="color:var(--sub);font-size:0.68rem">' + (e.fillet_yield_pct||'') + '%</span></td>' +
-            '<td style="padding:4px 6px">' + parseFloat(e.nugget_lbs||0).toFixed(0) + ' <span style="color:var(--sub);font-size:0.68rem">' + (e.nugget_yield_pct||'') + '%</span></td>' +
-            '<td style="padding:4px 6px">' + parseFloat(e.misccut_lbs||0).toFixed(0) + ' <span style="color:var(--sub);font-size:0.68rem">' + (e.misccut_yield_pct||'') + '%</span></td>' +
-            '<td style="padding:4px 6px;font-weight:600;font-size:0.75rem">' + twl + '</td>' +
-            '<td style="padding:4px 6px;font-size:0.75rem;color:#1a56db">' + typ + '%</td>' +
-            '<td style="padding:4px 6px;font-weight:700;color:var(--green)">' + (e.realtime_lbs_per_hour||e.lbs_per_hour||'-') + '</td></tr>';
-        }).join('');
-        html += '<div class="log-entry"><div class="log-hdr"><div>' +
-          '<div class="log-date">&#x1F4C5; ' + (currentUser&&currentUser.role==="admin" ? '<input type="date" value="'+r.report_date.slice(0,10)+'" data-rid="'+r.id+'" onchange="trimUpdateDate(this.dataset.rid,this.value)" style="border:none;background:transparent;font-weight:700;color:var(--blue);font-size:0.9rem;cursor:pointer"/>' : dt) + ' - ' + (r.shift||'') + ' Shift' + sc + '</div>' +
-          '<div style="font-size:0.72rem;color:var(--sub);margin-top:2px">' + ents.length + ' trimmers - ' + ti.toFixed(0) + ' lbs in - Avg ' + al + ' lbs/hr - ' + r.recorded_by + '</div></div>' +
-          '<button class="wbtn wbtn-danger" style="padding:4px 8px" data-rid="' + r.id + '" onclick="trimDelete(this.dataset.rid)">&#x2715;</button></div>' +
-          '<div class="trim-table-wrap" style="margin-top:10px"><table class="trim-table"><thead><tr>' +
-          '<th>Emp#</th><th>Name</th><th>Code</th><th>Min</th><th>In lbs</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Total lbs</th><th>Total %</th><th>Lbs/Hr</th>' +
-          '</tr></thead><tbody>' + rh + '</tbody></table></div>' +
-          (r.notes ? '<div class="log-notes" style="margin-top:8px"><strong>Note:</strong> ' + r.notes + '</div>' : '') +
-          '</div>';
+    var admin = currentUser && currentUser.role === 'admin';
+    var html = '<div class="wcard" style="padding:10px 14px 6px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<h3 style="margin:0;font-size:1rem">Trimmer Log History</h3>';
+    if (admin) html += '<span style="font-size:0.72rem;color:var(--blue);background:#e8f0ff;padding:3px 8px;border-radius:12px">✏️ Admin Edit Mode</span>';
+    html += '</div>';
+    rpts.sort((a,b)=>new Date(b.report_date)-new Date(a.report_date));
+    rpts.forEach(function(r) {
+      var dateStr = (r.report_date||'').slice(0,10);
+      var entries = r.entries||[];
+      if (!entries.length) return;
+      html += '<div style="margin-bottom:14px">';
+      html += '<div style="font-weight:700;color:var(--blue);font-size:0.85rem;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between">';
+      html += '<span>' + dateStr + ' — ' + r.shift + ' shift (' + entries.length + ' trimmers)</span>';
+      if (admin) html += '<button onclick="trimDeleteReport(\''+r.id+'\')" style="background:#fff0f0;border:1px solid #ffcccc;color:#c00;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem">🗑 Delete Report</button>';
+      html += '</div>';
+      html += '<div class="trim-table-wrap"><table class="trim-table"><thead><tr>';
+      html += '<th>Emp#</th><th>Name</th><th>Min</th><th>In Lbs</th><th>Fillet</th><th>Flt%</th><th>Nugget</th><th>Nug%</th><th>MiscCut</th><th>Misc%</th><th>Total Lbs</th><th>Tot%</th>';
+      if (admin) html += '<th>Save</th>';
+      html += '</tr></thead><tbody>';
+      entries.forEach(function(e) {
+        var eid = e.id;
+        if (admin) {
+          html += '<tr id="erow-'+eid+'">';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="emp_number" value="'+(e.emp_number||'')+'" style="width:52px"/></td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="full_name" value="'+(e.full_name||'')+'" style="width:120px"/></td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="minutes_worked" type="number" value="'+(e.minutes_worked||0)+'" style="width:44px"/></td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="incoming_lbs" type="number" value="'+(e.incoming_lbs||0)+'" style="width:52px"/></td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="fillet_lbs" type="number" value="'+(e.fillet_lbs||0)+'" style="width:52px"/></td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.fillet_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="nugget_lbs" type="number" value="'+(e.nugget_lbs||0)+'" style="width:52px"/></td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.nugget_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="misccut_lbs" type="number" value="'+(e.misccut_lbs||0)+'" style="width:52px"/></td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.misccut_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td><input class="hist-inp" data-eid="'+eid+'" data-field="total_lbs" type="number" value="'+(e.total_lbs||0)+'" style="width:52px"/></td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.total_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td><button onclick="trimSaveEntry(\''+eid+'\',\''+r.id+'\')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.72rem">💾</button>';
+          html += ' <button onclick="trimDeleteEntry(\''+eid+'\',\''+r.id+'\')" style="background:#fff0f0;border:1px solid #ffcccc;color:#c00;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.72rem">✕</button></td>';
+          html += '</tr>';
+        } else {
+          html += '<tr>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.emp_number||'')+'</td>';
+          html += '<td style="padding:4px 6px;font-weight:600;font-size:0.78rem">'+(e.full_name||'')+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.minutes_worked||0)+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.incoming_lbs||0)+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.fillet_lbs||0)+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.fillet_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.nugget_lbs||0)+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.nugget_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.misccut_lbs||0)+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.misccut_yield_pct||0).toFixed(1)+'%</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.total_lbs||0)+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.75rem">'+(e.total_yield_pct||0).toFixed(1)+'%</td>';
+          html += '</tr>';
+        }
       });
-    }
+      html += '</tbody></table></div></div>';
+    });
+    html += '</div>';
     document.getElementById('widget-content').innerHTML = html;
+    // Style inputs
+    Array.from(document.querySelectorAll('.hist-inp')).forEach(function(inp){
+      inp.style.cssText='border:1px solid #ddd;border-radius:4px;padding:2px 4px;font-size:0.73rem;width:'+inp.style.width;
+    });
   } catch(err) {
-    document.getElementById('widget-content').innerHTML = '<div class="log-empty">Error: ' + err.message + '</div>';
+    document.getElementById('widget-content').innerHTML = '<div class="wcard"><p style="color:red">Error: '+err.message+'</p></div>';
   }
 }
 async function trimDelete(id) {
