@@ -61,25 +61,7 @@ module.exports = async function handler(req, res) {
     ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:image_base64}}
     :{type:'image',source:{type:'base64',media_type:media_type||'image/jpeg',data:image_base64}};
 
-  const prompt = 'EMPLOYEE ROSTER - CRITICAL: When you read an employee number, use EXACTLY this name. Do not guess or vary spelling. ' +
-    '1242: Josefina Rosales | 1307: Lizeth Zarate | 1313: Griselda Sanchez | 1318: Soledad Garcia | 1457: Teresa Cruz | ' +
-    '1683: Lolita Gober | 1883: Lolita Gober | 1914: Cedric Berry | 1982: Fatima Granades | 2007: Yessica Hernandez | ' +
-    '2008: Maria Alvarado | 2013: Armida Miramontes | 2416: Dolores Hernandez | 2523: Samanta Martinez | 2534: Cielo Gonzalez | ' +
-    '2560: Raquel Monroy | 2632: Dennise Elias | 2903: Elsa Galdamez | 3892: Maximina Rodriguez | 4363: Patrice Williams | ' +
-    '4789: Telma Galdamez | 5246: Adriana Zuniga | 5266: Keesha Williams | 5744: Phyllis Sturdivant | 6973: Erendira Ortega | ' +
-    '7008: Nohemi Sanchez | 7336: Charles Brown | 7387: Lucy Allen | 7434: Reyna Galdamez | 7624: Patrica Starks | ' +
-    '7854: Judith Rico | 8354: Karla Gonzales | 8531: Isabel Garcia | 9067: Roselyn Mateo | 9805: Latasha Craig. ' +
-    'If an employee number matches one above, use that EXACT name regardless of what is written on the form.\n\n' +
-    'This is a C.A.T.2 Employee Production Report for a catfish processing facility. Extract ALL employee rows (skip Grand Total row only).\n' +
-    'CRITICAL DIGIT ACCURACY - pay close attention to similar-looking handwritten digits:\n' +
-    '- 6 vs 8: A 6 has an open loop at the top, an 8 has two closed loops.\n' +
-    '- 0 vs 8: a 0 is a single oval, an 8 has two stacked loops.\n' +
-    '- 1 vs 7: a 7 has a horizontal crossbar at the top.\n' +
-    '- 5 vs 6: a 5 has a flat top, a 6 curves all the way around.\n' +
-    'Incoming lbs typically 200-1500, fillet 100-900. If a value seems implausible, re-examine the digit.\n\n' +
-    'Return ONLY CSV data with no header row, one employee per line:\n' +
-    'emp_number,full_name,trim_number,minutes,incoming_lbs,fillet_lbs,fillet_pct,nugget_lbs,nugget_pct,misccut_lbs,misccut_pct,total_lbs,total_pct,realtime_lph,eighthour_lph,hours\n' +
-    'Use numbers only (no units or % signs). Return ONLY the CSV rows, nothing else.';
+  const prompt = "EMPLOYEE ROSTER - CRITICAL: When you read an employee number, use EXACTLY this name. Do not guess or vary spelling. 1242: Josefina Rosales | 1307: Lizeth Zarate | 1313: Griselda Sanchez | 1318: Soledad Garcia | 1457: Teresa Cruz | 1683: Lolita Gober | 1883: Lolita Gober | 1914: Cedric Berry | 1982: Fatima Granades | 2007: Yessica Hernandez | 2008: Maria Alvarado | 2013: Armida Miramontes | 2416: Dolores Hernandez | 2523: Samanta Martinez | 2534: Cielo Gonzalez | 2560: Raquel Monroy | 2632: Dennise Elias | 2903: Elsa Galdamez | 3892: Maximina Rodriguez | 4363: Patrice Williams | 4789: Telma Galdamez | 5246: Adriana Zuniga | 5266: Keesha Williams | 5744: Phyllis Sturdivant | 6973: Erendira Ortega | 7008: Nohemi Sanchez | 7336: Charles Brown | 7387: Lucy Allen | 7434: Reyna Galdamez | 7624: Patrica Starks | 7854: Judith Rico | 8354: Karla Gonzales | 8531: Isabel Garcia | 9067: Roselyn Mateo | 9805: Latasha Craig. If an employee number matches one above, use that EXACT name regardless of what is written on the form.\\n\\nThis is a C.A.T.2 Employee Production Report for a catfish processing facility. Extract ALL employee rows (skip Grand Total row only).\\nCRITICAL DIGIT ACCURACY: 6 vs 8 (open top vs closed loops), 0 vs 8 (oval vs two loops), 1 vs 7 (crossbar), 5 vs 6 (flat top vs curved).\\nIncoming lbs 200-1500, fillet 100-900. If a value seems implausible, re-examine the digit.\\n\\nReturn ONLY CSV, no header, one employee per line:\\nemp_number,full_name,trim_number,minutes,incoming_lbs,fillet_lbs,fillet_pct,nugget_lbs,nugget_pct,misccut_lbs,misccut_pct,total_lbs,total_pct,realtime_lph,eighthour_lph,hours\\nNumbers only, no units. Return ONLY CSV rows.";
 
   try {
     const message = await client.messages.create({
