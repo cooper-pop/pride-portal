@@ -37,6 +37,9 @@ module.exports = async function handler(req, res) {
   // Allow non-admins to change their own password only
   const isSelfPatch = req.method === 'PATCH' && req.body?.id === user.user_id && Object.keys(req.body).filter(k=>k!=='id').every(k=>k==='password');
   if (user.role !== 'admin' && !isSelfPatch) return res.status(403).json({ error: 'Admin only' });
+  // Never allow non-admins to change role, active status, or other sensitive fields
+  if (user.role !== 'admin' && req.body?.role) return res.status(403).json({ error: 'Cannot change role' });
+  if (user.role !== 'admin' && req.body?.active !== undefined) return res.status(403).json({ error: 'Cannot change active status' });
 
   const company_id = user.company_id;
 
