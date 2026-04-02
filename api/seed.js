@@ -12,28 +12,57 @@ module.exports = async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
   const action = req.body.action || 'seed';
 
-  // ACTION: fix data - delete Lawrence entries, fix Latasska spelling
   if (action === 'fixdata') {
-    // 1. Delete all trimmer_entries where full_name contains Escamilla or Lawrence (as trimmer, not manager)
-    const deleted = await sql`DELETE FROM trimmer_entries WHERE LOWER(full_name) LIKE '%escamilla%' RETURNING id, full_name`;
-    // 2. Fix Latasska -> Latasha Craig
-    const fixed = await sql`UPDATE trimmer_entries SET full_name='Latasha Craig', trim_number='L Craig' WHERE LOWER(full_name) LIKE '%latasska%' RETURNING id, full_name`;
-    // 3. Also fix trim_number duplicates by normalizing
-    return res.json({ 
-      success: true, 
-      deleted: deleted.length + ' Lawrence/Escamilla entries removed',
-      fixed: fixed.length + ' Latasska Craig entries fixed to Latasha Craig'
-    });
+    const deleted = await sql`DELETE FROM trimmer_entries WHERE LOWER(full_name) LIKE '%escamilla%' RETURNING id`;
+    const fixed = await sql`UPDATE trimmer_entries SET full_name='Latasha Craig', trim_number='L Craig' WHERE LOWER(full_name) LIKE '%latasska%' OR LOWER(full_name) LIKE '%lataska%' RETURNING id`;
+    return res.json({ success:true, deleted:deleted.length+' removed', fixed:fixed.length+' fixed' });
   }
 
-  // ACTION: build emp# lookup table
+  if (action === 'fixnames') {
+    const fixes = [
+      { wrong: 'Lolita Cober', correct: 'Lolita Gober', trim: 'LGober' },
+      { wrong: 'Yesaica Hernandez', correct: 'Yessica Hernandez', trim: 'Y Hernand' },
+      { wrong: 'Yesica Hernandez', correct: 'Yessica Hernandez', trim: 'Y Hernand' },
+      { wrong: 'Lataska Craig', correct: 'Latasha Craig', trim: 'L Craig' },
+      { wrong: 'Latasska Craig', correct: 'Latasha Craig', trim: 'L Craig' },
+      { wrong: 'Enerqicia Ortega', correct: 'Erendira Ortega', trim: 'E Orteg' },
+      { wrong: 'Latonya Harris', correct: 'Adriana Zuniga', trim: 'A Zuniga' },
+      { wrong: 'Raquel Monroy', correct: 'Raquel Monroy', trim: 'R Monroy' },
+      { wrong: 'Patrice Williams', correct: 'Patrice Williams', trim: 'PWilliam' },
+      { wrong: 'Patrica Starks', correct: 'Patrica Starks', trim: 'P Starks' },
+    ];
+    const results = [];
+    for (const f of fixes) {
+      if (f.wrong !== f.correct) {
+        const r = await sql`UPDATE trimmer_entries SET full_name=${f.correct}, trim_number=${f.trim} WHERE full_name=${f.wrong} RETURNING id`;
+        if (r.length) results.push(f.wrong + ' -> ' + f.correct + ' (' + r.length + ')');
+      }
+    }
+    // Also fix emp 2623 (Samanta Martinez belongs to emp 2523 not 2623)
+    const empFix = await sql`UPDATE trimmer_entries SET emp_number='2523' WHERE emp_number='2623' AND full_name='Samanta Martinez' RETURNING id`;
+    if (empFix.length) results.push('2623->2523 Samanta Martinez ('+empFix.length+')');
+    // Fix emp 2832 Dennise Elias -> 2632
+    const empFix2 = await sql`UPDATE trimmer_entries SET emp_number='2632' WHERE emp_number='2832' AND full_name='Dennise Elias' RETURNING id`;
+    if (empFix2.length) results.push('2832->2632 Dennise Elias ('+empFix2.length+')');
+    // Fix emp 4353 Patrice Williams -> 4363
+    const empFix3 = await sql`UPDATE trimmer_entries SET emp_number='4363' WHERE emp_number='4353' AND full_name='Patrice Williams' RETURNING id`;
+    if (empFix3.length) results.push('4353->4363 Patrice Williams ('+empFix3.length+')');
+    // Fix emp 5268 Keesha Williams -> 5266
+    const empFix4 = await sql`UPDATE trimmer_entries SET emp_number='5266' WHERE emp_number='5268' AND full_name='Keesha Williams' RETURNING id`;
+    if (empFix4.length) results.push('5268->5266 Keesha Williams ('+empFix4.length+')');
+    // Fix emp 7924 Patrica Starks -> 7624
+    const empFix5 = await sql`UPDATE trimmer_entries SET emp_number='7624' WHERE emp_number='7924' AND full_name='Patrica Starks' RETURNING id`;
+    if (empFix5.length) results.push('7924->7624 Patrica Starks ('+empFix5.length+')');
+    // Fix emp 7954 Judith Rico -> 7854
+    const empFix6 = await sql`UPDATE trimmer_entries SET emp_number='7854' WHERE emp_number='7954' AND full_name='Judith Rico' RETURNING id`;
+    if (empFix6.length) results.push('7954->7854 Judith Rico ('+empFix6.length+')');
+    return res.json({ success:true, results });
+  }
+
   if (action === 'empdump') {
     const entries = await sql`SELECT DISTINCT emp_number, full_name, COUNT(*) as cnt FROM trimmer_entries WHERE emp_number IS NOT NULL AND emp_number != '' GROUP BY emp_number, full_name ORDER BY emp_number, cnt DESC`;
-    return res.json({ success: true, entries });
+    return res.json({ success:true, entries });
   }
 
-  // Default: original seed
-  const [company] = await sql`SELECT id FROM companies WHERE slug='pride-of-the-pond'`;
-  if (!company) return res.status(404).json({ error: 'Company not found' });
-  return res.json({ success: true, message: 'Use action: fixdata or empdump' });
+  return res.json({ success:true, message:'Use action: fixdata, fixnames, or empdump' });
 };
