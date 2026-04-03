@@ -803,12 +803,15 @@ async function trimSaveEntry(entryId, reportId) {
     trimRenderHistory();
   } catch(e) { toast('❌ Save failed: '+e.message); }
 }
-async function trimDeleteEntry(entryId, reportId) {
+async function trimDeleteEntry(entryId, btn) {
   // no confirm needed - button is deliberate
   try {
     await apiCall('DELETE', '/api/records?type=trimmer-entry&id='+entryId);
-    toast('Deleted');
-    trimRenderHistory();
+    // Remove the row from DOM immediately - no full reload needed
+    const row = btn && btn.closest ? btn.closest('tr') : null;
+    if (row) { row.style.opacity='0.3'; row.style.transition='opacity 0.2s'; setTimeout(()=>row.remove(),200); }
+    else trimRenderHistory();
+    toast('Entry deleted');
   } catch(e) { toast('❌ '+e.message); }
 }
 async function trimDeleteReport(reportId) {
