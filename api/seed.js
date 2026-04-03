@@ -108,5 +108,12 @@ module.exports = async function handler(req, res) {
     return res.json({ success: true, result: r });
   }
 
-  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, fixempnums, checkusers, or fixcooper' });
+  if (action === 'resetcooper') {
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash('Cooper2026!', 10);
+    await sql`UPDATE users SET password_hash=${hash}, force_password_change=false WHERE username='Cooper'`;
+    return res.json({ success: true, message: 'Cooper password reset to Cooper2026!' });
+  }
+
+  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, fixempnums, checkusers, fixcooper, or resetcooper' });
 };
