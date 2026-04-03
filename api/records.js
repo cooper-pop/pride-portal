@@ -107,7 +107,7 @@ module.exports = async function handler(req, res) {
       const tot_pct = (tot/inc*100);
       const mins = parseFloat(e.minutes_worked)||1;
       const lph = mins>0 ? (tot/(mins/60)) : 0;
-      await sql`UPDATE trimmer_entries SET fillet_yield_pct=${fil_pct},nugget_yield_pct=${nug_pct},misccut_yield_pct=${mis_pct},total_yield_pct=${tot_pct},total_lbs=${tot},realtime_lbs_per_hour=${lph} WHERE id=${id}`;
+      const lph8 = tot / 8; await sql`UPDATE trimmer_entries SET fillet_yield_pct=${fil_pct},nugget_yield_pct=${nug_pct},misccut_yield_pct=${mis_pct},total_yield_pct=${tot_pct},total_weight_lbs=${tot},realtime_lbs_per_hour=${lph},eighthour_lbs_per_hour=${lph8} WHERE id=${id}`;
     }
     return res.json({ success: true });
   }
