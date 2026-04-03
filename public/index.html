@@ -780,7 +780,6 @@ async function trimSave() {
   try{ await apiCall("POST","/api/records?type=trimmer",{report_date:date,shift:shift,notes:document.getElementById("trim-notes").value.trim(),source:"cat2_upload",entries:vr}); setSyncBadge("synced"); toast("Report saved - "+vr.length+" trimmers recorded!"); trimRows=[trimEmptyRow()]; trimRenderForm(); }
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
-async 
 async function trimSaveEntry(entryId, reportId) {
   var row = document.getElementById('erow-'+entryId);
   var inputs = row.querySelectorAll('.hist-inp');
@@ -948,7 +947,7 @@ async function aiSend() {
   try {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
-    if (thinkEl) thinkEl.textContent = data.response;
+    if (thinkEl) { var _t=data.response,_h=_t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); _h=_h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:.98rem;color:#1e3a8a;border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>').replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:.88rem;color:#1e3a8a">$1</h4>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>').replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>').replace(/\n\n+/g,'</p><p style="margin:6px 0">').replace(/\n/g,'<br>'); thinkEl.innerHTML='<p style="margin:0">'+_h+'</p>'; }
     else chat.innerHTML += '<div class="ai-msg assistant">'+data.response+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
