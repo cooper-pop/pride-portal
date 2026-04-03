@@ -1021,10 +1021,10 @@ async function adminDeleteUser(id, name) {
 // ── INIT ─────────────────────────────────────────────────────────────────────
 (function init() {
   if (loadSession() && authToken && currentUser && currentCompany) {
-    if (data.force_password_change) {
-      window._pendingPasskeySetup = data.needs_passkey_setup;
+    if (currentUser && currentUser.force_password_change) {
+      window._pendingPasskeySetup = currentUser && currentUser.needs_passkey_setup;
       showScreen('screen-change-password');
-    } else if (data.needs_passkey_setup) {
+    } else if (currentUser && currentUser.needs_passkey_setup) {
       buildDash(); showScreen('screen-passkey-setup');
     } else {
       buildDash(); showScreen('screen-dash');
