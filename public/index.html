@@ -804,7 +804,7 @@ async function trimSaveEntry(entryId, reportId) {
   } catch(e) { toast('❌ Save failed: '+e.message); }
 }
 async function trimDeleteEntry(entryId, reportId) {
-  if (!confirm('Delete this trimmer entry?')) return;
+  // no confirm needed - button is deliberate
   try {
     await apiCall('DELETE', '/api/records?type=trimmer-entry&id='+entryId);
     toast('Deleted');
@@ -812,7 +812,7 @@ async function trimDeleteEntry(entryId, reportId) {
   } catch(e) { toast('❌ '+e.message); }
 }
 async function trimDeleteReport(reportId) {
-  if (!confirm('Delete this ENTIRE report and all its entries?')) return;
+  // no confirm needed - button is deliberate
   try {
     await apiCall('DELETE', '/api/records?type=trimmer&id='+reportId);
     toast('Report deleted');
