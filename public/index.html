@@ -1216,11 +1216,13 @@ async function umToggleActive(uid, currentlyActive) {
   } catch(e) { toast('Error: '+e.message); }
 }
 
-  async function trimRenderAnalytics() {
+  async function trimRenderAnalytics(days) {
+    if (!window._analyticsDays) window._analyticsDays = 90;
+    if (days) window._analyticsDays = days;
     const wc = document.getElementById("widget-content");
     wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
     let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
+    try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+window._analyticsDays); }
     catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
     const rankings = data.rankings || [];
     const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
@@ -1228,7 +1230,7 @@ async function umToggleActive(uid, currentlyActive) {
     html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
     html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
     html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
-    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
+    html += "<div style=\"display:flex;align-items:center;gap:8px\"><span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span>" + "<select onchange=\"trimRenderAnalytics(+this.value)\" style=\"font-size:0.75rem;border:1px solid #e2e8f0;border-radius:6px;padding:2px 6px;background:white\"><option value=\"30\"" + (window._analyticsDays==30?' selected':'') + "\">30 days</option><option value=\"60\"" + (window._analyticsDays==60?' selected':'') + "\">60 days</option><option value=\"90\"" + (window._analyticsDays==90?' selected':'') + "\">90 days</option><option value=\"180\"" + (window._analyticsDays==180?' selected':'') + "\">180 days</option></select></div></div>";
     html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
     ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
     html += "</tr></thead><tbody>";
