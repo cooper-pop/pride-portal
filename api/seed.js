@@ -115,5 +115,42 @@ module.exports = async function handler(req, res) {
     return res.json({ success: true, message: 'Cooper password reset to Cooper2026!' });
   }
 
-  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, fixempnums, checkusers, fixcooper, or resetcooper' });
+  if (action === 'recalcyields') {
+    // Recalculate yield percentages and lph for entries where lbs exist but pcts are zero
+    const entries = await sql`
+      SELECT id, incoming_lbs, fillet_lbs, nugget_lbs, misccut_lbs, minutes_worked
+      FROM trimmer_entries
+      WHERE incoming_lbs > 0
+      AND (fillet_yield_pct = 0 OR nugget_yield_pct = 0 OR realtime_lbs_per_hour = 0)
+      AND (fillet_lbs > 0 OR nugget_lbs > 0 OR misccut_lbs > 0)
+    `;
+    let updated = 0;
+    for (const e of entries) {
+      const inc = parseFloat(e.incoming_lbs) || 1;
+      const fil = parseFloat(e.fillet_lbs) || 0;
+      const nug = parseFloat(e.nugget_lbs) || 0;
+      const mis = parseFloat(e.misccut_lbs) || 0;
+      const mins = parseFloat(e.minutes_worked) || 0;
+      const tot = fil + nug + mis;
+      const fil_pct = (fil / inc) * 100;
+      const nug_pct = (nug / inc) * 100;
+      const mis_pct = (mis / inc) * 100;
+      const tot_pct = (tot / inc) * 100;
+      const lph = mins > 0 ? (tot / (mins / 60)) : 0;
+      const lph8 = tot / 8;
+      await sql`UPDATE trimmer_entries SET
+        fillet_yield_pct = ${fil_pct},
+        nugget_yield_pct = ${nug_pct},
+        misccut_yield_pct = ${mis_pct},
+        total_yield_pct = ${tot_pct},
+        total_weight_lbs = ${tot},
+        realtime_lbs_per_hour = ${lph},
+        eighthour_lbs_per_hour = ${lph8}
+        WHERE id = ${e.id}`;
+      updated++;
+    }
+    return res.json({ success: true, updated, total: entries.length });
+  }
+
+  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, fixempnums, checkusers, fixcooper, resetcooper, or recalcyields' });
 };
