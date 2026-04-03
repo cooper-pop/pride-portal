@@ -912,9 +912,7 @@ async function trimRenderHistory() {
     } catch(e) { input.style.borderBottom = '2px solid #ef4444'; toast('Save failed'); }
   }
 
-async
-
-function buildAIWidget() {
+async function buildAIWidget() {
   aiHistory = [];
   document.getElementById('widget-tabs').innerHTML = '';
   document.getElementById('ai-input-area').style.display = 'block';
