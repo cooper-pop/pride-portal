@@ -725,7 +725,7 @@ function buildTrimmerWidget() {
 
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
-  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else trimRenderAnalytics();
+  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else { trimRenderAnalytics(); setTimeout(function(){ var wc=document.getElementById('widget-content'); if(wc&&!wc.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; pb.innerHTML='<button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print / Save PDF</button>'; wc.prepend(pb); } }, 800); }
 }
 function trimRenderUpload() {
   document.getElementById("widget-content").innerHTML =
