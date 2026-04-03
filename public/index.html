@@ -689,6 +689,7 @@ async function injDelete(id){if(!confirm('Delete this batch?'))return;try{await 
 // TRIMMER LOG
 // ============================================================
 var trimRows = [];
+var trimDeletedIds = new Set();
 var trimCharts = {};
 
 
@@ -807,6 +808,7 @@ async function trimDeleteEntry(entryId, btn) {
   // no confirm needed - button is deliberate
   try {
     await apiCall('DELETE', '/api/records?type=trimmer-entry&id='+entryId);
+    trimDeletedIds.add(entryId);
     // Remove the row from DOM immediately - no full reload needed
     const row = btn && btn.closest ? btn.closest('tr') : null;
     if (row) { row.style.opacity='0.3'; row.style.transition='opacity 0.2s'; setTimeout(()=>row.remove(),200); }
@@ -849,7 +851,7 @@ async function trimRenderHistory() {
       html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
       ['Emp#','Name','Code','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>'+h+'</th>'; });
       html += '</tr></thead><tbody>';
-      entries.forEach(e => {
+      entries.filter(e => !trimDeletedIds.has(e.id)).forEach(e => {
         const ei = (id,field,val,w) => '<td><input class="hist-edit" data-id="'+id+'" data-field="'+field+'" value="'+(val||'')+'" style="width:'+w+'px;font-size:0.74rem;border:none;border-bottom:1px solid #e2e8f0;background:transparent;text-align:center;padding:2px" onchange="trimSaveCell(this)"/></td>';
         html += '<tr>';
         if (isAdmin) {
