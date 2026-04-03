@@ -418,10 +418,10 @@ async function doLogin() {
     authToken = data.token;
     currentUser = data.user;
     saveSession();
-    if (data.force_password_change) {
-      window._pendingPasskeySetup = data.needs_passkey_setup;
+    if (currentUser && currentUser.force_password_change) {
+      window._pendingPasskeySetup = currentUser && currentUser.needs_passkey_setup;
       showScreen('screen-change-password');
-    } else if (data.needs_passkey_setup) {
+    } else if (currentUser && currentUser.needs_passkey_setup) {
       buildDash(); showScreen('screen-passkey-setup');
     } else {
       buildDash(); showScreen('screen-dash');
