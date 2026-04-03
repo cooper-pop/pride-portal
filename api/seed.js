@@ -98,5 +98,15 @@ module.exports = async function handler(req, res) {
     return res.json({ success: true, results });
   }
 
-  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, or fixempnums' });
+  if (action === 'checkusers') {
+    const users = await sql`SELECT username, role, active FROM users WHERE company_id=(SELECT id FROM companies WHERE slug='pride-of-the-pond') ORDER BY role`;
+    return res.json({ success: true, users });
+  }
+
+  if (action === 'fixcooper') {
+    const r = await sql`UPDATE users SET role='admin' WHERE username='Cooper' AND company_id=(SELECT id FROM companies WHERE slug='pride-of-the-pond') RETURNING username, role`;
+    return res.json({ success: true, result: r });
+  }
+
+  return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, fixempnums, checkusers, or fixcooper' });
 };
