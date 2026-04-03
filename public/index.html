@@ -9,7 +9,31 @@
 <meta name="theme-color" content="#1a3a6b"/>
 <link rel="apple-touch-icon" href="https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg"/>
 <title>Employee Portal</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js">
+function printReport(title, contentHtml) {
+  var w = window.open('','_blank','width=900,height=700');
+  w.document.write('<html><head><title>'+title+'</title><style>'+
+    'body{font-family:Arial,sans-serif;padding:32px;color:#111;max-width:900px;margin:0 auto}'+
+    'h1{font-size:1.2rem;color:#1a3a6b;border-bottom:2px solid #1a3a6b;padding-bottom:6px;margin-bottom:16px}'+
+    'h2,h3,h4{color:#1a3a6b;margin:12px 0 6px}'+
+    'table{width:100%;border-collapse:collapse;margin:10px 0;font-size:0.88rem}'+
+    'th{background:#1a3a6b;color:#fff;padding:6px 10px;text-align:left}'+
+    'td{padding:5px 10px;border-bottom:1px solid #ddd}'+
+    'tr:nth-child(even) td{background:#f5f7fa}'+
+    'p{margin:4px 0;line-height:1.5}'+
+    'li{margin:2px 0}'+
+    '.print-footer{margin-top:32px;font-size:0.75rem;color:#888;border-top:1px solid #ddd;padding-top:8px}'+
+    '@media print{button{display:none}}'+
+  '</style></head><body>'+
+    '<h1>Pride of the Pond &mdash; '+title+'</h1>'+
+    '<p style="font-size:0.8rem;color:#666;margin-bottom:16px">Generated: '+new Date().toLocaleString()+'</p>'+
+    contentHtml+
+    '<div class="print-footer">Pride of the Pond Employee Portal &bull; Confidential</div>'+
+    '<br><button onclick="window.print()" style="padding:8px 20px;background:#1a3a6b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.9rem">🖨️ Print / Save as PDF</button>'+
+  '</body></html>');
+  w.document.close();
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--blue:#1a3a6b;--red:#c0392b;--green:#1d9e75;--gold:#e67e22;--purple:#8e44ad;--teal:#16a085;--light:#f5f7fa;--border:#dde3ec;--white:#fff;--text:#1a1a2e;--sub:#5a6a85;--radius:12px;--shadow:0 2px 12px rgba(0,0,0,0.08)}
@@ -826,7 +850,7 @@ async function trimDeleteReport(reportId) {
 async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
+    wc.innerHTML = '<div style="padding:8px"><div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'trim-analytics-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button></div><div id="trim-analytics-content"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
     let reports = [];
     try {
       const data = await apiCall('GET', '/api/records?type=trimmer');
@@ -922,7 +946,7 @@ async function buildAIWidget() {
     ['Who are the top trimmers this week?','Show weekly employee rankings','Who is underperforming and why?','Injection pickup trend last 30 days','Compare AM vs PM shift yield','Generate monthly summary'].map(function(q){
       return '<button class="ai-quick-btn" onclick="aiAsk(\''+q+'\')">'+q+'</button>';
     }).join('')+'</div></div>' +
-    '<div class="ai-chat" id="ai-chat"></div>';
+    '<div style="display:flex;justify-content:flex-end;padding:4px 0"><button onclick="printReport(\'AI Analysis Report\',document.getElementById(\'ai-chat\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button></div><div class="ai-chat" id="ai-chat"></div>';
 }
 
 function aiAsk(q) {
