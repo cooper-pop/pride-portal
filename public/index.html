@@ -726,7 +726,8 @@ function buildTrimmerWidget() {
 
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
-  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else { trimRenderAnalytics(); setTimeout(function(){ var wc=document.getElementById('widget-content'); if(wc&&!wc.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; pb.innerHTML='<button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print / Save PDF</button>'; wc.prepend(pb); } }, 800); }
+  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else { trimRenderAnalytics(); setTimeout(function(){ var wc=document.getElementById('widget-content'); if(wc&&!wc.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; pb.innerHTML='<button data-print-analytics="1" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print / Save PDF</button>';
+      pb.querySelector('[data-print-analytics]').addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); wc.prepend(pb); } }, 800); }
 }
 function trimRenderUpload() {
   document.getElementById("widget-content").innerHTML =
@@ -941,6 +942,7 @@ async function buildAIWidget() {
   aiHistory = [];
   document.getElementById('widget-tabs').innerHTML = '';
   document.getElementById('ai-input-area').style.display = 'block';
+  setTimeout(function(){var b=document.querySelector('[data-print-ai]');if(b)b.addEventListener('click',function(){printReport('AI Analysis Report',document.getElementById('ai-chat').innerHTML);});},100);
   document.getElementById('widget-content').innerHTML =
     '<div class="wcard" style="margin-bottom:8px"><div style="font-size:0.85rem;font-weight:700;color:var(--purple);margin-bottom:8px">🤖 Ask anything about your data</div>' +
     '<div class="ai-quick">'+
