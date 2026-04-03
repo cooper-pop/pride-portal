@@ -78,7 +78,11 @@ module.exports = async function handler(req, res) {
       if(type==='yield')await sql`DELETE FROM yield_records WHERE id=${id} AND company_id=${user.company_id}`;
       else if(type==='injection')await sql`DELETE FROM injection_records WHERE id=${id} AND company_id=${user.company_id}`;
       else if(type==='trimmer')await sql`DELETE FROM trimmer_reports WHERE id=${id} AND company_id=${user.company_id}`;
-      return res.json({success:true});
+      else if(type==='trimmer-entry') {
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+      await sql`DELETE FROM trimmer_entries WHERE id=${id}`;
+    }
+    return res.json({success:true});
     }
       // PATCH individual trimmer entry fields (admin only)
   if (req.method === 'PATCH' && type==='trimmer-entry') {
