@@ -978,7 +978,8 @@ async function aiSend() {
   try {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
-    if (thinkEl) {
+    var _freshThink = document.getElementById('ai-thinking');
+    if (_freshThink) {
       var _t=data.response;
       var _h=_t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       _h=_h.replace(/((?:\|[^\n]+\|\n?)+)/g,function(b){var ls=b.trim().split('\n').filter(function(l){return l.trim();});var o='<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:0.82rem"><tbody>';var hd=true;ls.forEach(function(line){if(/^\|[-:\s|]+$/.test(line.trim())){hd=false;return;}var cs=line.split('|').filter(function(_,i,a){return i>0&&i<a.length-1;});var tg=hd?'th':'td';var bg=hd?'background:#1e3a8a;color:white;padding:5px 8px;text-align:left;font-weight:600':'padding:4px 8px;border-bottom:1px solid #e2e8f0';o+='<tr>'+cs.map(function(c){return '<'+tg+' style="'+bg+'">'+c.trim().replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')+'</'+tg+'>';}).join('')+'</tr>';hd=false;});return o+'</tbody></table>';});
@@ -990,7 +991,7 @@ async function aiSend() {
       _h=_h.replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
       _h=_h.replace(/\n\n+/g,'</p><p style="margin:6px 0">');
       _h=_h.replace(/\n/g,'<br>');
-      thinkEl.innerHTML='<p style="margin:0">'+_h+'</p>';
+      _freshThink.innerHTML='<p style="margin:0">'+_h+'</p>';
     }
     else 
   } catch(e) {
