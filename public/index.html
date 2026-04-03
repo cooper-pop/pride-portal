@@ -1,4 +1,15 @@
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Employee Portal"/>
+<meta name="theme-color" content="#1a3a6b"/>
+<link rel="apple-touch-icon" href="https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg"/>
+<title>Employee Portal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--blue:#1a3a6b;--red:#c0392b;--green:#1d9e75;--gold:#e67e22;--purple:#8e44ad;--teal:#16a085;--light:#f5f7fa;--border:#dde3ec;--white:#fff;--text:#1a1a2e;--sub:#5a6a85;--radius:12px;--shadow:0 2px 12px rgba(0,0,0,0.08)}
@@ -309,8 +320,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div id="toast"></div>
 
 <script>
-/* v1775257297742 len=27107 */
-if(document.currentScript&&document.currentScript.textContent.length<25751){location.reload(true);}
 // ── STATE ───────────────────────────────────────────────────────────────────
 var currentUser = null;
 var authToken = null;
@@ -409,10 +418,10 @@ async function doLogin() {
     authToken = data.token;
     currentUser = data.user;
     saveSession();
-    if (currentUser && currentUser.force_password_change) {
-      window._pendingPasskeySetup = currentUser && currentUser.needs_passkey_setup;
+    if (data.force_password_change) {
+      window._pendingPasskeySetup = data.needs_passkey_setup;
       showScreen('screen-change-password');
-    } else if (currentUser && currentUser.needs_passkey_setup) {
+    } else if (data.needs_passkey_setup) {
       buildDash(); showScreen('screen-passkey-setup');
     } else {
       buildDash(); showScreen('screen-dash');
@@ -692,7 +701,8 @@ function buildTrimmerWidget() {
 
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
-  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else { trimRenderAnalytics(); }
+  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else trimRenderAnalytics();
+}
 function trimRenderUpload() {
   document.getElementById("widget-content").innerHTML =
     '<div class="wcard"><h3>&#x1F4F7; Upload C.A.T.2 Report</h3>'+
@@ -770,6 +780,7 @@ async function trimSave() {
   try{ await apiCall("POST","/api/records?type=trimmer",{report_date:date,shift:shift,notes:document.getElementById("trim-notes").value.trim(),source:"cat2_upload",entries:vr}); setSyncBadge("synced"); toast("Report saved - "+vr.length+" trimmers recorded!"); trimRows=[trimEmptyRow()]; trimRenderForm(); }
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
+async 
 async function trimSaveEntry(entryId, reportId) {
   var row = document.getElementById('erow-'+entryId);
   var inputs = row.querySelectorAll('.hist-inp');
@@ -816,7 +827,7 @@ async function trimDeleteReport(reportId) {
 async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button></div><div id="trim-analytics-content"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
+    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
     let reports = [];
     try {
       const data = await apiCall('GET', '/api/records?type=trimmer');
@@ -902,18 +913,19 @@ async function trimRenderHistory() {
     } catch(e) { input.style.borderBottom = '2px solid #ef4444'; toast('Save failed'); }
   }
 
-async function buildAIWidget() {
+async
+
+function buildAIWidget() {
   aiHistory = [];
   document.getElementById('widget-tabs').innerHTML = '';
   document.getElementById('ai-input-area').style.display = 'block';
-  setTimeout(function(){var b=document.querySelector('[data-print-ai]');if(b)b.addEventListener('click',function(){printReport('AI Analysis Report',document.getElementById('ai-chat').innerHTML);});},100);
   document.getElementById('widget-content').innerHTML =
     '<div class="wcard" style="margin-bottom:8px"><div style="font-size:0.85rem;font-weight:700;color:var(--purple);margin-bottom:8px">🤖 Ask anything about your data</div>' +
     '<div class="ai-quick">'+
     ['Who are the top trimmers this week?','Show weekly employee rankings','Who is underperforming and why?','Injection pickup trend last 30 days','Compare AM vs PM shift yield','Generate monthly summary'].map(function(q){
       return '<button class="ai-quick-btn" onclick="aiAsk(\''+q+'\')">'+q+'</button>';
     }).join('')+'</div></div>' +
-    '<div style="display:flex;justify-content:flex-end;padding:4px 0"><button onclick="printReport(\'AI Analysis Report\',document.getElementById(\'ai-chat\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button></div><div class="ai-chat" id="ai-chat"></div>';
+    '<div class="ai-chat" id="ai-chat"></div>';
 }
 
 function aiAsk(q) {
@@ -936,7 +948,7 @@ async function aiSend() {
   try {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
-    if (thinkEl) { var _t=data.response,_h=_t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); _h=_h.replace(/((?:[^\n]*\|[^\n]*\n)+)/g,function(blk){var rows=blk.trim().split('\n').filter(function(l){return l.trim()&&!/^[\s|:-]+$/.test(l.trim());});if(rows.length<2)return blk;var out='<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:0.85rem">';rows.forEach(function(row,ri){var cells=row.split('|').slice(1,-1);var tag=ri===0?'th':'td';var st=ri===0?'background:#1e3a8a;color:#fff;padding:4px 8px;text-align:left':'padding:3px 8px;border-bottom:1px solid #e2e8f0';out+='<tr>'+cells.map(function(c){return'<'+tag+' style="'+st+'">'+c.trim()+'</'+tag+'>';}).join('')+'</tr>';});return out+'</table>';}); _h=_h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:.98rem;color:#1e3a8a;border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>').replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:.88rem;color:#1e3a8a">$1</h4>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>').replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>').replace(/\n\n+/g,'</p><p style="margin:6px 0">').replace(/\n/g,'<br>'); thinkEl.innerHTML='<p style="margin:0">'+_h+'</p>'; }
+    if (thinkEl) thinkEl.textContent = data.response;
     else chat.innerHTML += '<div class="ai-msg assistant">'+data.response+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
@@ -1012,10 +1024,10 @@ async function adminDeleteUser(id, name) {
 // ── INIT ─────────────────────────────────────────────────────────────────────
 (function init() {
   if (loadSession() && authToken && currentUser && currentCompany) {
-    if (currentUser && currentUser.force_password_change) {
-      window._pendingPasskeySetup = currentUser && currentUser.needs_passkey_setup;
+    if (data.force_password_change) {
+      window._pendingPasskeySetup = data.needs_passkey_setup;
       showScreen('screen-change-password');
-    } else if (currentUser && currentUser.needs_passkey_setup) {
+    } else if (data.needs_passkey_setup) {
       buildDash(); showScreen('screen-passkey-setup');
     } else {
       buildDash(); showScreen('screen-dash');
@@ -1192,17 +1204,6 @@ async function umResetPasskey(uid, name) {
     toast('Passkey reset for ' + name);
     loadUserMgmt();
   } catch(e) { toast('Error: '+e.message); }
-  // Inject print button at top of analytics content
-  setTimeout(function(){
-    var _wc = document.getElementById('widget-content');
-    if(_wc && !_wc.querySelector('.analytics-print-btn')){
-      var _pb = document.createElement('div');
-      _pb.className = 'analytics-print-btn';
-      _pb.style.cssText = 'display:flex;justify-content:flex-end;padding:4px 8px 0';
-      _pb.innerHTML = '<button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button>';
-      _wc.prepend(_pb);
-    }
-  }, 100);
 }
 
 async function umToggleActive(uid, currentlyActive) {
@@ -1252,8 +1253,6 @@ async function umToggleActive(uid, currentlyActive) {
     html += "</tbody></table></div></div>";
     html += "<div id=\"trim-trend-area\"></div></div>";
     wc.innerHTML = html;
-    // Print button
-    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
   }
 
   function trimSparkline(values, color, w, h) {
@@ -1358,32 +1357,6 @@ async function umToggleActive(uid, currentlyActive) {
     btn.disabled = false;
   }
 
-function printReport(title, contentHtml) {
-  var w = window.open('','_blank','width=900,height=700');
-  w.document.write('<html><head><title>'+title+'</title><style>'+
-    'body{font-family:Arial,sans-serif;padding:32px;color:#111;max-width:900px;margin:0 auto}'+
-    'h1{font-size:1.2rem;color:#1a3a6b;border-bottom:2px solid #1a3a6b;padding-bottom:6px;margin-bottom:16px}'+
-    'h2,h3,h4{color:#1a3a6b;margin:12px 0 6px}'+
-    'table{width:100%;border-collapse:collapse;margin:10px 0;font-size:0.88rem}'+
-    'th{background:#1a3a6b;color:#fff;padding:6px 10px;text-align:left}'+
-    'td{padding:5px 10px;border-bottom:1px solid #ddd}'+
-    'tr:nth-child(even) td{background:#f5f7fa}'+
-    'p{margin:4px 0;line-height:1.5}'+
-    'li{margin:2px 0}'+
-    '.print-footer{margin-top:32px;font-size:0.75rem;color:#888;border-top:1px solid #ddd;padding-top:8px}'+
-    '@media print{button{display:none}}'+
-  '</style></head><body>'+
-    '<h1>Pride of the Pond &mdash; '+title+'</h1>'+
-    '<p style="font-size:0.8rem;color:#666;margin-bottom:16px">Generated: '+new Date().toLocaleString()+'</p>'+
-    contentHtml+
-    '<div class="print-footer">Pride of the Pond Employee Portal &bull; Confidential</div>'+
-    '<br><button onclick="window.print()" style="padding:8px 20px;background:#1a3a6b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.9rem">🖨️ Print / Save as PDF</button>'+
-  '</body></html>');
-  w.document.close();
-}
-
-
-window.printReport = printReport;
 </script>
 </body>
 </html>
