@@ -1,3 +1,30 @@
+function parseMarkdown(text) {
+  let h = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Tables
+  h = h.replace(/((?:\|[^\n]+\|\n?)+)/g, function(block) {
+    const lines = block.trim().split('\n').filter(l=>l.trim());
+    let html = '<table class="ai-table"><tbody>';
+    let isHdr = true;
+    lines.forEach(function(line) {
+      if (/^\|[-:\s|]+$/.test(line.trim())) { isHdr=false; return; }
+      const cells = line.split('|').filter((_,i,a)=>i>0&&i<a.length-1);
+      const tag = isHdr?'th':'td';
+      html += '<tr>'+cells.map(c=>'<'+tag+'>'+c.trim().replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')+'</'+tag+'>').join('')+'</tr>';
+      isHdr=false;
+    });
+    return html+'</tbody></table>';
+  });
+  h = h.replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:0.88rem;color:var(--navy)">$1</h4>');
+  h = h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:0.98rem;color:var(--navy);border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>');
+  h = h.replace(/^# (.+)$/gm,'<h2 style="margin:10px 0 5px;font-size:1.05rem;color:var(--navy)">$1</h2>');
+  h = h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  h = h.replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
+  h = h.replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
+  h = h.replace(/\n\n+/g,'</p><p style="margin:6px 0">');
+  h = h.replace(/\n/g,'<br>');
+  return '<p style="margin:0 0 4px">'+h+'</p>';
+}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -952,7 +979,7 @@ async function aiSend() {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
     if (thinkEl) thinkEl.textContent = data.response;
-    else chat.innerHTML += '<div class="ai-msg assistant">'+data.response+'</div>';
+    else chat.innerHTML += '<div class="ai-msg assistant">'+parseMarkdown(data.response)+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
     if (thinkEl2) thinkEl2.textContent = '⚠️ Error: '+e.message;
