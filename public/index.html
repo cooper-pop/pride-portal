@@ -982,7 +982,7 @@ async function aiSend() {
     else chat.innerHTML += '<div class="ai-msg assistant">'+parseMarkdown(data.response)+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
-    if (thinkEl2) thinkEl2.textContent = '⚠️ Error: '+e.message;
+    if (thinkEl2) { const em=e.message||''; thinkEl2.textContent = em.includes('429')||em.includes('rate_limit') ? '⚠️ Rate limit reached — please wait a moment and try again.' : '⚠️ Something went wrong. Please try again.'; }
   } finally {
     btn.disabled = false; btn.textContent = 'Send';
     chat.scrollTop = chat.scrollHeight;
