@@ -55,8 +55,8 @@ module.exports = async function handler(req, res) {
                    'fillet_lbs', te.fillet_lbs,
                    'nugget_lbs', te.nugget_lbs,
                    'misccut_lbs', te.misccut_lbs,
-                   'lbs_per_hour', te.lbs_per_hour
-                 ) ORDER BY te.lbs_per_hour DESC NULLS LAST
+                   'lbs_per_hour', te.realtime_lbs_per_hour
+                 ) ORDER BY te.realtime_lbs_per_hour DESC NULLS LAST
                ) FILTER (WHERE te.id IS NOT NULL) as entries
         FROM trimmer_reports tr
         JOIN users u ON u.id = tr.user_id
