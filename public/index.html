@@ -979,7 +979,7 @@ async function aiSend() {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
     if (thinkEl) thinkEl.textContent = data.response;
-    else chat.innerHTML += '<div class="ai-msg assistant">'+parseMarkdown(data.response)+'</div>';
+    else chat.innerHTML += '<div class="ai-msg assistant">'+(typeof parseMarkdown==='function'?parseMarkdown(data.response):data.response.replace(/\n/g,'<br>'))+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
     if (thinkEl2) { const em=e.message||''; thinkEl2.textContent = em.includes('429')||em.includes('rate_limit') ? '⚠️ Rate limit reached — please wait a moment and try again.' : '⚠️ Something went wrong. Please try again.'; }
