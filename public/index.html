@@ -1226,11 +1226,16 @@ async function umResetPasskey(uid, name) {
     loadUserMgmt();
   } catch(e) { toast('Error: '+e.message); }
   // Inject print button at top of analytics content
-  var _pb = document.createElement('div');
-  _pb.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px';
-  _pb.innerHTML = '<button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button>';
-  var _wc = document.getElementById('widget-content');
-  if(_wc) _wc.insertBefore(_pb, _wc.firstChild);
+  setTimeout(function(){
+    var _wc = document.getElementById('widget-content');
+    if(_wc && !_wc.querySelector('.analytics-print-btn')){
+      var _pb = document.createElement('div');
+      _pb.className = 'analytics-print-btn';
+      _pb.style.cssText = 'display:flex;justify-content:flex-end;padding:4px 8px 0';
+      _pb.innerHTML = '<button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button>';
+      _wc.prepend(_pb);
+    }
+  }, 100);
 }
 
 async function umToggleActive(uid, currentlyActive) {
