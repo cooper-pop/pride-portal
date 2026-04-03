@@ -1217,45 +1217,58 @@ async function umToggleActive(uid, currentlyActive) {
 }
 
   async function trimRenderAnalytics(days) {
-    if (!window._analyticsDays) window._analyticsDays = 90;
-    if (days) window._analyticsDays = days;
-    const wc = document.getElementById("widget-content");
-    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
-    let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+window._analyticsDays); }
-    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
-    const rankings = data.rankings || [];
-    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
-    let html = "<div style=\"padding:8px\">";
-    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
-    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
-    html += "<div style=\"display:flex;align-items:center;gap:8px\"><span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span>" + "<select onchange=\"trimRenderAnalytics(+this.value)\" style=\"font-size:0.75rem;border:1px solid #e2e8f0;border-radius:6px;padding:2px 6px;background:white\"><option value=\"30\"" + (window._analyticsDays==30?' selected':'') + "\">30 days</option><option value=\"60\"" + (window._analyticsDays==60?' selected':'') + "\">60 days</option><option value=\"90\"" + (window._analyticsDays==90?' selected':'') + "\">90 days</option><option value=\"180\"" + (window._analyticsDays==180?' selected':'') + "\">180 days</option></select></div></div>";
-    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
-    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
-    html += "</tr></thead><tbody>";
-    rankings.forEach(function(r,i){
-      const under = r.underperformer;
-      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
-      html += "<tr style=\"background:" + bg + "\">";
-      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
-      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
-      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
-      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
-      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
-      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
-      html += "</tr>";
-      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
-    });
-    html += "</tbody></table></div></div>";
-    html += "<div id=\"trim-trend-area\"></div></div>";
-    wc.innerHTML = html;
-  }
+      if (!window._analyticsDays) window._analyticsDays = 90;
+      if (days) window._analyticsDays = parseInt(days);
+      const d = window._analyticsDays;
+      // Calculate YTD
+      const now = new Date();
+      const ytd = Math.floor((now - new Date(now.getFullYear()+"-01-01")) / 86400000) + 1;
+      const wc = document.getElementById("widget-content");
+      wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
+      let data;
+      try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+d); }
+      catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
+      const rankings = data.rankings || [];
+      const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
+      // Period label
+      const label = d===7?"Last 7 Days":d===30?"Last 30 Days":d===90?"Last 90 Days":"Year to Date";
+      let html = "<div style=\"padding:8px\">";
+      // Period selector buttons
+      html += "<div style=\"display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap\">";
+      [[7,"7 Days"],[30,"30 Days"],[90,"90 Days"],[ytd,"Year to Date"]].forEach(function(opt) {
+        const active = d===opt[0];
+        html += "<button onclick=\"trimRenderAnalytics("+opt[0]+")\" style=\"padding:5px 12px;border-radius:20px;border:1px solid var(--blue);font-size:0.78rem;cursor:pointer;font-weight:"+(active?"700":"400")+";background:"+(active?"var(--blue)":"white")+";color:"+(active?"white":"var(--blue)")+"\">" + opt[1] + "</button>";
+      });
+      html += "</div>";
+      html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
+      html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
+      html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — " + label + "</h3>";
+      html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
+      html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
+      ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
+      html += "</tr></thead><tbody>";
+      rankings.forEach(function(r,i){
+        const under = r.underperformer;
+        const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
+        html += "<tr style=\"background:" + bg + "\">";
+        html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
+        html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
+        html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
+        html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
+        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
+        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
+        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
+        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
+        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
+        const enc = encodeURIComponent(r.full_name||r.emp_number||"");
+        html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
+        html += "</tr>";
+        if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
+      });
+      html += "</tbody></table></div></div>";
+      html += "<div id=\"trim-trend-area\"></div></div>";
+      wc.innerHTML = html;
+    }
 
   function trimSparkline(values, color, w, h) {
     if(!values||!values.length) return "";
