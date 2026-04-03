@@ -908,23 +908,7 @@ async function trimRenderHistory() {
     } catch(e) { input.style.borderBottom = '2px solid #ef4444'; toast('Save failed'); }
   }
 
-  async function trimDeleteReport(id, btn) {
-    if (!confirm('Delete this entire report and all its entries? Cannot be undone.')) return;
-    btn.disabled = true;
-    try {
-      await apiCall('DELETE', '/api/records?type=trimmer&id='+id);
-      toast('Report deleted'); trimRenderHistory();
-    } catch(e) { toast('Delete failed: '+e.message); btn.disabled=false; }
-  }
-
-  async function trimDeleteEntry(id, btn) {
-    if (!confirm('Delete this trimmer entry?')) return;
-    try {
-      await apiCall('DELETE', '/api/records?type=trimmer-entry&id='+id);
-      btn.closest('tr').remove(); toast('Entry deleted');
-    } catch(e) { toast('Delete failed: '+e.message); }
-  }
-
+async
 
 function buildAIWidget() {
   aiHistory = [];
