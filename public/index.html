@@ -1417,5 +1417,58 @@ async function umToggleActive(uid, currentlyActive) {
   }
 
 </script>
+
+<script>
+(function(){
+  function fmtAI(el){
+    if(!el||el.dataset.fmtDone)return;
+    var t=el.textContent||'';
+    if(!t.includes('**')&&!t.includes('## ')&&!t.includes('| '))return;
+    el.dataset.fmtDone='1';
+    var h=t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Tables
+    h=h.replace(/((?:\|[^\n]+\|\n?)+)/g,function(b){
+      var ls=b.trim().split('\n').filter(function(l){return l.trim();});
+      var o='<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:0.82rem"><tbody>';
+      var hd=true;
+      ls.forEach(function(line){
+        if(/^\|[-:\s|]+$/.test(line.trim())){hd=false;return;}
+        var cs=line.split('|').filter(function(_,i,a){return i>0&&i<a.length-1;});
+        var tg=hd?'th':'td';
+        var bg=hd?'background:#1e3a8a;color:white;padding:5px 8px;text-align:left;font-weight:600':'padding:4px 8px;border-bottom:1px solid #e2e8f0';
+        o+='<tr>'+cs.map(function(c){return '<'+tg+' style="'+bg+'">'+c.trim().replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')+'</'+tg+'>';}).join('')+'</tr>';
+        hd=false;
+      });
+      return o+'</tbody></table>';
+    });
+    h=h.replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:.88rem;color:#1e3a8a">$1</h4>');
+    h=h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:.98rem;color:#1e3a8a;border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>');
+    h=h.replace(/^# (.+)$/gm,'<h2 style="margin:10px 0 5px;font-size:1.05rem;color:#1e3a8a">$1</h2>');
+    h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    h=h.replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
+    h=h.replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
+    h=h.replace(/\n\n+/g,'</p><p style="margin:6px 0">');
+    h=h.replace(/\n/g,'<br>');
+    el.innerHTML='<p style="margin:0">'+h+'</p>';
+  }
+  var obs=new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType===1){
+          if(n.classList&&n.classList.contains('ai-msg')&&n.classList.contains('assistant'))fmtAI(n);
+          n.querySelectorAll&&n.querySelectorAll('.ai-msg.assistant').forEach(fmtAI);
+        }
+      });
+      // Also handle textContent changes (when thinkEl textContent gets set)
+      if(m.type==='characterData'||m.type==='childList'){
+        var t=m.target;
+        var el=t.nodeType===1?t:t.parentElement;
+        if(el&&el.classList&&el.classList.contains('ai-msg')&&el.classList.contains('assistant'))fmtAI(el);
+      }
+    });
+  });
+  obs.observe(document.body,{childList:true,subtree:true,characterData:true});
+})();
+</script>
 </body>
 </html>
