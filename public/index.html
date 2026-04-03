@@ -2,9 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-<meta http-equiv="Pragma" content="no-cache"/>
-<meta http-equiv="Expires" content="0"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
@@ -951,25 +948,11 @@ async function aiSend() {
   try {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
-    var _freshThink = document.getElementById('ai-thinking');
-    if (_freshThink) {
-      var _t=data.response;
-      var _h=_t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      _h=_h.replace(/((?:\|[^\n]+\|\n?)+)/g,function(b){var ls=b.trim().split('\n').filter(function(l){return l.trim();});var o='<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:0.82rem"><tbody>';var hd=true;ls.forEach(function(line){if(/^\|[-:\s|]+$/.test(line.trim())){hd=false;return;}var cs=line.split('|').filter(function(_,i,a){return i>0&&i<a.length-1;});var tg=hd?'th':'td';var bg=hd?'background:#1e3a8a;color:white;padding:5px 8px;text-align:left;font-weight:600':'padding:4px 8px;border-bottom:1px solid #e2e8f0';o+='<tr>'+cs.map(function(c){return '<'+tg+' style="'+bg+'">'+c.trim().replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')+'</'+tg+'>';}).join('')+'</tr>';hd=false;});return o+'</tbody></table>';});
-      _h=_h.replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:.88rem;color:#1e3a8a">$1</h4>');
-      _h=_h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:.98rem;color:#1e3a8a;border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>');
-      _h=_h.replace(/^# (.+)$/gm,'<h2 style="margin:10px 0 5px;font-size:1.05rem;color:#1e3a8a">$1</h2>');
-      _h=_h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-      _h=_h.replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
-      _h=_h.replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
-      _h=_h.replace(/\n\n+/g,'</p><p style="margin:6px 0">');
-      _h=_h.replace(/\n/g,'<br>');
-      _freshThink.innerHTML='<p style="margin:0">'+_h+'</p>';
-    }
-    else 
+    if (thinkEl) thinkEl.textContent = data.response;
+    else chat.innerHTML += '<div class="ai-msg assistant">'+data.response+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
-    if (thinkEl2) { const em=e.message||''; thinkEl2.textContent = em.includes('429')||em.includes('rate_limit') ? '⚠️ Rate limit reached — please wait a moment and try again.' : '⚠️ Something went wrong. Please try again.'; }
+    if (thinkEl2) thinkEl2.textContent = '⚠️ Error: '+e.message;
   } finally {
     btn.disabled = false; btn.textContent = 'Send';
     chat.scrollTop = chat.scrollHeight;
@@ -1233,59 +1216,44 @@ async function umToggleActive(uid, currentlyActive) {
   } catch(e) { toast('Error: '+e.message); }
 }
 
-  async function trimRenderAnalytics(days) {
-      if (!window._analyticsDays) window._analyticsDays = 90;
-      if (days) window._analyticsDays = parseInt(days);
-      const d = window._analyticsDays;
-      // Calculate YTD
-      const now = new Date();
-      const ytd = Math.floor((now - new Date(now.getFullYear()+"-01-01")) / 86400000) + 1;
-      const wc = document.getElementById("widget-content");
-      wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
-      let data;
-      try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+d); }
-      catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
-      const rankings = data.rankings || [];
-      const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
-      // Period label
-      const label = d===7?"Last 7 Days":d===30?"Last 30 Days":d===90?"Last 90 Days":"Year to Date";
-      let html = "<div style=\"padding:8px\">";
-      // Period selector buttons
-      html += "<div style=\"display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap\">";
-      [[7,"7 Days"],[30,"30 Days"],[90,"90 Days"],[ytd,"Year to Date"]].forEach(function(opt) {
-        const active = d===opt[0];
-        html += "<button onclick=\"trimRenderAnalytics("+opt[0]+")\" style=\"padding:5px 12px;border-radius:20px;border:1px solid var(--blue);font-size:0.78rem;cursor:pointer;font-weight:"+(active?"700":"400")+";background:"+(active?"var(--blue)":"white")+";color:"+(active?"white":"var(--blue)")+"\">" + opt[1] + "</button>";
-      });
-      html += "</div>";
-      html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
-      html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-      html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — " + label + "</h3>";
-      html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
-      html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
-      ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
-      html += "</tr></thead><tbody>";
-      rankings.forEach(function(r,i){
-        const under = r.underperformer;
-        const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
-        html += "<tr style=\"background:" + bg + "\">";
-        html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
-        html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
-        html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
-        html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
-        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
-        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
-        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
-        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
-        html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
-        const enc = encodeURIComponent(r.full_name||r.emp_number||"");
-        html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
-        html += "</tr>";
-        if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
-      });
-      html += "</tbody></table></div></div>";
-      html += "<div id=\"trim-trend-area\"></div></div>";
-      wc.innerHTML = html;
-    }
+  async function trimRenderAnalytics() {
+    const wc = document.getElementById("widget-content");
+    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
+    let data;
+    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
+    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
+    const rankings = data.rankings || [];
+    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
+    let html = "<div style=\"padding:8px\">";
+    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
+    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
+    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
+    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
+    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
+    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
+    html += "</tr></thead><tbody>";
+    rankings.forEach(function(r,i){
+      const under = r.underperformer;
+      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
+      html += "<tr style=\"background:" + bg + "\">";
+      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
+      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
+      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
+      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
+      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
+      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
+      html += "</tr>";
+      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
+    });
+    html += "</tbody></table></div></div>";
+    html += "<div id=\"trim-trend-area\"></div></div>";
+    wc.innerHTML = html;
+  }
 
   function trimSparkline(values, color, w, h) {
     if(!values||!values.length) return "";
@@ -1389,59 +1357,6 @@ async function umToggleActive(uid, currentlyActive) {
     btn.disabled = false;
   }
 
-</script>
-
-<script>
-(function(){
-  function fmtAI(el){
-    if(!el||el.dataset.fmtDone)return;
-    var t=el.textContent||'';
-    if(!t.includes('**')&&!t.includes('## ')&&!t.includes('| '))return;
-    el.dataset.fmtDone='1';
-    var h=t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    // Tables
-    h=h.replace(/((?:\|[^\n]+\|\n?)+)/g,function(b){
-      var ls=b.trim().split('\n').filter(function(l){return l.trim();});
-      var o='<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:0.82rem"><tbody>';
-      var hd=true;
-      ls.forEach(function(line){
-        if(/^\|[-:\s|]+$/.test(line.trim())){hd=false;return;}
-        var cs=line.split('|').filter(function(_,i,a){return i>0&&i<a.length-1;});
-        var tg=hd?'th':'td';
-        var bg=hd?'background:#1e3a8a;color:white;padding:5px 8px;text-align:left;font-weight:600':'padding:4px 8px;border-bottom:1px solid #e2e8f0';
-        o+='<tr>'+cs.map(function(c){return '<'+tg+' style="'+bg+'">'+c.trim().replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')+'</'+tg+'>';}).join('')+'</tr>';
-        hd=false;
-      });
-      return o+'</tbody></table>';
-    });
-    h=h.replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:.88rem;color:#1e3a8a">$1</h4>');
-    h=h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:.98rem;color:#1e3a8a;border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>');
-    h=h.replace(/^# (.+)$/gm,'<h2 style="margin:10px 0 5px;font-size:1.05rem;color:#1e3a8a">$1</h2>');
-    h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-    h=h.replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
-    h=h.replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>');
-    h=h.replace(/\n\n+/g,'</p><p style="margin:6px 0">');
-    h=h.replace(/\n/g,'<br>');
-    el.innerHTML='<p style="margin:0">'+h+'</p>';
-  }
-  var obs=new MutationObserver(function(muts){
-    muts.forEach(function(m){
-      m.addedNodes.forEach(function(n){
-        if(n.nodeType===1){
-          if(n.classList&&n.classList.contains('ai-msg')&&n.classList.contains('assistant'))fmtAI(n);
-          n.querySelectorAll&&n.querySelectorAll('.ai-msg.assistant').forEach(fmtAI);
-        }
-      });
-      // Also handle textContent changes (when thinkEl textContent gets set)
-      if(m.type==='characterData'||m.type==='childList'){
-        var t=m.target;
-        var el=t.nodeType===1?t:t.parentElement;
-        if(el&&el.classList&&el.classList.contains('ai-msg')&&el.classList.contains('assistant'))fmtAI(el);
-      }
-    });
-  });
-  obs.observe(document.body,{childList:true,subtree:true,characterData:true});
-})();
 </script>
 </body>
 </html>
