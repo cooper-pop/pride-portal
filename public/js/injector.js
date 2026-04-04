@@ -1,11 +1,5 @@
 // injector.js - Injection Calculator widget
 
-// ── STATE ───────────────────────────────────────────────────────────────────
-var currentUser = null;
-var authToken = null;
-var currentCompany = null; // 'potp' | 'bfn'
-var aiHistory = [];
-
 function buildInjectionWidget(){document.getElementById('widget-tabs').innerHTML=['🧪 New Batch','📋 Batch Log'].map(function(t,i){return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="injShowTab('+i+')">'+t+'</div>';}).join('');injShowTab(0);}
 
 function injShowTab(idx){document.querySelectorAll('.widget-tab').forEach(function(t,i){t.classList.toggle('active',i===idx);});if(idx===0)injRenderCalc();else injRenderLog();}

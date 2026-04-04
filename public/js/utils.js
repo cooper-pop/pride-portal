@@ -39,3 +39,16 @@ function toast(msg) {
   t.classList.add('show');
   setTimeout(function(){ t.classList.remove('show'); }, 2500);
 }
+
+// Widget constants
+// ── STATE ───────────────────────────────────────────────────────────────────
+var currentUser = null;
+var authToken = null;
+var currentCompany = null; // 'potp' | 'bfn'
+var aiHistory = [];
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+var currentUser = null;
+var authToken = null;
+var currentCompany = null; // 'potp' | 'bfn'
+var aiHistory = [];
