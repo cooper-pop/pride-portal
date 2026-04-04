@@ -1,18 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
-    },
-    {
-      "source": "/js/:file",
-      "destination": "/public/js/:file"
-    },
-    {
-      "source": "/css/:file",
-      "destination": "/public/css/:file"
-    },
-    {
       "source": "/((?!api/).*)",
       "destination": "/public/index.html"
     }
