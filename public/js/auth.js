@@ -49,7 +49,7 @@ async function doLogin() {
   btn.disabled = true; btn.textContent = 'Signing in...'; errEl.style.display = 'none';
   try {
     var slug = COMPANIES[currentCompany].slug;
-    var data = await apiCall('POST', '/api/login', { username: username, password: password, company_slug: slug });
+    var data = await apiCall('POST', '/api/login', { username: username, password: password, company_slug: currentCompany });
     authToken = data.token;
     currentUser = data.user;
     saveSession();
