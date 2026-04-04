@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/js/:file",
+      "destination": "/public/js/:file"
+    },
+    {
+      "source": "/css/:file",
+      "destination": "/public/css/:file"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/public/index.html"
     }
@@ -16,23 +28,11 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0"
+          "value": "no-store, no-cache, must-revalidate, max-age=0"
         },
         {
           "key": "Pragma",
           "value": "no-cache"
-        },
-        {
-          "key": "Expires",
-          "value": "0"
-        },
-        {
-          "key": "Surrogate-Control",
-          "value": "no-store"
-        },
-        {
-          "key": "CDN-Cache-Control",
-          "value": "no-store"
         }
       ]
     }
