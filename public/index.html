@@ -780,7 +780,6 @@ async function trimSave() {
   try{ await apiCall("POST","/api/records?type=trimmer",{report_date:date,shift:shift,notes:document.getElementById("trim-notes").value.trim(),source:"cat2_upload",entries:vr}); setSyncBadge("synced"); toast("Report saved - "+vr.length+" trimmers recorded!"); trimRows=[trimEmptyRow()]; trimRenderForm(); }
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
-async 
 async function trimSaveEntry(entryId, reportId) {
   var row = document.getElementById('erow-'+entryId);
   var inputs = row.querySelectorAll('.hist-inp');
