@@ -1,5 +1,11 @@
 // yield.js - Yield Calculator widget
 
+// ── STATE ───────────────────────────────────────────────────────────────────
+var currentUser = null;
+var authToken = null;
+var currentCompany = null; // 'potp' | 'bfn'
+var aiHistory = [];
+
 function buildYieldWidget() {
   document.getElementById('widget-tabs').innerHTML = ['⚖️ Yield Calc','📋 Records','📈 Trends'].map(function(t,i){
     return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="yShowTab('+i+')">'+t+'</div>';
