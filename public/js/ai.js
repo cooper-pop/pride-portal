@@ -1,4 +1,4 @@
-// ai.js - AI Analysis
+// ai.js - AI Analysis widget
 
 async function buildAIWidget() {
   aiHistory = [];

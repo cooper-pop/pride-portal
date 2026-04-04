@@ -1,4 +1,4 @@
-// utils.js - Globals and utilities
+// utils.js - Global state and shared utilities
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 var currentUser = null;

@@ -1,4 +1,4 @@
-// dashboard.js - Dashboard and routing
+// dashboard.js - Dashboard and widget routing
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });

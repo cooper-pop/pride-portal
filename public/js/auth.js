@@ -1,4 +1,4 @@
-// auth.js - Authentication
+// auth.js - Authentication and session management
 
 function loadSession() {
   try {
