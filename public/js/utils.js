@@ -52,3 +52,11 @@ var currentUser = null;
 var authToken = null;
 var currentCompany = null; // 'potp' | 'bfn'
 var aiHistory = [];
+
+// Shared widget constants
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+var currentUser = null;
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+var currentUser = null;
