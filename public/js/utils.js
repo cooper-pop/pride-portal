@@ -8,7 +8,6 @@ var aiHistory = [];
 
 var COMPANIES = {
   potp: { name:'Pride of the Pond', slug:'pride-of-the-pond', logo:'https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg', color:'#1a3a6b' },
-  bfn:  { name:'Battle Fish North', slug:'battle-fish-north', logo:'https://i.postimg.cc/jjyxGdSY/Goy-LD.jpg', color:'#0d2137' }
 };
 
 // ── API HELPERS ──────────────────────────────────────────────────────────────
