@@ -1,3 +1,12 @@
+// Global state - defined first so all modules can access them
+const COMPANIES = {
+  potp: { name: 'Pride of the Pond', short: 'POTP' },
+  bfn:  { name: 'Battle Fish North', short: 'BFN'  }
+};
+let currentCompany = null;
+let currentUser    = null;
+let JWT_TOKEN      = null;
+
 // utils.js - Shared utilities
 
 async function apiCall(method, path, body) {

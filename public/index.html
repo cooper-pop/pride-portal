@@ -152,25 +152,7 @@
 <script src="/js/admin.js"></script>
 <script src="/js/print.js"></script>
 <script>
-// ── STATE ───────────────────────────────────────────────────────────────────
-var currentUser = null;
-var authToken = null;
-var currentCompany = null; // 'potp' | 'bfn'
-var aiHistory = [];
-
-var COMPANIES = {
-  potp: { name:'Pride of the Pond', slug:'pride-of-the-pond', logo:'https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg', color:'#1a3a6b' },
-  bfn:  { name:'Battle Fish North', slug:'battle-fish-north', logo:'https://i.postimg.cc/jjyxGdSY/Goy-LD.jpg', color:'#0d2137' }
-};
-
-// ── API HELPERS ──────────────────────────────────────────────────────────────
-
-// Boot
-(function(){
-  const saved = loadSession();
-  if(saved){ showScreen('screen-dash'); buildDash(); }
-  else { showScreen('screen-company'); }
-})();
+// Portal loaded via external JS files
 </script>
 </body>
 </html>
