@@ -211,7 +211,7 @@ async function trimRenderHistory() {
 
 // trimShowTrend not found
 
-function trimRenderAnalytics() {
+async function trimRenderAnalytics() {
     const wc = document.getElementById("widget-content");
     wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
     let data;
@@ -252,7 +252,7 @@ function trimRenderAnalytics() {
     setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
   }
 
-function trimSparkline(values, color, w, h) {
+async function trimSparkline(values, color, w, h) {
     if(!values||!values.length) return "";
     const min = Math.min.apply(null,values), max = Math.max.apply(null,values);
     const range = max-min || 1;
