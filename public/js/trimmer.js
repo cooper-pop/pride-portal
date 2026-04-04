@@ -203,13 +203,9 @@ async function trimRenderHistory() {
     wrap.innerHTML = html;
   }
 
-// trimRenderAnalytics not found
+// trimUpdateDate not found
 
-// trimSparkline not found
-
-// trimBarChart not found
-
-// trimShowTrend not found
+// trimSaveCell not found
 
 async function trimRenderAnalytics() {
     const wc = document.getElementById("widget-content");

@@ -1,4 +1,4 @@
-// admin.js - Admin panel and user management
+// admin.js - Admin Panel
 
 function buildAdminWidget() {
   document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User'].map(function(t,i){

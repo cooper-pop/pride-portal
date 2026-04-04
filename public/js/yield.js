@@ -1,5 +1,8 @@
-// yield.js - Yield Calculator widget
+// yield.js - Yield Calculator
 
+
+/* v1775257297742 len=27107 */
+if(document.currentScript&&document.currentScript.textContent.length<25751){location.reload(true);}
 // ── STATE ───────────────────────────────────────────────────────────────────
 var currentUser = null;
 var authToken = null;
