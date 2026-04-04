@@ -8,8 +8,7 @@ function buildTrimmerWidget() {
 
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
-  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else { trimRenderAnalytics(); setTimeout(function(){ var wc=document.getElementById('widget-content'); if(wc&&!wc.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; pb.innerHTML='<button data-print-analytics="1" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print / Save PDF</button>';
-      pb.querySelector('[data-print-analytics]').addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); wc.prepend(pb); } }, 800); }
+  if(idx===0)trimRenderUpload(); else if(idx===1)trimRenderForm(); else if(idx===2)trimRenderHistory(); else trimRenderAnalytics();
 }
 
 function trimRenderUpload() {
@@ -27,9 +26,8 @@ function trimRenderUpload() {
     '<input type="file" id="trim-camera-input" accept="image/*" capture="environment" style="display:none" onchange="trimHandleFile(this)"/>'+
     '<div id="trim-upload-status" style="display:none;margin-top:12px"></div></div>';
 }
-async
 
-function trimHandleFile(input) {
+async function trimHandleFile(input) {
   var file=input.files[0]; if(!file)return;
   var statusEl=document.getElementById("trim-upload-status");
   statusEl.style.display="block";
@@ -84,9 +82,8 @@ function trimAddRow(){ trimRows.push(trimEmptyRow()); trimRenderForm(); }
 function trimDeleteRow(i){ if(trimRows.length<=1){trimRows[0]=trimEmptyRow();trimRenderForm();return;} trimRows.splice(i,1); trimRenderForm(); }
 
 function trimReset(){ trimRows=[trimEmptyRow()]; trimRenderForm(); }
-async
 
-function trimSave() {
+async function trimSave() {
   var date=document.getElementById("trim-date").value, shift=document.getElementById("trim-shift").value;
   if(!date){toast("Set the date.");return;}
   var vr=trimRows.filter(function(r){return r.full_name||r.emp_number;});
@@ -97,9 +94,8 @@ function trimSave() {
   try{ await apiCall("POST","/api/records?type=trimmer",{report_date:date,shift:shift,notes:document.getElementById("trim-notes").value.trim(),source:"cat2_upload",entries:vr}); setSyncBadge("synced"); toast("Report saved - "+vr.length+" trimmers recorded!"); trimRows=[trimEmptyRow()]; trimRenderForm(); }
   catch(err){ setSyncBadge("error"); toast("Save failed: "+err.message); }
 }
-async
 
-function trimSaveEntry(entryId, reportId) {
+async function trimSaveEntry(entryId, reportId) {
   var row = document.getElementById('erow-'+entryId);
   var inputs = row.querySelectorAll('.hist-inp');
   var data = { entry_id: entryId };
@@ -122,9 +118,8 @@ function trimSaveEntry(entryId, reportId) {
     trimRenderHistory();
   } catch(e) { toast('❌ Save failed: '+e.message); }
 }
-async
 
-function trimDeleteEntry(entryId, btn) {
+async function trimDeleteEntry(entryId, btn) {
   // no confirm needed - button is deliberate
   try {
     await apiCall('DELETE', '/api/records?type=trimmer-entry&id='+entryId);
@@ -136,9 +131,8 @@ function trimDeleteEntry(entryId, btn) {
     toast('Entry deleted');
   } catch(e) { toast('❌ '+e.message); }
 }
-async
 
-function trimDeleteReport(reportId) {
+async function trimDeleteReport(reportId) {
   // no confirm needed - button is deliberate
   try {
     await apiCall('DELETE', '/api/records?type=trimmer&id='+reportId);
@@ -146,12 +140,11 @@ function trimDeleteReport(reportId) {
     trimRenderHistory();
   } catch(e) { toast('❌ '+e.message); }
 }
-async
 
-function trimRenderHistory() {
+async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button></div><div id="trim-analytics-content"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
+    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
     let reports = [];
     try {
       const data = await apiCall('GET', '/api/records?type=trimmer');
@@ -210,180 +203,10 @@ function trimRenderHistory() {
     wrap.innerHTML = html;
   }
 
-  async
+// trimRenderAnalytics not found
 
-function trimUpdateDate(input) {
-    const reportId = input.dataset.id;
-    const newDate = input.value;
-    if (!newDate) return;
-    input.style.borderBottom = '2px solid #f59e0b';
-    try {
-      await apiCall('PATCH', '/api/records?type=trimmer&id='+reportId, { report_date: newDate });
-      input.style.borderBottom = '2px solid #22c55e';
-      setTimeout(()=>{ input.style.borderBottom='2px solid var(--blue)'; },1500);
-    } catch(e) { input.style.borderBottom='2px solid #ef4444'; toast('Date save failed'); }
-  }
+// trimSparkline not found
 
-  async
+// trimBarChart not found
 
-function trimSaveCell(input) {
-    const id = input.dataset.id;
-    const field = input.dataset.field;
-    const val = input.value.trim();
-    input.style.borderBottom = '2px solid #f59e0b';
-    try {
-      const numFields = ['minutes_worked','incoming_lbs','fillet_lbs','nugget_lbs','misccut_lbs','total_lbs'];
-      const body = { id };
-      body[field] = numFields.includes(field) ? (parseFloat(val)||0) : val;
-      await apiCall('PATCH', '/api/records?type=trimmer-entry', body);
-      input.style.borderBottom = '2px solid #22c55e';
-      setTimeout(()=>{ input.style.borderBottom='1px solid #e2e8f0'; },1500);
-    } catch(e) { input.style.borderBottom = '2px solid #ef4444'; toast('Save failed'); }
-  }
-
-async
-
-function trimRenderAnalytics() {
-    const wc = document.getElementById("widget-content");
-    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
-    let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
-    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
-    const rankings = data.rankings || [];
-    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
-    let html = "<div style=\"padding:8px\">";
-    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
-    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
-    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
-    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
-    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
-    html += "</tr></thead><tbody>";
-    rankings.forEach(function(r,i){
-      const under = r.underperformer;
-      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
-      html += "<tr style=\"background:" + bg + "\">";
-      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
-      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
-      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
-      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
-      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
-      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
-      html += "</tr>";
-      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
-    });
-    html += "</tbody></table></div></div>";
-    html += "<div id=\"trim-trend-area\"></div></div>";
-    wc.innerHTML = html;
-    // Print button
-    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
-  }
-
-function trimSparkline(values, color, w, h) {
-    if(!values||!values.length) return "";
-    const min = Math.min.apply(null,values), max = Math.max.apply(null,values);
-    const range = max-min || 1;
-    const pts = values.map(function(v,i){
-      const x = (i/(values.length-1||1))*w;
-      const y = h - ((v-min)/range)*(h-4) - 2;
-      return x.toFixed(1)+","+y.toFixed(1);
-    }).join(" ");
-    return "<svg width=\""+w+"\" height=\""+h+"\" style=\"display:block\"><polyline points=\""+pts+"\" fill=\"none\" stroke=\""+color+"\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>";
-  }
-
-function trimBarChart(labels, values, color, title) {
-    const max = Math.max.apply(null,values)||1;
-    const barW = Math.max(18, Math.min(40, Math.floor(340/values.length)));
-    const w = barW*values.length+40, h = 120;
-    let svg = "<svg width=\""+w+"\" height=\""+h+"\" style=\"display:block;overflow:visible\">";
-    svg += "<text x=\"0\" y=\"12\" font-size=\"11\" fill=\"#64748b\">"+title+"</text>";
-    values.forEach(function(v,i){
-      const bh = Math.max(2,((v/max)*(h-30)));
-      const x = i*barW+20, y = h-bh-16;
-      svg += "<rect x=\""+x+"\" y=\""+y+"\" width=\""+(barW-3)+"\" height=\""+bh+"\" fill=\""+color+"\" rx=\"2\"/>";
-      svg += "<text x=\""+(x+(barW-3)/2)+"\" y=\""+(h-2)+"\" font-size=\"9\" text-anchor=\"middle\" fill=\"#64748b\">"+labels[i]+"</text>";
-      svg += "<text x=\""+(x+(barW-3)/2)+"\" y=\""+(y-2)+"\" font-size=\"9\" text-anchor=\"middle\" fill=\""+color+"\">"+parseFloat(v).toFixed(1)+"</text>";
-    });
-    svg += "</svg>";
-    return svg;
-  }
-
-  async
-
-function trimShowTrend(encodedName, btn) {
-    const name = decodeURIComponent(encodedName);
-    const area = document.getElementById("trim-trend-area");
-    if(!area) return;
-    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trend…</div></div>";
-    btn.disabled = true;
-    let data;
-    try { data = await apiCall("GET", "/api/analytics?type=trimmer_trends&days=90&trimmer_name="+encodedName); }
-    catch(e) { area.innerHTML = "<p style=\"color:#ef4444\">Trend failed: " + e.message + "</p>"; btn.disabled=false; return; }
-    const trends = data.trends || [];
-    if(!trends.length){ area.innerHTML = "<p style=\"text-align:center;padding:16px;color:var(--sub)\">No data for "+name+"</p>"; btn.disabled=false; return; }
-    // Extract series
-    const dates = trends.map(function(t){ return (t.report_date||"").slice(5,10); });
-    const lph = trends.map(function(t){ return parseFloat(t.realtime_lbs_per_hour||0); });
-    const fPct = trends.map(function(t){ return parseFloat(t.fillet_yield_pct||0); });
-    const nPct = trends.map(function(t){ return parseFloat(t.nugget_yield_pct||0); });
-    const mcPct = trends.map(function(t){ return parseFloat(t.misccut_yield_pct||0); });
-    const totPct = trends.map(function(t){ return parseFloat(t.total_yield_pct||0); });
-    const inLbs = trends.map(function(t){ return parseFloat(t.incoming_lbs||0); });
-    // Build charts
-    let html = "<div class=\"wcard\" style=\"margin-top:12px\">";
-    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">📉 " + name + " — Last 90 Days (" + trends.length + " shifts)</h3>";
-    // Summary stats
-    const avgLph = lph.reduce(function(a,b){return a+b;},0)/lph.length;
-    const avgFillet = fPct.reduce(function(a,b){return a+b;},0)/fPct.length;
-    const avgNugget = nPct.reduce(function(a,b){return a+b;},0)/nPct.length;
-    const avgMisc = mcPct.reduce(function(a,b){return a+b;},0)/mcPct.length;
-    const avgTot = totPct.reduce(function(a,b){return a+b;},0)/totPct.length;
-    html += "<div style=\"display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px\">";
-    html += "<div style=\"background:#f0fdf4;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#16a34a\">"+avgLph.toFixed(1)+"</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Lbs/Hr</div></div>";
-    html += "<div style=\"background:#eff6ff;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#2563eb\">"+avgFillet.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Fillet</div></div>";
-    html += "<div style=\"background:#fefce8;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#ca8a04\">"+avgNugget.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Nugget</div></div>";
-    html += "<div style=\"background:#fdf4ff;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#9333ea\">"+avgMisc.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg MiscCut</div></div>";
-    html += "<div style=\"background:#f0fdf4;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#16a34a\">"+avgTot.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Tot Yield</div></div>";
-    html += "</div>";
-    // Charts row
-    html += "<div style=\"display:flex;flex-wrap:wrap;gap:16px;overflow-x:auto\">";
-    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Lbs/Hr per shift</div>";
-    html += trimBarChart(dates, lph, "#16a34a", "")+"</div>";
-    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Fillet % trend</div>";
-    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(fPct,"#2563eb",220,70) + "</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% → "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
-    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Nugget % trend</div>";
-    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(nPct,"#ca8a04",220,70) + "</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% → "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
-    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">MiscCut % trend</div>";
-    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(mcPct,"#9333ea",220,70) + "</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% → "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
-    html += "</div>";
-    // Detail table
-    html += "<details style=\"margin-top:12px\"><summary style=\"font-size:0.8rem;color:var(--blue);cursor:pointer\">Show raw data (" + trends.length + " shifts)</summary>";
-    html += "<div style=\"overflow-x:auto;margin-top:6px\"><table class=\"trim-table\" style=\"width:100%;font-size:0.74rem\"><thead><tr>";
-    ["Date","Shift","In Lbs","Fillet%","Nugget%","MiscCut%","Tot%","Lbs/Hr"].forEach(function(h){ html += "<th>"+h+"</th>"; });
-    html += "</tr></thead><tbody>";
-    trends.forEach(function(t){
-      html += "<tr>";
-      html += "<td>"+(t.report_date||"").slice(0,10)+"</td>";
-      html += "<td>"+(t.shift||"")+"</td>";
-      html += "<td>"+parseFloat(t.incoming_lbs||0).toFixed(0)+"</td>";
-      html += "<td>"+parseFloat(t.fillet_yield_pct||0).toFixed(1)+"%</td>";
-      html += "<td>"+parseFloat(t.nugget_yield_pct||0).toFixed(1)+"%</td>";
-      html += "<td>"+parseFloat(t.misccut_yield_pct||0).toFixed(1)+"%</td>";
-      html += "<td>"+parseFloat(t.total_yield_pct||0).toFixed(1)+"%</td>";
-      html += "<td style=\"font-weight:700\">"+parseFloat(t.realtime_lbs_per_hour||0).toFixed(1)+"</td>";
-      html += "</tr>";
-    });
-    html += "</tbody></table></div></details>";
-    html += "</div>";
-    area.innerHTML = html;
-    area.scrollIntoView({behavior:"smooth",block:"start"});
-    btn.disabled = false;
-  }
+// trimShowTrend not found

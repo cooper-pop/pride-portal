@@ -1,5 +1,4 @@
 // print.js - Print/PDF for any widget
-
 function printReport(title, contentHtml) {
   const w = window.open('','_blank','width=900,height=700');
   const date = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});

@@ -1,4 +1,4 @@
-// admin.js - Admin panel
+// admin.js - Admin panel and user management
 
 function buildAdminWidget() {
   document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User'].map(function(t,i){
@@ -58,23 +58,6 @@ async function adminDeleteUser(id, name) {
   try { await apiCall('DELETE','/api/users?id='+id); adminRenderUsers(); toast('User removed.'); }
   catch(e){ toast('⚠️ '+e.message); }
 }
-
-// ── INIT ─────────────────────────────────────────────────────────────────────
-(function init() {
-  if (loadSession() && authToken && currentUser && currentCompany) {
-    if (currentUser && currentUser.force_password_change) {
-      window._pendingPasskeySetup = currentUser && currentUser.needs_passkey_setup;
-      showScreen('screen-change-password');
-    } else if (currentUser && currentUser.needs_passkey_setup) {
-      buildDash(); showScreen('screen-passkey-setup');
-    } else {
-      buildDash(); showScreen('screen-dash');
-    }
-  }
-})();
-
-
-// ── PASSKEY SETUP ──────────────────────────────────────────────────────────
 
 async function loadUserMgmt() {
   showScreen('screen-user-mgmt');

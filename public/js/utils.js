@@ -1,13 +1,17 @@
-// Global state - defined first so all modules can access them
-const COMPANIES = {
-  potp: { name: 'Pride of the Pond', short: 'POTP' },
-  bfn:  { name: 'Battle Fish North', short: 'BFN'  }
-};
-let currentCompany = null;
-let currentUser    = null;
-let JWT_TOKEN      = null;
+// utils.js - Global state and shared utilities
 
-// utils.js - Shared utilities
+// ── STATE ───────────────────────────────────────────────────────────────────
+var currentUser = null;
+var authToken = null;
+var currentCompany = null; // 'potp' | 'bfn'
+var aiHistory = [];
+
+var COMPANIES = {
+  potp: { name:'Pride of the Pond', slug:'pride-of-the-pond', logo:'https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg', color:'#1a3a6b' },
+  bfn:  { name:'Battle Fish North', slug:'battle-fish-north', logo:'https://i.postimg.cc/jjyxGdSY/Goy-LD.jpg', color:'#0d2137' }
+};
+
+// ── API HELPERS ──────────────────────────────────────────────────────────────
 
 async function apiCall(method, path, body) {
   var opts = { method: method, headers: { 'Content-Type': 'application/json' } };

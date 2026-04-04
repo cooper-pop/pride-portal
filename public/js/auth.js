@@ -1,4 +1,4 @@
-// auth.js - Authentication
+// auth.js - Authentication and session management
 
 function loadSession() {
   try {
@@ -19,10 +19,6 @@ function clearSession() {
   authToken = null; currentUser = null; currentCompany = null;
 }
 
-// ── NAV ──────────────────────────────────────────────────────────────────────
-document.getElementById('card-potp').addEventListener('click', function(){ selectCompany('potp'); });
-document.getElementById('card-bfn').addEventListener('click', function(){ selectCompany('bfn'); });
-
 function selectCompany(co) {
   currentCompany = co;
   var c = COMPANIES[co];
@@ -36,10 +32,6 @@ function selectCompany(co) {
   setTimeout(function(){ document.getElementById('login-user').focus(); }, 300);
 }
 
-document.getElementById('login-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
-document.getElementById('login-btn').addEventListener('click', doLogin);
-document.getElementById('back-link').addEventListener('click', function(){ showScreen('screen-select'); });
-
 async function doLogin() {
   var username = document.getElementById('login-user').value.trim();
   var password = document.getElementById('login-pass').value;
@@ -49,7 +41,7 @@ async function doLogin() {
   btn.disabled = true; btn.textContent = 'Signing in...'; errEl.style.display = 'none';
   try {
     var slug = COMPANIES[currentCompany].slug;
-    var data = await apiCall('POST', '/api/login', { username: username, password: password, company_slug: (currentCompany === 'potp' ? 'pride-of-the-pond' : currentCompany === 'bfn' ? 'battle-fish-north' : currentCompany) });
+    var data = await apiCall('POST', '/api/login', { username: username, password: password, company_slug: slug });
     authToken = data.token;
     currentUser = data.user;
     saveSession();
@@ -68,10 +60,6 @@ async function doLogin() {
     btn.disabled = false; btn.textContent = 'Sign In';
   }
 }
-
-document.getElementById('logout-btn').addEventListener('click', function(){
-  clearSession(); currentCompany = null; showScreen('screen-select');
-});
 
 async function setupPasskey() {
   try {
@@ -125,8 +113,6 @@ function bufferToBase64url(buf) {
   return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
 }
 
-// ── FORCE PASSWORD CHANGE ──────────────────────────────────────────────────
-
 async function submitPasswordChange() {
   const np = document.getElementById('new-pwd').value;
   const cp = document.getElementById('confirm-pwd').value;
@@ -142,6 +128,3 @@ async function submitPasswordChange() {
     else { showScreen('screen-dash'); }
   } catch(e) { err.textContent=e.message; err.style.display='block'; }
 }
-
-// ── USER MANAGEMENT ────────────────────────────────────────────────────────
-let umEditId = null;

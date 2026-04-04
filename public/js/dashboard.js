@@ -1,11 +1,9 @@
-// dashboard.js - Dashboard
+// dashboard.js - Dashboard and widget routing
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
   document.getElementById(id).classList.add('active');
 }
-
-// ── SESSION ──────────────────────────────────────────────────────────────────
 
 function buildDash() {
   var c = COMPANIES[currentCompany];
@@ -38,9 +36,6 @@ function buildDash() {
   }).join('');
 }
 
-// ── WIDGET ENGINE ─────────────────────────────────────────────────────────────
-document.getElementById('widget-close').addEventListener('click', closeWidget);
-
 function closeWidget() {
   document.getElementById('widget-overlay').classList.remove('open');
   document.getElementById('widget-content').innerHTML = '';
@@ -59,11 +54,3 @@ function openWidget(id, label) {
   else if (id === 'admin') buildAdminWidget();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// YIELD CALCULATOR
-// ══════════════════════════════════════════════════════════════════════════════
-var LINE_COLORS = {'Line 1':'#1a3a6b','Line 2':'#c0392b','Line 3':'#1d9e75','Line 4':'#e67e22','Gut/Whole':'#8e44ad'};
-var ALL_LINES = ['Line 1','Line 2','Line 3','Line 4','Gut/Whole'];
-var yActiveTrend = ALL_LINES.slice();
-var yCharts = {};

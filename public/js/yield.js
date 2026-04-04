@@ -1,4 +1,4 @@
-// yield.js - Yield Calculator
+// yield.js - Yield Calculator widget
 
 function buildYieldWidget() {
   document.getElementById('widget-tabs').innerHTML = ['⚖️ Yield Calc','📋 Records','📈 Trends'].map(function(t,i){
@@ -123,10 +123,3 @@ function yToggleLine(line) {
   else { yActiveTrend.push(line); }
   apiCall('GET','/api/records?type=yield').then(function(log){ yDrawTrends(log); });
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// INJECTION CALCULATOR
-// ══════════════════════════════════════════════════════════════════════════════
-var INJ_PRODUCTS={fillets:['2-3 oz','3-4 oz','4-5 oz','4.5-5.5 oz','5-6 oz','6-7 oz','7-9 oz','9-11 oz','11+ oz'],splits:['2-3 oz','3-4 oz','4-5 oz','4.5-5.5 oz','5-6 oz','6-7 oz','7-9 oz','9-11 oz','11+ oz'],deepskin:['7-9 oz Deepskin Fillet','11-13 oz Deepskin Fillet'],strips:['Premium Strips'],wholefish:['3-5 oz','5-7 oz','7-9 oz','9-11 oz','13-15 oz','15-17 oz'],nuggets:['Nuggets'],steaks:['Steaks'],bites:['Bites']};
-var INJ_CAT_LABELS={fillets:'Fillets',splits:'Splits',deepskin:'Deepskin Fillets',strips:'Premium Strips',wholefish:'Whole Fish',nuggets:'Nuggets',steaks:'Steaks',bites:'Bites'};
-var INJ_STEPS=[{id:'soak',label:'Soak',icon:'🪣',inLbl:'Beginning Weight',outLbl:'Finished Weight',cls:'step-soak'},{id:'inj',label:'Injection',icon:'💉',inLbl:'Incoming Weight',outLbl:'Outgoing Weight',cls:'step-inj'},{id:'dehy',label:'Dehydration',icon:'🌡️',inLbl:'Incoming Weight',outLbl:'Finished Weight',cls:'step-dehy'},{id:'glaze',label:'Glaze',icon:'✨',inLbl:'Incoming Weight',outLbl:'Outgoing Weight',cls:'step-glaze'}];

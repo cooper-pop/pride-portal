@@ -1,4 +1,4 @@
-// injector.js - Injection Calculator
+// injector.js - Injection Calculator widget
 
 function buildInjectionWidget(){document.getElementById('widget-tabs').innerHTML=['🧪 New Batch','📋 Batch Log'].map(function(t,i){return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="injShowTab('+i+')">'+t+'</div>';}).join('');injShowTab(0);}
 
@@ -63,10 +63,3 @@ async function injRenderLog(){
 }
 
 async function injDelete(id){if(!confirm('Delete this batch?'))return;try{await apiCall('DELETE','/api/records?type=injection&id='+id);injRenderLog();}catch(e){toast('⚠️ Delete failed');}}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TRIMMER LOG
-// ============================================================
-var trimRows = [];
-var trimDeletedIds = new Set();
-var trimCharts = {};
