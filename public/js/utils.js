@@ -60,3 +60,11 @@ var currentUser = null;
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 var currentUser = null;
+
+// Yield widget globals
+var ALL_LINES = ['Line 1','Line 2','Line 3','Line 4','Gut/Whole'];
+var yActiveTrend = ALL_LINES.slice();
+var yCharts = {};
+
+// Injection widget globals
+var INJ_CAT_LABELS={fillets:'Fillets',splits:'Splits',deepskin:'Deepskin Fillets',strips:'Premium Strips',wholefish:'Whole Fish',nuggets:'Nuggets',steaks:'Steaks',bites:'Bites'};
