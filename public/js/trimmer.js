@@ -230,5 +230,397 @@ async function trimRenderHistory() {
     } catch(e) { input.style.borderBottom = '2px solid #ef4444'; toast('Save failed'); }
   }
 
+function trimRenderAnalytics() {
+    const wc = document.getElementById("widget-content");
+    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
+    let data;
+    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
+    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
+    const rankings = data.rankings || [];
+    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
+    let html = "<div style=\"padding:8px\">";
+    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
+    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
+    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
+    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
+    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
+    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
+    html += "</tr></thead><tbody>";
+    rankings.forEach(function(r,i){
+      const under = r.underperformer;
+      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
+      html += "<tr style=\"background:" + bg + "\">";
+      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
+      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
+      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
+      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
+      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
+      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
+      html += "</tr>";
+      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
+    });
+    html += "</tbody></table></div></div>";
+    html += "<div id=\"trim-trend-area\"></div></div>";
+    wc.innerHTML = html;
+    // Print button
+    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
+  }
+
+function buildAIWidget() {
+  aiHistory = [];
+  document.getElementById('widget-tabs').innerHTML = '';
+  document.getElementById('ai-input-area').style.display = 'block';
+  setTimeout(function(){var b=document.querySelector('[data-print-ai]');if(b)b.addEventListener('click',function(){printReport('AI Analysis Report',document.getElementById('ai-chat').innerHTML);});},100);
+  document.getElementById('widget-content').innerHTML =
+    '<div class="wcard" style="margin-bottom:8px"><div style="font-size:0.85rem;font-weight:700;color:var(--purple);margin-bottom:8px">🤖 Ask anything about your data</div>' +
+    '<div class="ai-quick">'+
+    ['Who are the top trimmers this week?','Show weekly employee rankings','Who is underperforming and why?','Injection pickup trend last 30 days','Compare AM vs PM shift yield','Generate monthly summary'].map(function(q){
+      return '<button class="ai-quick-btn" onclick="aiAsk(\''+q+'\')">'+q+'</button>';
+    }).join('')+'</div></div>' +
+    '<div style="display:flex;justify-content:flex-end;padding:4px 0"><button onclick="printReport(\'AI Analysis Report\',document.getElementById(\'ai-chat\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button></div><div class="ai-chat" id="ai-chat"></div>';
+}
+
+function aiAsk(q) {
+  document.getElementById('ai-input').value = q;
+  aiSend();
+}
+
+async function aiSend() {
+  var input = document.getElementById('ai-input');
+  var q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  var btn = document.getElementById('ai-send-btn');
+  btn.disabled = true; btn.textContent = '...';
+  var chat = document.getElementById('ai-chat');
+  if (!chat) return;
+  chat.innerHTML += '<div class="ai-msg user">'+q+'</div>';
+  chat.innerHTML += '<div class="ai-msg assistant" id="ai-thinking">⏳ Analyzing your data...</div>';
+  chat.scrollTop = chat.scrollHeight;
+  try {
+    var data = await apiCall('POST','/api/ai',{ query: q });
+    var thinkEl = document.getElementById('ai-thinking');
+    if (thinkEl) { var _t=data.response,_h=_t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); _h=_h.replace(/((?:[^\n]*\|[^\n]*\n)+)/g,function(blk){var rows=blk.trim().split('\n').filter(function(l){return l.trim()&&!/^[\s|:-]+$/.test(l.trim());});if(rows.length<2)return blk;var out='<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:0.85rem">';rows.forEach(function(row,ri){var cells=row.split('|').slice(1,-1);var tag=ri===0?'th':'td';var st=ri===0?'background:#1e3a8a;color:#fff;padding:4px 8px;text-align:left':'padding:3px 8px;border-bottom:1px solid #e2e8f0';out+='<tr>'+cells.map(function(c){return'<'+tag+' style="'+st+'">'+c.trim()+'</'+tag+'>';}).join('')+'</tr>';});return out+'</table>';}); _h=_h.replace(/^## (.+)$/gm,'<h3 style="margin:10px 0 5px;font-size:.98rem;color:#1e3a8a;border-bottom:1px solid #e2e8f0;padding-bottom:3px">$1</h3>').replace(/^### (.+)$/gm,'<h4 style="margin:8px 0 3px;font-size:.88rem;color:#1e3a8a">$1</h4>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*] (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>').replace(/^\d+\. (.+)$/gm,'<li style="margin:2px 0 2px 16px">$1</li>').replace(/\n\n+/g,'</p><p style="margin:6px 0">').replace(/\n/g,'<br>'); thinkEl.innerHTML='<p style="margin:0">'+_h+'</p>'; }
+    else chat.innerHTML += '<div class="ai-msg assistant">'+data.response+'</div>';
+  } catch(e) {
+    var thinkEl2 = document.getElementById('ai-thinking');
+    if (thinkEl2) thinkEl2.textContent = '⚠️ Error: '+e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send';
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADMIN — USER MANAGEMENT
+// ══════════════════════════════════════════════════════════════════════════════
+function buildAdminWidget() {
+  document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User'].map(function(t,i){
+    return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="adminShowTab('+i+')">'+t+'</div>';
+  }).join('');
+  adminShowTab(0);
+}
+
+function adminShowTab(idx) {
+  document.querySelectorAll('.widget-tab').forEach(function(t,i){ t.classList.toggle('active',i===idx); });
+  if (idx===0) adminRenderUsers(); else adminRenderAddUser();
+}
+
+async function adminRenderUsers() {
+  document.getElementById('widget-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    var users = await apiCall('GET','/api/users');
+    var rolePillClass = { admin:'role-admin', manager:'role-manager', supervisor:'role-supervisor' };
+    var html = '<div class="wcard" style="padding:10px 14px;font-size:0.82rem;font-weight:700;color:var(--blue)">'+users.length+' user'+(users.length===1?'':'s')+' — '+currentUser.company_name+'</div>';
+    if (!users.length) html += '<div class="log-empty">No users yet.</div>';
+    else {
+      users.forEach(function(u){
+        var isMe = u.id === currentUser.id;
+        html += '<div class="user-row"><div><div class="user-row-name">'+u.full_name+(isMe?' <span style="font-size:0.7rem;color:var(--sub)">(you)</span>':'')+'</div><div class="user-row-meta">@'+u.username+'</div></div><span class="role-pill '+(rolePillClass[u.role]||'role-supervisor')+'">'+u.role+'</span>'+(isMe?'':'<button class="wbtn wbtn-danger" style="padding:4px 9px;font-size:0.72rem" onclick="adminDeleteUser(\''+u.id+'\',\''+u.full_name+'\')">Remove</button>')+'</div>';
+      });
+    }
+    document.getElementById('widget-content').innerHTML = html;
+  } catch(e){ document.getElementById('widget-content').innerHTML='<div class="log-empty">⚠️ '+e.message+'</div>'; }
+}
+
+function adminRenderAddUser() {
+  document.getElementById('widget-content').innerHTML =
+    '<div class="wcard"><h3>➕ Add New User</h3>' +
+    '<div class="wfield"><label>Full Name</label><input type="text" id="nu-name" placeholder="John Smith"/></div>' +
+    '<div class="wfield"><label>Username</label><input type="text" id="nu-user" placeholder="jsmith" autocapitalize="none"/></div>' +
+    '<div class="wfield"><label>Password</label><input type="password" id="nu-pass" placeholder="Set a strong password"/></div>' +
+    '<div class="wfield"><label>Role</label><select id="nu-role"><option value="supervisor">Supervisor</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>' +
+    '<div class="wbtn-row"><button class="wbtn wbtn-primary" onclick="adminAddUser()">Create User</button></div></div>';
+}
+
+async function adminAddUser() {
+  var name = document.getElementById('nu-name').value.trim();
+  var user = document.getElementById('nu-user').value.trim();
+  var pass = document.getElementById('nu-pass').value;
+  var role = document.getElementById('nu-role').value;
+  if (!name||!user||!pass) { toast('All fields required.'); return; }
+  if (pass.length < 6) { toast('Password must be at least 6 characters.'); return; }
+  try {
+    await apiCall('POST','/api/users',{ full_name:name, username:user, password:pass, role:role });
+    toast('✅ User '+name+' created!');
+    adminShowTab(0);
+  } catch(e){ toast('⚠️ '+e.message); }
+}
+
+async function adminDeleteUser(id, name) {
+  if (!confirm('Remove '+name+' from the portal?')) return;
+  try { await apiCall('DELETE','/api/users?id='+id); adminRenderUsers(); toast('User removed.'); }
+  catch(e){ toast('⚠️ '+e.message); }
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+(function init() {
+  if (loadSession() && authToken && currentUser && currentCompany) {
+    if (currentUser && currentUser.force_password_change) {
+      window._pendingPasskeySetup = currentUser && currentUser.needs_passkey_setup;
+      showScreen('screen-change-password');
+    } else if (currentUser && currentUser.needs_passkey_setup) {
+      buildDash(); showScreen('screen-passkey-setup');
+    } else {
+      buildDash(); showScreen('screen-dash');
+    }
+  }
+})();
 
 
+// ── PASSKEY SETUP ──────────────────────────────────────────────────────────
+async function setupPasskey() {
+  try {
+    const ch = await apiCall('POST', '/api/passkey?action=register-challenge');
+    const credOpts = {
+      challenge: base64urlToBuffer(ch.challenge),
+      rp: ch.rp,
+      user: { id: base64urlToBuffer(ch.user.id), name: ch.user.name, displayName: ch.user.displayName },
+      pubKeyCredParams: ch.pubKeyCredParams,
+      authenticatorSelection: ch.authenticatorSelection,
+      timeout: ch.timeout,
+      attestation: ch.attestation
+    };
+    const cred = await navigator.credentials.create({ publicKey: credOpts });
+    await apiCall('POST', '/api/passkey?action=register-verify', {
+      credential: {
+        id: cred.id,
+        rawId: bufferToBase64url(cred.rawId),
+        type: cred.type,
+        response: {
+          clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+          attestationObject: bufferToBase64url(cred.response.attestationObject)
+        }
+      },
+      device_name: 'iPhone'
+    });
+    toast('✅ Face ID set up successfully!');
+    showScreen('screen-dash');
+  } catch(err) {
+    toast('Setup failed: ' + err.message);
+  }
+}
+
+function skipPasskeySetup() {
+  showScreen('screen-dash');
+  toast('You can set up Face ID later in Settings');
+}
+
+function base64urlToBuffer(b64) {
+  const s = b64.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(s);
+  const arr = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return arr.buffer;
+}
+function bufferToBase64url(buf) {
+  const arr = new Uint8Array(buf);
+  let s = '';
+  arr.forEach(b => s += String.fromCharCode(b));
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+// ── FORCE PASSWORD CHANGE ──────────────────────────────────────────────────
+async function submitPasswordChange() {
+  const np = document.getElementById('new-pwd').value;
+  const cp = document.getElementById('confirm-pwd').value;
+  const err = document.getElementById('chpwd-error');
+  err.style.display = 'none';
+  if (np.length < 8) { err.textContent='Password must be at least 8 characters'; err.style.display='block'; return; }
+  if (np !== cp) { err.textContent='Passwords do not match'; err.style.display='block'; return; }
+  try {
+    await apiCall('PATCH', '/api/users', { id: currentUser.id, password: np });
+    toast('Password updated!');
+    buildDash();
+    if (window._pendingPasskeySetup) { showScreen('screen-passkey-setup'); }
+    else { showScreen('screen-dash'); }
+  } catch(e) { err.textContent=e.message; err.style.display='block'; }
+}
+
+// ── USER MANAGEMENT ────────────────────────────────────────────────────────
+let umEditId = null;
+
+async function loadUserMgmt() {
+  showScreen('screen-user-mgmt');
+  const wrap = document.getElementById('um-table-wrap');
+  wrap.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Loading...</div>';
+  try {
+    const users = await apiCall('GET', '/api/users');
+    wrap.innerHTML = `<table class="um-table">
+      <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Passkey</th><th>Actions</th></tr></thead>
+      <tbody>${users.map(u => `<tr>
+        <td><strong>${u.full_name}</strong></td>
+        <td>${u.username}</td>
+        <td style="color:var(--sub);font-size:0.82rem">${u.email||'-'}</td>
+        <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+        <td><span class="status-dot status-${u.active?'active':'inactive'}"></span>${u.active?'Active':'Inactive'}</td>
+        <td id="pk-${u.id}" style="font-size:0.82rem;color:var(--sub)">...</td>
+        <td>
+          <button class="um-action-btn" onclick="umEditUser('${u.id}','${u.full_name}','${u.username}','${u.email||''}','${u.role}')">Edit</button>
+          <button class="um-action-btn" onclick="umResetPasskey('${u.id}','${u.full_name}')">Reset Key</button>
+          <button class="um-action-btn danger" onclick="umToggleActive('${u.id}',${u.active})">${u.active?'Deactivate':'Activate'}</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+    // Load passkey status per user
+    users.forEach(u => loadPasskeyStatus(u.id));
+  } catch(e) { wrap.innerHTML = '<div style="color:var(--red);padding:20px">Error: '+e.message+'</div>'; }
+}
+
+async function loadPasskeyStatus(uid) {
+  try {
+    const pks = await apiCall('GET', '/api/passkey?user_id='+uid);
+    const el = document.getElementById('pk-'+uid);
+    if (el) el.textContent = pks.length ? '✅ '+pks[0].device_name : '⚠️ Not set';
+  } catch(e) {}
+}
+
+function umShowAddModal() {
+  umEditId = null;
+  document.getElementById('modal-title').textContent = 'Add User';
+  document.getElementById('um-full-name').value = '';
+  document.getElementById('um-username').value = '';
+  document.getElementById('um-email').value = '';
+  document.getElementById('um-role').value = 'supervisor';
+  document.getElementById('um-password').value = '';
+  document.getElementById('um-pwd-field').style.display = 'block';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('user-modal').style.display = 'flex';
+}
+
+function umEditUser(id, name, username, email, role) {
+  umEditId = id;
+  document.getElementById('modal-title').textContent = 'Edit User';
+  document.getElementById('um-full-name').value = name;
+  document.getElementById('um-username').value = username;
+  document.getElementById('um-email').value = email;
+  document.getElementById('um-role').value = role;
+  document.getElementById('um-password').value = '';
+  document.getElementById('um-pwd-field').style.display = 'block';
+  document.getElementById('modal-error').style.display = 'none';
+  document.getElementById('user-modal').style.display = 'flex';
+}
+
+function umCloseModal() { document.getElementById('user-modal').style.display = 'none'; }
+
+async function umSaveUser() {
+  const err = document.getElementById('modal-error');
+  err.style.display = 'none';
+  const full_name = document.getElementById('um-full-name').value.trim();
+  const username = document.getElementById('um-username').value.trim();
+  const email = document.getElementById('um-email').value.trim();
+  const role = document.getElementById('um-role').value;
+  const password = document.getElementById('um-password').value;
+  if (!full_name || !username) { err.textContent='Name and username required'; err.style.display='block'; return; }
+  try {
+    if (umEditId) {
+      const body = { id: umEditId, full_name, email, role };
+      if (password) body.password = password;
+      await apiCall('PATCH', '/api/users', body);
+      toast('User updated');
+    } else {
+      const pwd = password || username + Math.floor(100+Math.random()*900) + '!';
+      await apiCall('POST', '/api/users', { username, full_name, email, role, password: pwd });
+      toast('User created — temp password: ' + pwd);
+    }
+    umCloseModal();
+    loadUserMgmt();
+  } catch(e) { err.textContent=e.message; err.style.display='block'; }
+}
+
+async function umResetPasskey(uid, name) {
+  if (!confirm('Reset passkey for ' + name + '? They will need to set up Face ID again on next login.')) return;
+  try {
+    const pks = await apiCall('GET', '/api/passkey?user_id='+uid);
+    for (const pk of pks) await apiCall('DELETE', '/api/passkey?id='+pk.id);
+    toast('Passkey reset for ' + name);
+    loadUserMgmt();
+  } catch(e) { toast('Error: '+e.message); }
+  // Inject print button at top of analytics content
+  setTimeout(function(){
+    var _wc = document.getElementById('widget-content');
+    if(_wc && !_wc.querySelector('.analytics-print-btn')){
+      var _pb = document.createElement('div');
+      _pb.className = 'analytics-print-btn';
+      _pb.style.cssText = 'display:flex;justify-content:flex-end;padding:4px 8px 0';
+      _pb.innerHTML = '<button onclick="printReport(\'Trimmer Analytics\',document.getElementById(\'widget-content\').innerHTML)" style="font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer">🖨️ Print</button>';
+      _wc.prepend(_pb);
+    }
+  }, 100);
+}
+
+async function umToggleActive(uid, currentlyActive) {
+  const action = currentlyActive ? 'deactivate' : 'activate';
+  if (!confirm('Are you sure you want to ' + action + ' this user?')) return;
+  try {
+    await apiCall('PATCH', '/api/users', { id: uid, active: !currentlyActive });
+    toast('User ' + action + 'd');
+    loadUserMgmt();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+  async function trimRenderAnalytics() {
+    const wc = document.getElementById("widget-content");
+    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
+    let data;
+    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
+    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
+    const rankings = data.rankings || [];
+    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
+    let html = "<div style=\"padding:8px\">";
+    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
+    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
+    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
+    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
+    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
+    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
+    html += "</tr></thead><tbody>";
+    rankings.forEach(function(r,i){
+      const under = r.underperformer;
+      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
+      html += "<tr style=\"background:" + bg + "\">";
+      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
+      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
+      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
+      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
+      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
+      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
+      html += "</tr>";
+      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
+    });
+    html += "</tbody></table></div></div>";
+    html += "<div id=\"trim-trend-area\"></div></div>";
+    wc.innerHTML = html;
+    // Print button
+    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
+  }
