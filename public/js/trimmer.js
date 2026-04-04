@@ -1,3 +1,5 @@
+// trimmer.js - Trimmer Log and Analytics
+
 // trimmer.js - Trimmer Log
 
 function buildTrimmerWidget() {
@@ -228,47 +230,6 @@ async function trimRenderHistory() {
       input.style.borderBottom = '2px solid #22c55e';
       setTimeout(()=>{ input.style.borderBottom='1px solid #e2e8f0'; },1500);
     } catch(e) { input.style.borderBottom = '2px solid #ef4444'; toast('Save failed'); }
-  }
-
-function trimRenderAnalytics() {
-    const wc = document.getElementById("widget-content");
-    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
-    let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
-    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
-    const rankings = data.rankings || [];
-    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
-    let html = "<div style=\"padding:8px\">";
-    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
-    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
-    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
-    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
-    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
-    html += "</tr></thead><tbody>";
-    rankings.forEach(function(r,i){
-      const under = r.underperformer;
-      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
-      html += "<tr style=\"background:" + bg + "\">";
-      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
-      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
-      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
-      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
-      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
-      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
-      html += "</tr>";
-      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
-    });
-    html += "</tbody></table></div></div>";
-    html += "<div id=\"trim-trend-area\"></div></div>";
-    wc.innerHTML = html;
-    // Print button
-    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
   }
 
 function buildAIWidget() {
@@ -584,43 +545,4 @@ async function umToggleActive(uid, currentlyActive) {
   } catch(e) { toast('Error: '+e.message); }
 }
 
-  async function trimRenderAnalytics() {
-    const wc = document.getElementById("widget-content");
-    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
-    let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
-    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
-    const rankings = data.rankings || [];
-    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
-    let html = "<div style=\"padding:8px\">";
-    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
-    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
-    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
-    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
-    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
-    html += "</tr></thead><tbody>";
-    rankings.forEach(function(r,i){
-      const under = r.underperformer;
-      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
-      html += "<tr style=\"background:" + bg + "\">";
-      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
-      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
-      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
-      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
-      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
-      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend ▾</button></td>";
-      html += "</tr>";
-      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">⚠ " + r.underperformer_reason + "</td></tr>";
-    });
-    html += "</tbody></table></div></div>";
-    html += "<div id=\"trim-trend-area\"></div></div>";
-    wc.innerHTML = html;
-    // Print button
-    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
-  }
+  async
