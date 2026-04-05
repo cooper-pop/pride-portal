@@ -1,26 +1,4 @@
 
-  if (action === 'fixdates') {
-    // Shift all record_dates stored at UTC midnight +1 day to correct the timezone offset
-    const t1 = await sql`UPDATE trimmer_records SET record_date = record_date + INTERVAL '1 day' WHERE EXTRACT(HOUR FROM record_date) = 0 AND EXTRACT(MINUTE FROM record_date) = 0 AND EXTRACT(SECOND FROM record_date) = 0`;
-    const y1 = await sql`UPDATE yield_records SET record_date = record_date + INTERVAL '1 day' WHERE EXTRACT(HOUR FROM record_date) = 0 AND EXTRACT(MINUTE FROM record_date) = 0 AND EXTRACT(SECOND FROM record_date) = 0`;
-    const i1 = await sql`UPDATE injection_records SET record_date = record_date + INTERVAL '1 day' WHERE EXTRACT(HOUR FROM record_date) = 0 AND EXTRACT(MINUTE FROM record_date) = 0 AND EXTRACT(SECOND FROM record_date) = 0`;
-    return res.json({ success: true, updated: { trimmer: t1.count, yield: y1.count, injection: i1.count } });
-  }
-
-  const { neon } = require('@neondatabase/serverless');
-const bcrypt = require('bcryptjs');
-
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).end();
-  if (req.body.secret !== 'potp-seed-2026') return res.status(403).json({ error: 'Forbidden' });
-
-  const sql = neon(process.env.DATABASE_URL);
-  const action = req.body.action || 'seed';
-
   if (action === 'fixdata') {
     const deleted = await sql`DELETE FROM trimmer_entries WHERE LOWER(full_name) LIKE '%escamilla%' RETURNING id`;
     const fixed = await sql`UPDATE trimmer_entries SET full_name='Latasha Craig', trim_number='L Craig' WHERE LOWER(full_name) LIKE '%latasska%' OR LOWER(full_name) LIKE '%lataska%' RETURNING id`;
@@ -161,5 +139,13 @@ module.exports = async function handler(req, res) {
     return res.json({ success: true, updated, total: entries.length });
   }
 
+    if (action === 'fixdates') {
+    try {
+      await sql`UPDATE trimmer_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
+      await sql`UPDATE yield_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
+      await sql`UPDATE injection_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
+      return res.json({ success: true, message: 'All dates fixed +1 day' });
+    } catch(e) { return res.status(500).json({ error: e.message }); }
+  }
   return res.json({ success:true, message:'Use action: fixdata, fixnames, empdump, fixroles, fixempnums, checkusers, fixcooper, resetcooper, or recalcyields' });
 };
