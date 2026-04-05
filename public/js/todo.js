@@ -1,4 +1,14 @@
 
+
+// Helper: find closest modal overlay
+function todoFindModal(el) {
+  let node = el;
+  while(node) {
+    if(node.style && node.style.position==='fixed') return node;
+    node = node.parentElement;
+  }
+  return null;
+}
 // ════════════════════════════════════════════════════════
 //  TODO WIDGET  — Tasks / Schedule / Messages / Grades / Manage
 // ════════════════════════════════════════════════════════
@@ -236,8 +246,8 @@ function todoStartComplete(instanceId) {
     '<div style="margin-bottom:12px"><label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:4px">📝 Note (Optional)</label>'+
     '<textarea id="todo-note-input" rows="2" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:.82rem;box-sizing:border-box" placeholder="Add a note..."></textarea></div>'+
     '<div style="display:flex;gap:8px">'+
-    '<button onclick="todoSubmitComplete('+instanceId+',this.closest('div[style*=fixed]')" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Submit</button>'+
-    '<button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'+
+    '<button onclick="todoSubmitComplete('+instanceId+',todoFindModal(this)" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Submit</button>'+
+    '<button onclick="todoFindModal(this).remove()" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'+
     '</div></div>';
 
   document.body.appendChild(modal);
@@ -551,8 +561,8 @@ function todoShowCreateTask() {
     '<button onclick="todoAddStep()" style="background:#f1f5f9;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:.78rem;margin-top:4px">+ Add Step</button></div>'+
     '</div>'+
     '<div style="display:flex;gap:8px;margin-top:16px">'+
-    '<button onclick="todoSubmitTask(this.closest('div[style*=fixed]')" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Create Task</button>'+
-    '<button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'+
+    '<button onclick="todoSubmitTask(todoFindModal(this)" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Create Task</button>'+
+    '<button onclick="todoFindModal(this).remove()" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'+
     '</div></div>';
 
   document.body.appendChild(modal);
@@ -621,8 +631,8 @@ function todoShowSendMessage() {
     '<div id="sm-preview" style="margin-top:6px"></div></div>'+
     '</div>'+
     '<div style="display:flex;gap:8px;margin-top:16px">'+
-    '<button onclick="todoSubmitMessage(this.closest('div[style*=fixed]')" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Send</button>'+
-    '<button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'+
+    '<button onclick="todoSubmitMessage(todoFindModal(this)" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Send</button>'+
+    '<button onclick="todoFindModal(this).remove()" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'+
     '</div></div>';
 
   document.body.appendChild(modal);
@@ -690,3 +700,4 @@ window.todoSubmitTask=todoSubmitTask;
 window.todoShowSendMessage=todoShowSendMessage;
 window.todoSubmitMessage=todoSubmitMessage;
 window.todoBadgeUpdate=todoBadgeUpdate;
+window.todoFindModal=todoFindModal;
