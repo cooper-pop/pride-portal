@@ -1,27 +1,24 @@
 
-// Helper: normalize record_date to YYYY-MM-DD, correcting UTC midnight offset
+// Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
   return rows.map(r => {
-    let d = r.record_date;
-    if (d) {
-      // If it's a Date object, use UTC components to avoid timezone shift
+    // Fix date: Neon returns DATE columns as JS Date objects (UTC midnight)
+    // Use UTC components to avoid local timezone day-shift
+    function fixDate(d) {
+      if (!d) return d;
       if (d instanceof Date) {
-        d = d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
-      } else if (typeof d === 'string') {
-        // "2026-03-24T00:00:00.000Z" → take first 10 chars = "2026-03-24"
-        d = d.substring(0, 10);
+        return d.getUTCFullYear() + '-' +
+          String(d.getUTCMonth()+1).padStart(2,'0') + '-' +
+          String(d.getUTCDate()).padStart(2,'0');
       }
+      if (typeof d === 'string') return d.substring(0, 10);
+      return d;
     }
-    // Apply same fix to report_date (trimmer)
-    let rd = r.report_date;
-    if (rd) {
-      if (rd instanceof Date) {
-        rd = rd.getUTCFullYear() + '-' + String(rd.getUTCMonth()+1).padStart(2,'0') + '-' + String(rd.getUTCDate()).padStart(2,'0');
-      } else if (typeof rd === 'string') {
-        rd = rd.substring(0, 10);
-      }
-    }
-    return { ...r, record_date: d, report_date: rd !== undefined ? rd : r.report_date };
+    return {
+      ...r,
+      record_date: fixDate(r.record_date),
+      report_date: r.report_date !== undefined ? fixDate(r.report_date) : r.report_date
+    };
   });
 }
 const { neon } = require('@neondatabase/serverless');
