@@ -1,4 +1,3 @@
-// v1775359809801
 
 // Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
@@ -47,11 +46,11 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') {
       if (type === 'yield') {
         const records = await sql`SELECT yr.*, u.full_name as recorded_by FROM yield_records yr JOIN users u ON u.id = yr.user_id WHERE yr.company_id = ${user.company_id} ORDER BY yr.record_date DESC, yr.created_at DESC LIMIT 200`;
-        return res.json(records);
+        return res.json(normalizeRows(records));
       }
       if (type === 'injection') {
         const records = await sql`SELECT ir.*, u.full_name as recorded_by FROM injection_records ir JOIN users u ON u.id = ir.user_id WHERE ir.company_id = ${user.company_id} ORDER BY ir.record_date DESC, ir.created_at DESC LIMIT 200`;
-        return res.json(records);
+        return res.json(normalizeRows(records));
       }
       if (type === 'trimmer') {
         const reports = await sql`
@@ -62,7 +61,7 @@ module.exports = async function handler(req, res) {
           GROUP BY tr.id,tr.report_date,tr.shift,tr.notes,tr.created_at,tr.source,u.full_name
           ORDER BY tr.report_date DESC,tr.created_at DESC LIMIT 100
         `;
-        return res.json(reports);
+        return res.json(normalizeRows(reports));
       }
       return res.status(400).json({error:'Unknown type'});
     }
@@ -71,12 +70,12 @@ module.exports = async function handler(req, res) {
       if (type==='yield') {
         const {record_date,shift,line,live_weight_lbs,dressed_weight_lbs,fillet_weight_lbs,trim_weight_lbs,yield_pct,notes}=body;
         const [r] = await sql`INSERT INTO yield_records(company_id,user_id,record_date,shift,line,live_weight_lbs,dressed_weight_lbs,fillet_weight_lbs,trim_weight_lbs,yield_pct,notes) VALUES(${user.company_id},${user.user_id},${record_date},${shift||line},${line},${live_weight_lbs},${dressed_weight_lbs},${fillet_weight_lbs},${trim_weight_lbs},${yield_pct},${notes}) RETURNING *`;
-        return res.json(r);
+        return res.json(normalizeRows(r));
       }
       if (type==='injection') {
         const {record_date,shift,category,item,batch_num,pre_injection_lbs,post_injection_lbs,brine_pct,target_brine_pct,total_pct,total_lbs,batch_data,notes}=body;
         const [r] = await sql`INSERT INTO injection_records(company_id,user_id,record_date,shift,category,item,batch_num,pre_injection_lbs,post_injection_lbs,brine_pct,target_brine_pct,total_pct,total_lbs,batch_data,notes) VALUES(${user.company_id},${user.user_id},${record_date},${shift},${category},${item},${batch_num},${pre_injection_lbs},${post_injection_lbs},${brine_pct},${target_brine_pct},${total_pct},${total_lbs},${batch_data||{}},${notes}) RETURNING *`;
-        return res.json(r);
+        return res.json(normalizeRows(r));
       }
       if (type==='trimmer') {
         const {report_date,shift,notes,entries,source}=body;
