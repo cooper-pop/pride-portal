@@ -277,7 +277,7 @@ function injPrintAnalytics() {
     '<b>Avg Yield%:</b> '+avgYield+'% &nbsp;|&nbsp; '+
     '<b>Avg Brine (INJ)%:</b> '+avgBrine+'% &nbsp;|&nbsp; '+
     '<b>Total Post Lbs:</b> '+totalPostLbs+
-    '</div>'+
+    '</div>'+(currentUser?.role==='admin'?'<div style="background:#f0f4ff;border:1px solid #c5d0f0;border-radius:8px;padding:10px;margin:8px 0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div><label style="font-size:.7rem;color:#555;display:block">Date</label><input type="date" value="'+r.record_date+'" onchange="injUpdateRecord(\''+r.id+'\',\'record_date\',this.value)" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem"></div><div><label style="font-size:.7rem;color:#555;display:block">Time</label><input type="time" value="'+(r.record_time||'')+'" onchange="injUpdateRecord(\''+r.id+'\',\'record_time\',this.value)" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem"></div><div><label style="font-size:.7rem;color:#555;display:block">Pre Lbs</label><input type="number" step="0.01" value="'+r.pre_injection_lbs+'" onchange="injUpdateRecord(\''+r.id+'\',\'pre_injection_lbs\',this.value)" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem"></div><div><label style="font-size:.7rem;color:#555;display:block">Post Lbs</label><input type="number" step="0.01" value="'+r.post_injection_lbs+'" onchange="injUpdateRecord(\''+r.id+'\',\'post_injection_lbs\',this.value)" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem"></div><div><label style="font-size:.7rem;color:#555;display:block">Shift</label><select onchange="injUpdateRecord(\''+r.id+'\',\'shift\',this.value)" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem"><option'+(r.shift==='AM'?' selected':'')+'>AM</option><option'+(r.shift==='PM'?' selected':'')+'>PM</option><option'+(r.shift==='Night'?' selected':'')+'>Night</option></select></div><div><label style="font-size:.7rem;color:#555;display:block">Notes</label><input type="text" value="'+(r.notes||'')+'" onchange="injUpdateRecord(\''+r.id+'\',\'notes\',this.value)" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem" placeholder="Notes..."></div></div>':'')+
     '<table style="border-collapse:collapse;width:100%;font-size:.82rem">'+
     '<thead><tr style="background:#1a3a6b;color:#fff">'+
     '<th style="padding:7px 8px">Date</th><th>Time</th><th>Category</th><th>Size</th>'+
@@ -309,6 +309,13 @@ async function injPrintLog() {
   printReport('Injection Batch Log — Pride of the Pond', html);
 }
 
+
+async function injUpdateRecord(id, field, value) {
+  if(typeof currentUser==='undefined'||currentUser?.role!=='admin'){toast('Admin only');return;}
+  try{await apiCall('PUT','/api/records',{id,type:'injection',field,value});toast('✅ Saved');}
+  catch(e){toast('❌ '+e.message);}
+}
+
 // Expose to global scope for inline onclick handlers
 window.buildInjectionWidget = buildInjectionWidget;
 window.injShowTab = injShowTab;
@@ -325,3 +332,4 @@ window.injRenderAnalytics = injRenderAnalytics;
 window.injFilterAnalytics = injFilterAnalytics;
 window.injPrintAnalytics = injPrintAnalytics;
 window.injPrintLog = injPrintLog;
+window.injUpdateRecord = injUpdateRecord;

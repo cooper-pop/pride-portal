@@ -211,14 +211,15 @@ async function trimRenderAnalytics() {
     const wc = document.getElementById("widget-content");
     wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analytics…</div></div></div>";
     let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days=30"); }
+    try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+(_trimPeriod||30)); }
     catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
     const rankings = data.rankings || [];
     const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
     let html = "<div style=\"padding:8px\">";
     html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
     html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-    html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — Last 30 Days</h3>";
+      html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'+[7,30,60,0].map(function(d){var lbl=d===0?'YTD':d+' Day';var act=(_trimPeriod||30)===d;return '<button onclick="trimSetPeriod('+d+')" style="padding:6px 16px;border-radius:20px;border:2px solid #1a3a6b;cursor:pointer;font-size:.82rem;font-weight:'+(act?'700':'400')+';background:'+(act?'#1a3a6b':'#fff')+';color:'+(act?'#fff':'#1a3a6b')+'">'+lbl+'</button>';}).join('')+'</div>';
+html += "<h3 style=\"margin:0;font-size:1rem\">📈 Trimmer Rankings — "+(_trimPeriod===0?"Year to Date":"Last "+(_trimPeriod||30)+" Days")+"</h3>";
     html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
     html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
     ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
@@ -369,6 +370,13 @@ window.trimRenderAnalytics = trimRenderAnalytics;
 window.trimSparkline = trimSparkline;
 window.trimBarChart = trimBarChart;
 window.trimShowTrend = trimShowTrend;
+
+var _trimPeriod = 30;
+function trimSetPeriod(days) {
+  _trimPeriod = days;
+  trimRenderAnalytics();
+}
+
 // Expose to global scope for inline onclick handlers
 window.buildTrimmerWidget = buildTrimmerWidget;
 window.trimShowTab = trimShowTab;
@@ -389,3 +397,4 @@ window.trimRenderAnalytics = trimRenderAnalytics;
 window.trimSparkline = trimSparkline;
 window.trimBarChart = trimBarChart;
 window.trimShowTrend = trimShowTrend;
+window.trimSetPeriod = trimSetPeriod;
