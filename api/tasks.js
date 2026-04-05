@@ -21,7 +21,7 @@ async function ensureTables(sql) {
   await sql`CREATE TABLE IF NOT EXISTS task_messages (id SERIAL PRIMARY KEY, company_id INTEGER REFERENCES companies(id), from_user_id INTEGER REFERENCES users(id), to_user_id INTEGER REFERENCES users(id), body TEXT NOT NULL, photo TEXT, acknowledged BOOLEAN DEFAULT FALSE, acknowledged_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())`;
   await sql`CREATE TABLE IF NOT EXISTS engagement_logs (id SERIAL PRIMARY KEY, company_id INTEGER REFERENCES companies(id), user_id INTEGER REFERENCES users(id), session_date DATE NOT NULL DEFAULT CURRENT_DATE, session_start TIMESTAMPTZ DEFAULT NOW(), session_end TIMESTAMPTZ, task_time_seconds INTEGER DEFAULT 0, tasks_completed INTEGER DEFAULT 0)`;
 }
-let _tablesEnsured = false;
+  if(!_tablesEnsured){ try{ await ensureTables(sql); _tablesEnsured=true; }catch(e){ return res.status(503).json({error:'DB initializing, retry in a moment'}); } }
 
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
