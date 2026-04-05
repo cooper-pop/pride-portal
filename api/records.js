@@ -1,3 +1,15 @@
+
+// Helper: normalize record_date from timestamptz to YYYY-MM-DD string
+function normalizeRows(rows) {
+  return rows.map(r => ({
+    ...r,
+    record_date: r.record_date
+      ? (typeof r.record_date === 'string'
+          ? r.record_date.substring(0, 10)
+          : new Date(r.record_date).toISOString().substring(0, 10))
+      : r.record_date
+  }));
+}
 const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 

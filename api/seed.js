@@ -1,4 +1,15 @@
-const { neon } = require('@neondatabase/serverless');
+
+  // Fix dates that were stored as UTC midnight (appearing 1 day early)
+  if (action === 'fixdates') {
+    // Update all record tables: shift dates stored at T00:00:00.000Z by +1 day
+    // These were entered as local dates but stored as UTC midnight
+    await sql`UPDATE trimmer_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
+    await sql`UPDATE yield_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
+    await sql`UPDATE injection_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
+    return res.json({ success: true, message: 'Dates fixed +1 day for all midnight UTC records' });
+  }
+
+  const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 
 module.exports = async function handler(req, res) {
