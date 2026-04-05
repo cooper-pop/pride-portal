@@ -28,6 +28,7 @@ async function injSave(){
   try {
     await apiCall('POST','/api/records?type=injection',{
       record_date: document.getElementById('inj-date').value,
+      record_time: document.getElementById('inj-time') ? document.getElementById('inj-time').value : new Date().toTimeString().substring(0,5),
       shift: document.getElementById('inj-shift').value,
       category: INJ_CAT_LABELS[cat], item: item,
       pre_injection_lbs: firstIn, post_injection_lbs: lastOut,
@@ -75,6 +76,205 @@ window.injCalcAll = injCalcAll;
 window.injSave = injSave;
 window.injRenderLog = injRenderLog;
 window.injDelete = injDelete;
+
+async function injRenderAnalytics() {
+  const wc = document.getElementById('widget-content');
+  wc.innerHTML = '<div style="padding:20px;text-align:center"><div class="spinner-wrap"><div class="spinner"></div><div>Loading analytics…</div></div></div>';
+  let data;
+  try { data = await apiCall('GET','/api/records?type=injection&limit=500'); } catch(e){ wc.innerHTML='<p style="color:red;padding:16px">Error loading data.</p>'; return; }
+  if(!data||!data.length){ wc.innerHTML='<div style="padding:32px;text-align:center;color:#888">No injection records yet. Save some batches first.</div>'; return; }
+
+  const cats  = [...new Set(data.map(r=>r.category).filter(Boolean))].sort();
+  const items = [...new Set(data.map(r=>r.item).filter(Boolean))].sort();
+  const today = new Date().toISOString().split('T')[0];
+  const monthAgo = new Date(Date.now()-30*86400000).toISOString().split('T')[0];
+
+  wc.innerHTML = `<div style="padding:10px 12px">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center">
+      <select id="inj-an-cat" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:.84rem;background:#fff">
+        <option value="">All Categories</option>
+        ${cats.map(c=>'<option>'+c+'</option>').join('')}
+      </select>
+      <select id="inj-an-item" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:.84rem;background:#fff">
+        <option value="">All Sizes</option>
+        ${items.map(i=>'<option>'+i+'</option>').join('')}
+      </select>
+      <label style="font-size:.8rem;color:#555">From <input type="date" id="inj-an-from" value="${monthAgo}" style="padding:5px 8px;border-radius:6px;border:1px solid #ddd;font-size:.84rem"></label>
+      <label style="font-size:.8rem;color:#555">To <input type="date" id="inj-an-to" value="${today}" style="padding:5px 8px;border-radius:6px;border:1px solid #ddd;font-size:.84rem"></label>
+      <button onclick="injFilterAnalytics()" style="background:#1a3a6b;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:.84rem;font-weight:600">🔍 Filter</button>
+      <button onclick="injPrintAnalytics()" style="background:#2e7d32;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:.84rem;font-weight:600">🖨️ Print / AI Export</button>
+    </div>
+    <div id="inj-an-results"></div>
+  </div>`;
+
+  window._injAnData = data;
+  injFilterAnalytics();
+}
+
+function injFilterAnalytics() {
+  const data = window._injAnData || [];
+  const cat  = document.getElementById('inj-an-cat')?.value  || '';
+  const item = document.getElementById('inj-an-item')?.value || '';
+  const from = document.getElementById('inj-an-from')?.value || '';
+  const to   = document.getElementById('inj-an-to')?.value   || '';
+
+  const filtered = data.filter(r=>{
+    if(cat  && r.category !== cat)  return false;
+    if(item && r.item    !== item)  return false;
+    if(from && r.record_date < from) return false;
+    if(to   && r.record_date > to)   return false;
+    return true;
+  }).sort((a,b)=>{
+    const da = (a.record_date||'')+(a.record_time||'00:00');
+    const db = (b.record_date||'')+(b.record_time||'00:00');
+    return db.localeCompare(da);
+  });
+
+  const div = document.getElementById('inj-an-results');
+  if(!div) return;
+  if(!filtered.length){
+    div.innerHTML='<div style="text-align:center;color:#888;padding:32px">No records match these filters.</div>';
+    window._injAnFiltered = [];
+    return;
+  }
+
+  const avgYield = (filtered.reduce((s,r)=>s+(parseFloat(r.total_pct)||0),0)/filtered.length).toFixed(1);
+  const avgBrine = (filtered.reduce((s,r)=>s+(parseFloat(r.brine_pct)||0),0)/filtered.length).toFixed(1);
+  const totalLbs = filtered.reduce((s,r)=>s+(parseFloat(r.total_lbs)||0),0);
+
+  const rows = filtered.map((r,i)=>{
+    const steps    = r.batch_data?.steps || [];
+    const stepData = r.batch_data?.stepData || [];
+    const stepsStr = steps.length ? steps.join(', ') : '—';
+    // Build step detail pills
+    const stepDetails = stepData.map(s=>{
+      const pts=[];
+      if(s.pre_lbs)   pts.push('Pre: '+Number(s.pre_lbs).toLocaleString()+' lbs');
+      if(s.post_lbs)  pts.push('Post: '+Number(s.post_lbs).toLocaleString()+' lbs');
+      if(s.temp)      pts.push('Temp: '+s.temp+'°F');
+      if(s.time_mins) pts.push('Time: '+s.time_mins+' min');
+      if(s.pct)       pts.push('Pct: '+s.pct+'%');
+      return pts.length ? '<b>'+s.id+'</b>: '+pts.join(' · ') : '<b>'+s.id+'</b>';
+    }).join('<br>');
+
+    return '<tr style="background:'+(i%2?'#f8f9fa':'#fff')+'">'+
+      '<td style="padding:6px 8px;white-space:nowrap">'+(r.record_date||'—')+'</td>'+
+      '<td style="padding:6px 8px;white-space:nowrap">'+(r.record_time||'—')+'</td>'+
+      '<td style="padding:6px 8px">'+(r.category||'—')+'</td>'+
+      '<td style="padding:6px 8px">'+(r.item||'—')+'</td>'+
+      '<td style="padding:6px 8px;text-align:right">'+Number(r.pre_injection_lbs||0).toLocaleString()+'</td>'+
+      '<td style="padding:6px 8px;text-align:right">'+Number(r.post_injection_lbs||0).toLocaleString()+'</td>'+
+      '<td style="padding:6px 8px;text-align:right">'+parseFloat(r.brine_pct||0).toFixed(1)+'%</td>'+
+      '<td style="padding:6px 8px;text-align:right;font-weight:700;color:#1a3a6b">'+parseFloat(r.total_pct||0).toFixed(1)+'%</td>'+
+      '<td style="padding:6px 8px;font-size:.78rem;line-height:1.5;min-width:140px">'+
+        '<div style="color:#333">'+stepsStr+'</div>'+
+        (stepDetails?'<div style="color:#666;margin-top:2px">'+stepDetails+'</div>':'')+
+      '</td>'+
+      '<td style="padding:6px 8px;font-size:.78rem;color:#555">'+(r.notes||'')+
+        (r.shift?'<div style="color:#888">Shift: '+r.shift+'</div>':'')+
+      '</td>'+
+    '</tr>';
+  }).join('');
+
+  div.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">'+
+      '<div style="background:#e3f2fd;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#1a3a6b">'+filtered.length+'</div><div style="font-size:.75rem;color:#555">Records</div></div>'+
+      '<div style="background:#e8f5e9;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#2e7d32">'+avgYield+'%</div><div style="font-size:.75rem;color:#555">Avg Yield%</div></div>'+
+      '<div style="background:#fff3e0;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#e65100">'+avgBrine+'%</div><div style="font-size:.75rem;color:#555">Avg Brine%</div></div>'+
+      '<div style="background:#f3e5f5;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#6a1b9a">'+totalLbs.toLocaleString(undefined,{maximumFractionDigits:0})+'</div><div style="font-size:.75rem;color:#555">Total Lbs</div></div>'+
+    '</div>'+
+    '<div style="overflow-x:auto">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:.82rem">'+
+      '<thead><tr style="background:#1a3a6b;color:#fff">'+
+        '<th style="padding:7px 8px;text-align:left;white-space:nowrap">Date</th>'+
+        '<th style="padding:7px 8px;text-align:left">Time</th>'+
+        '<th style="padding:7px 8px;text-align:left">Category</th>'+
+        '<th style="padding:7px 8px;text-align:left">Size</th>'+
+        '<th style="padding:7px 8px;text-align:right">Pre Lbs</th>'+
+        '<th style="padding:7px 8px;text-align:right">Post Lbs</th>'+
+        '<th style="padding:7px 8px;text-align:right">Brine%</th>'+
+        '<th style="padding:7px 8px;text-align:right">Yield%</th>'+
+        '<th style="padding:7px 8px;text-align:left">Tests Applied</th>'+
+        '<th style="padding:7px 8px;text-align:left">Notes / Shift</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table></div>';
+
+  window._injAnFiltered = filtered;
+}
+
+function injPrintAnalytics() {
+  const data = window._injAnFiltered || window._injAnData || [];
+  if(!data.length){ toast('⚠️ No data to export.'); return; }
+
+  const catVal  = document.getElementById('inj-an-cat')?.value  || 'All Categories';
+  const itemVal = document.getElementById('inj-an-item')?.value || 'All Sizes';
+  const fromVal = document.getElementById('inj-an-from')?.value || '';
+  const toVal   = document.getElementById('inj-an-to')?.value   || '';
+
+  const avgYield = (data.reduce((s,r)=>s+(parseFloat(r.total_pct)||0),0)/data.length).toFixed(1);
+  const avgBrine = (data.reduce((s,r)=>s+(parseFloat(r.brine_pct)||0),0)/data.length).toFixed(1);
+  const totalLbs = data.reduce((s,r)=>s+(parseFloat(r.total_lbs)||0),0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const filterStr = [
+    catVal!=='All Categories'?'Category: '+catVal:'',
+    itemVal!=='All Sizes'?'Size: '+itemVal:'',
+    fromVal?'From: '+fromVal:'',
+    toVal?'To: '+toVal:''
+  ].filter(Boolean).join(' · ') || 'All Records';
+
+  const rows = data.map(r=>{
+    const steps    = r.batch_data?.steps || [];
+    const stepData = r.batch_data?.stepData || [];
+    const stepsStr = steps.length ? steps.join(', ') : '—';
+    const stepDetails = stepData.map(s=>{
+      const pts=[];
+      if(s.pre_lbs)   pts.push('Pre Lbs: '+Number(s.pre_lbs).toLocaleString());
+      if(s.post_lbs)  pts.push('Post Lbs: '+Number(s.post_lbs).toLocaleString());
+      if(s.temp)      pts.push('Temp: '+s.temp+'°F');
+      if(s.time_mins) pts.push('Time: '+s.time_mins+' min');
+      if(s.pct)       pts.push('Pct: '+s.pct+'%');
+      return '<b>'+s.id+'</b>: '+pts.join(', ');
+    }).join('<br>');
+
+    return '<tr>'+
+      '<td style="padding:5px 8px;white-space:nowrap">'+(r.record_date||'')+(r.record_time?' '+r.record_time:'')+'</td>'+
+      '<td style="padding:5px 8px">'+(r.category||'—')+'</td>'+
+      '<td style="padding:5px 8px">'+(r.item||'—')+'</td>'+
+      '<td style="padding:5px 8px;text-align:right">'+Number(r.pre_injection_lbs||0).toLocaleString()+'</td>'+
+      '<td style="padding:5px 8px;text-align:right">'+Number(r.post_injection_lbs||0).toLocaleString()+'</td>'+
+      '<td style="padding:5px 8px;text-align:right">'+parseFloat(r.brine_pct||0).toFixed(1)+'%</td>'+
+      '<td style="padding:5px 8px;text-align:right;font-weight:700">'+parseFloat(r.total_pct||0).toFixed(1)+'%</td>'+
+      '<td style="padding:5px 8px;font-size:.78rem">'+stepsStr+(stepDetails?'<br>'+stepDetails:'')+'</td>'+
+      '<td style="padding:5px 8px;font-size:.78rem">'+(r.notes||'')+(r.shift?' ['+r.shift+']':'')+'</td>'+
+    '</tr>';
+  }).join('');
+
+  const html =
+    '<div style="background:#f5f7fa;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:.88rem;line-height:1.7">'+
+      '<strong>Filters:</strong> '+filterStr+'<br>'+
+      '<strong>Records:</strong> '+data.length+
+      ' &nbsp;·  <strong>Avg Yield%:</strong> '+avgYield+
+      '% &nbsp;·  <strong>Avg Brine%:</strong> '+avgBrine+
+      '% &nbsp;·  <strong>Total Lbs:</strong> '+totalLbs+
+    '</div>'+
+    '<table style="border-collapse:collapse;width:100%;font-size:.8rem">'+
+      '<thead><tr style="background:#1a3a6b;color:#fff">'+
+        '<th style="padding:7px 8px;text-align:left">Date / Time</th>'+
+        '<th style="padding:7px 8px">Category</th>'+
+        '<th style="padding:7px 8px">Size</th>'+
+        '<th style="padding:7px 8px;text-align:right">Pre Lbs</th>'+
+        '<th style="padding:7px 8px;text-align:right">Post Lbs</th>'+
+        '<th style="padding:7px 8px;text-align:right">Brine%</th>'+
+        '<th style="padding:7px 8px;text-align:right">Yield%</th>'+
+        '<th style="padding:7px 8px">Tests Applied</th>'+
+        '<th style="padding:7px 8px">Notes</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table>';
+
+  printReport('Injection Calculator Analytics — Pride of the Pond', html);
+}
+
 // Expose to global scope for inline onclick handlers
 window.buildInjectionWidget = buildInjectionWidget;
 window.injShowTab = injShowTab;
@@ -87,3 +287,6 @@ window.injCalcAll = injCalcAll;
 window.injSave = injSave;
 window.injRenderLog = injRenderLog;
 window.injDelete = injDelete;
+window.injRenderAnalytics = injRenderAnalytics;
+window.injFilterAnalytics = injFilterAnalytics;
+window.injPrintAnalytics = injPrintAnalytics;
