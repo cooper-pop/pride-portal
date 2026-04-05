@@ -114,6 +114,7 @@ function injFilterAnalytics() {
   const item=document.getElementById('inj-an-item')?.value||'';
   const from=document.getElementById('inj-an-from')?.value||'';
   const to=document.getElementById('inj-an-to')?.value||'';
+
   let rows=data.filter(r=>{
     if(cat&&r.category!==cat)return false;
     if(item&&r.item!==item)return false;
@@ -121,18 +122,45 @@ function injFilterAnalytics() {
     if(to&&r.record_date>to)return false;
     return true;
   }).sort((a,b)=>(b.record_date+(b.record_time||''))>(a.record_date+(a.record_time||''))?1:-1);
+
   const div=document.getElementById('inj-an-results');
   if(!div)return;
   if(!rows.length){div.innerHTML='<div style="text-align:center;color:#888;padding:32px">No records match filters.</div>';return;}
-  const avgYield=(rows.reduce((s,r)=>s+(parseFloat(r.total_pct)||0),0)/rows.length).toFixed(1);
-  const avgBrine=(rows.reduce((s,r)=>s+(parseFloat(r.brine_pct)||0),0)/rows.length).toFixed(1);
-  const totalLbs=rows.reduce((s,r)=>s+(parseFloat(r.total_lbs)||0),0).toLocaleString(undefined,{maximumFractionDigits:0});
+
+  // Helper: compute yield% from pre/post when total_pct is null
+  function getYieldPct(r){
+    if(r.total_pct!=null&&r.total_pct!=='')return parseFloat(r.total_pct);
+    const pre=parseFloat(r.pre_injection_lbs)||0;
+    const post=parseFloat(r.post_injection_lbs)||0;
+    if(pre>0&&post>0) return ((post-pre)/pre*100);
+    return 0;
+  }
+  function getBrinePct(r){
+    if(r.brine_pct!=null&&r.brine_pct!=='')return parseFloat(r.brine_pct);
+    // brine = inj step lbs gained / pre_lbs * 100
+    const bd=r.batch_data||{};
+    const sd=bd.stepData||{};
+    const injStep=sd['inj'];
+    if(injStep&&injStep.pct!=null) return parseFloat(injStep.pct)||0;
+    return 0;
+  }
+  function getTotalLbs(r){
+    if(r.total_lbs!=null&&r.total_lbs!=='')return parseFloat(r.total_lbs)||0;
+    const pre=parseFloat(r.pre_injection_lbs)||0;
+    const post=parseFloat(r.post_injection_lbs)||0;
+    return post-pre;
+  }
+
+  const avgYield=(rows.reduce((s,r)=>s+getYieldPct(r),0)/rows.length).toFixed(1);
+  const avgBrine=(rows.reduce((s,r)=>s+getBrinePct(r),0)/rows.length).toFixed(1);
+  const totalLbs=rows.reduce((s,r)=>s+(parseFloat(r.post_injection_lbs)||0),0).toLocaleString(undefined,{maximumFractionDigits:0});
+
   div.innerHTML=`
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
     <div style="background:#e3f2fd;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#1a3a6b">${rows.length}</div><div style="font-size:.72rem;color:#666">Batches</div></div>
     <div style="background:#e8f5e9;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#2e7d32">${avgYield}%</div><div style="font-size:.72rem;color:#666">Avg Yield</div></div>
-    <div style="background:#fff3e0;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#e65100">${avgBrine}%</div><div style="font-size:.72rem;color:#666">Avg Brine</div></div>
-    <div style="background:#f3e5f5;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#6a1b9a">${totalLbs}</div><div style="font-size:.72rem;color:#666">Total Lbs</div></div>
+    <div style="background:#fff3e0;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#e65100">${avgBrine}%</div><div style="font-size:.72rem;color:#666">Avg Brine (INJ)</div></div>
+    <div style="background:#f3e5f5;border-radius:8px;padding:10px;text-align:center"><div style="font-size:1.5rem;font-weight:700;color:#6a1b9a">${totalLbs}</div><div style="font-size:.72rem;color:#666">Total Post Lbs</div></div>
   </div>
   <div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:700px">
@@ -145,24 +173,36 @@ function injFilterAnalytics() {
       <th style="padding:7px 8px;text-align:right">Post Lbs</th>
       <th style="padding:7px 8px;text-align:right">Brine%</th>
       <th style="padding:7px 8px;text-align:right;color:#90caf9">Yield%</th>
-      <th style="padding:7px 8px;text-align:left">Tests Applied</th>
+      <th style="padding:7px 8px;text-align:left;min-width:160px">Tests Applied</th>
       <th style="padding:7px 8px;text-align:left">Notes</th>
     </tr></thead>
     <tbody>${rows.map((r,i)=>{
       const bd=r.batch_data||{};
-      const steps=(bd.steps||[]).join(', ')||'—';
-      const stepRows=Object.entries(bd.stepData||{}).map(([sid,s])=>{const p=[];if(s.in!=null)p.push('In: '+s.in+' lbs');if(s.lbs!=null)p.push('Change: '+s.lbs+' lbs');if(s.out!=null)p.push('Out: '+s.out+' lbs');if(s.pct!=null)p.push('Pct: '+s.pct+'%');if(s.temp)p.push(s.temp+'°F');if(s.time_mins)p.push(s.time_mins+' min');return p.length?'<span style="font-size:.75rem;color:#555">'+sid.toUpperCase()+': '+p.join(' | ')+'</span>':''}).filter(Boolean).join('<br>');
+      const steps=(bd.steps||[]).map(s=>s.toUpperCase()).join(', ')||'—';
+      const sd=bd.stepData||{};
+      // Compact step detail: one line per step
+      const stepLines=Object.entries(sd).map(([sid,s])=>{
+        const p=[];
+        if(s.in!=null)p.push('In:'+s.in);
+        if(s.lbs!=null)p.push((s.lbs>=0?'+':'')+s.lbs+'lbs');
+        if(s.out!=null)p.push('Out:'+s.out);
+        if(s.pct!=null)p.push(parseFloat(s.pct).toFixed(1)+'%');
+        return '<div style="white-space:nowrap;font-size:.72rem;color:#444"><b>'+sid.toUpperCase()+'</b> '+p.join(' ')+'</div>';
+      }).join('');
+      const yPct = getYieldPct(r);
+      const bPct = getBrinePct(r);
+      const yColor = yPct>10?'#2e7d32':yPct>5?'#1a3a6b':'#c62828';
       return '<tr style="background:'+(i%2?'#f8f9fa':'#fff')+'">'+
-        '<td style="padding:6px 8px;white-space:nowrap">'+(r.record_date||'').substring(0,10)+'</td>'+
-        '<td style="padding:6px 8px">'+( r.record_time||'—')+'</td>'+
-        '<td style="padding:6px 8px">'+( r.category||'—')+'</td>'+
-        '<td style="padding:6px 8px">'+( r.item||'—')+'</td>'+
-        '<td style="padding:6px 8px;text-align:right">'+(+r.pre_injection_lbs||0).toLocaleString()+'</td>'+
-        '<td style="padding:6px 8px;text-align:right">'+(+r.post_injection_lbs||0).toLocaleString()+'</td>'+
-        '<td style="padding:6px 8px;text-align:right">'+(+r.brine_pct||0).toFixed(1)+'%</td>'+
-        '<td style="padding:6px 8px;text-align:right;font-weight:700;color:#1a3a6b">'+(+r.total_pct||0).toFixed(1)+'%</td>'+
-        '<td style="padding:6px 8px"><div>'+steps+'</div>'+( stepRows?'<div style="margin-top:3px">'+stepRows+'</div>':'')+'</td>'+
-        '<td style="padding:6px 8px;font-size:.78rem;color:#555">'+( r.notes||'')+'</td>'+
+        '<td style="padding:6px 8px;white-space:nowrap">'+r.record_date+'</td>'+
+        '<td style="padding:6px 8px;white-space:nowrap">'+(r.record_time||'—')+'</td>'+
+        '<td style="padding:6px 8px">'+(r.category||'—')+'</td>'+
+        '<td style="padding:6px 8px;white-space:nowrap">'+(r.item||'—')+'</td>'+
+        '<td style="padding:6px 8px;text-align:right">'+(parseFloat(r.pre_injection_lbs)||0).toLocaleString()+'</td>'+
+        '<td style="padding:6px 8px;text-align:right">'+(parseFloat(r.post_injection_lbs)||0).toLocaleString()+'</td>'+
+        '<td style="padding:6px 8px;text-align:right">'+bPct.toFixed(1)+'%</td>'+
+        '<td style="padding:6px 8px;text-align:right;font-weight:700;color:'+yColor+'">'+yPct.toFixed(1)+'%</td>'+
+        '<td style="padding:6px 8px"><div style="font-size:.78rem;color:#333;margin-bottom:2px">'+steps+'</div>'+stepLines+'</td>'+
+        '<td style="padding:6px 8px;font-size:.78rem;color:#555">'+(r.notes||'')+'</td>'+
       '</tr>';
     }).join('')}</tbody>
   </table></div>`;
@@ -176,31 +216,54 @@ function injPrintAnalytics() {
   const from=document.getElementById('inj-an-from')?.value||'';
   const to=document.getElementById('inj-an-to')?.value||'';
   if(!rows.length){toast('No data to export');return;}
-  const avgYield=rows.length?(rows.reduce((s,r)=>s+(parseFloat(r.total_pct)||0),0)/rows.length).toFixed(1):'0';
-  const avgBrine=rows.length?(rows.reduce((s,r)=>s+(parseFloat(r.brine_pct)||0),0)/rows.length).toFixed(1):'0';
-  const totalLbs=rows.reduce((s,r)=>s+(parseFloat(r.total_lbs)||0),0).toLocaleString(undefined,{maximumFractionDigits:0});
+
+  function getYieldPct(r){
+    if(r.total_pct!=null&&r.total_pct!=='')return parseFloat(r.total_pct);
+    const pre=parseFloat(r.pre_injection_lbs)||0, post=parseFloat(r.post_injection_lbs)||0;
+    return pre>0&&post>0?(post-pre)/pre*100:0;
+  }
+  function getBrinePct(r){
+    if(r.brine_pct!=null&&r.brine_pct!=='')return parseFloat(r.brine_pct);
+    const sd=(r.batch_data||{}).stepData||{};
+    return parseFloat((sd['inj']||{}).pct)||0;
+  }
+
+  const avgYield=(rows.reduce((s,r)=>s+getYieldPct(r),0)/rows.length).toFixed(1);
+  const avgBrine=(rows.reduce((s,r)=>s+getBrinePct(r),0)/rows.length).toFixed(1);
+  const totalPostLbs=rows.reduce((s,r)=>s+(parseFloat(r.post_injection_lbs)||0),0).toLocaleString(undefined,{maximumFractionDigits:0});
   const filterStr=[cat!=='All Categories'?'Category: '+cat:'',item!=='All Sizes'?'Size: '+item:'',from?'From: '+from:'',to?'To: '+to:''].filter(Boolean).join(' | ')||'All Records';
+
   const tableRows=rows.map(r=>{
     const bd=r.batch_data||{};
-    const steps=(bd.steps||[]).join(', ')||'None';
-    const stepDetail=Object.entries(bd.stepData||{}).map(([sid,s])=>{const p=[];if(s.in!=null)p.push('In: '+s.in+' lbs');if(s.lbs!=null)p.push('Change: '+s.lbs+' lbs');if(s.out!=null)p.push('Out: '+s.out+' lbs');if(s.pct!=null)p.push('Pct: '+s.pct+'%');if(s.temp)p.push(s.temp+'°F');if(s.time_mins)p.push(s.time_mins+' min');return p.length?'<span style="font-size:.75rem;color:#555">'+sid.toUpperCase()+': '+p.join(' | ')+'</span>':''}).filter(Boolean).join('<br>');
-    return '<tr><td style="white-space:nowrap">'+(r.record_date||'').substring(0,10)+'</td>'+
+    const steps=(bd.steps||[]).map(s=>s.toUpperCase()).join(', ')||'None';
+    const sd=bd.stepData||{};
+    const stepDetail=Object.entries(sd).map(([sid,s])=>{
+      const p=[];
+      if(s.in!=null)p.push('In: '+s.in+' lbs');
+      if(s.lbs!=null)p.push((s.lbs>=0?'+':'')+s.lbs+' lbs');
+      if(s.out!=null)p.push('Out: '+s.out+' lbs');
+      if(s.pct!=null)p.push(parseFloat(s.pct).toFixed(1)+'%');
+      return '<b>'+sid.toUpperCase()+':</b> '+p.join(' | ');
+    }).join('<br>');
+    const yPct=getYieldPct(r), bPct=getBrinePct(r);
+    return '<tr><td style="white-space:nowrap">'+r.record_date+'</td>'+
       '<td>'+(r.record_time||'—')+'</td>'+
       '<td>'+(r.category||'—')+'</td>'+
       '<td>'+(r.item||'—')+'</td>'+
-      '<td style="text-align:right">'+(+r.pre_injection_lbs||0).toLocaleString()+'</td>'+
-      '<td style="text-align:right">'+(+r.post_injection_lbs||0).toLocaleString()+'</td>'+
-      '<td style="text-align:right">'+(+r.brine_pct||0).toFixed(1)+'%</td>'+
-      '<td style="text-align:right;font-weight:700">'+(+r.total_pct||0).toFixed(1)+'%</td>'+
-      '<td>'+steps+'<br>'+stepDetail+'</td>'+
+      '<td style="text-align:right">'+(parseFloat(r.pre_injection_lbs)||0).toLocaleString()+'</td>'+
+      '<td style="text-align:right">'+(parseFloat(r.post_injection_lbs)||0).toLocaleString()+'</td>'+
+      '<td style="text-align:right">'+bPct.toFixed(1)+'%</td>'+
+      '<td style="text-align:right;font-weight:700">'+yPct.toFixed(1)+'%</td>'+
+      '<td>'+steps+'<br><span style="font-size:.8rem">'+stepDetail+'</span></td>'+
       '<td>'+(r.notes||'')+'</td></tr>';
   }).join('');
+
   const html='<div style="background:#f5f5f5;padding:12px;border-radius:6px;margin-bottom:16px;font-size:.85rem">'+
     '<b>Filters:</b> '+filterStr+'<br>'+
     '<b>Batches:</b> '+rows.length+' &nbsp;|&nbsp; '+
     '<b>Avg Yield%:</b> '+avgYield+'% &nbsp;|&nbsp; '+
-    '<b>Avg Brine%:</b> '+avgBrine+'% &nbsp;|&nbsp; '+
-    '<b>Total Lbs Processed:</b> '+totalLbs+
+    '<b>Avg Brine (INJ)%:</b> '+avgBrine+'% &nbsp;|&nbsp; '+
+    '<b>Total Post Lbs:</b> '+totalPostLbs+
     '</div>'+
     '<table style="border-collapse:collapse;width:100%;font-size:.82rem">'+
     '<thead><tr style="background:#1a3a6b;color:#fff">'+
