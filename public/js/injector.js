@@ -65,7 +65,7 @@ async function injRenderLog(){
     else {
       log.forEach(function(e){
         var bd=e.batch_data||{};var steps=bd.steps||[];var sd=bd.stepData||{};
-        var dt=new Date(e.record_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        var dt=(function(d){if(!d)return '—';const p=d.split('-');const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return months[parseInt(p[1])-1]+' '+parseInt(p[2])+', '+p[0];})(e.record_date);
         var stepsHtml=steps.map(function(sid){var d=sd[sid];if(!d)return '';return '<div class="log-step log-step-'+sid+'"><div class="log-step-title">'+stepIcons[sid]+' '+stepLabels[sid]+'</div><div class="log-grid"><div class="lstat"><div class="lstat-lbl">In</div><div class="lstat-val">'+d.in+' lbs</div></div><div class="lstat"><div class="lstat-lbl">Out</div><div class="lstat-val">'+d.out+' lbs</div></div><div class="lstat"><div class="lstat-lbl">Pickup</div><div class="lstat-val" style="color:'+(d.pct>=0?'var(--green)':'var(--red)')+'">'+(d.pct>=0?'+':'')+d.pct+'%</div></div></div></div>';}).join('');
         var totalHtml=e.total_pct!==null&&e.total_pct!==undefined?'<div class="log-total"><span style="font-size:0.78rem;font-weight:700;color:rgba(255,255,255,0.9)">🏆 Total Pickup</span><span style="font-size:1rem;font-weight:700;color:#fff">'+(e.total_pct>=0?'+':'')+e.total_pct+'%</span></div>':'';
         var badgesHtml=steps.map(function(sid){return '<span class="lbadge" style="background:'+stepColors[sid]+'">'+stepIcons[sid]+' '+stepLabels[sid]+'</span>';}).join('');
