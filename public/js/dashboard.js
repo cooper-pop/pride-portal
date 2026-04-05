@@ -2,7 +2,7 @@
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
-  document.getElementById(id).classList.add('active');
+  const _el=document.getElementById(id); if(_el) _el.classList.add('active');
 }
 
 function buildDash() {
