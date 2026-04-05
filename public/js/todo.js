@@ -334,9 +334,9 @@ async function todoSchedule(body) {
   const dayLabel = _todoDate===today ? 'Today' : dayNames[dateObj.getDay()]+', '+monthNames[dateObj.getMonth()]+' '+dateObj.getDate();
 
   let html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
-    '<button onclick="todoNavDay(''+prevDate+'')" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">‹</button>'+
+    '<button onclick="todoNavDay(\"+'+prevDate+'+\")" " style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">‹</button>'+
     '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+'</div></div>'+
-    '<button onclick="todoNavDay(''+nextDate+'')" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button>'+
+    '<button onclick="todoNavDay(\"+'+nextDate+'+\")" " style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button>'+
     '</div>';
 
   if(isAdmin) {
