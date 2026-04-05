@@ -151,17 +151,9 @@ function injFilterAnalytics() {
     <tbody>${rows.map((r,i)=>{
       const bd=r.batch_data||{};
       const steps=(bd.steps||[]).join(', ')||'—';
-      const stepRows=(bd.stepData||[]).map(s=>{
-        const p=[];
-        if(s.pre_lbs)p.push('Pre: '+s.pre_lbs+' lbs');
-        if(s.post_lbs)p.push('Post: '+s.post_lbs+' lbs');
-        if(s.temp)p.push('Temp: '+s.temp+'°F');
-        if(s.time_mins)p.push('Time: '+s.time_mins+' min');
-        if(s.pct)p.push('Pct: '+s.pct+'%');
-        return p.length?'<span style="color:#555;font-size:.75rem">'+s.id+': '+p.join(' | ')+'</span>':'';
-      }).filter(Boolean).join('<br>');
+      const stepRows=Object.entries(bd.stepData||{}).map(([sid,s])=>{const p=[];if(s.in!=null)p.push('In: '+s.in+' lbs');if(s.lbs!=null)p.push('Change: '+s.lbs+' lbs');if(s.out!=null)p.push('Out: '+s.out+' lbs');if(s.pct!=null)p.push('Pct: '+s.pct+'%');if(s.temp)p.push(s.temp+'°F');if(s.time_mins)p.push(s.time_mins+' min');return p.length?'<span style="font-size:.75rem;color:#555">'+sid.toUpperCase()+': '+p.join(' | ')+'</span>':''}).filter(Boolean).join('<br>');
       return '<tr style="background:'+(i%2?'#f8f9fa':'#fff')+'">'+
-        '<td style="padding:6px 8px;white-space:nowrap">'+r.record_date+'</td>'+
+        '<td style="padding:6px 8px;white-space:nowrap">'+(r.record_date||'').substring(0,10)+'</td>'+
         '<td style="padding:6px 8px">'+( r.record_time||'—')+'</td>'+
         '<td style="padding:6px 8px">'+( r.category||'—')+'</td>'+
         '<td style="padding:6px 8px">'+( r.item||'—')+'</td>'+
@@ -191,16 +183,8 @@ function injPrintAnalytics() {
   const tableRows=rows.map(r=>{
     const bd=r.batch_data||{};
     const steps=(bd.steps||[]).join(', ')||'None';
-    const stepDetail=(bd.stepData||[]).map(s=>{
-      const p=[];
-      if(s.pre_lbs)p.push('Pre: '+s.pre_lbs+' lbs');
-      if(s.post_lbs)p.push('Post: '+s.post_lbs+' lbs');
-      if(s.temp)p.push('Temp: '+s.temp+'°F');
-      if(s.time_mins)p.push('Time: '+s.time_mins+' min');
-      if(s.pct)p.push('Pct: '+s.pct+'%');
-      return p.length?'<b>'+s.id+'</b>: '+p.join(', '):'';
-    }).filter(Boolean).join('<br>');
-    return '<tr><td style="white-space:nowrap">'+r.record_date+'</td>'+
+    const stepDetail=Object.entries(bd.stepData||{}).map(([sid,s])=>{const p=[];if(s.in!=null)p.push('In: '+s.in+' lbs');if(s.lbs!=null)p.push('Change: '+s.lbs+' lbs');if(s.out!=null)p.push('Out: '+s.out+' lbs');if(s.pct!=null)p.push('Pct: '+s.pct+'%');if(s.temp)p.push(s.temp+'°F');if(s.time_mins)p.push(s.time_mins+' min');return p.length?'<span style="font-size:.75rem;color:#555">'+sid.toUpperCase()+': '+p.join(' | ')+'</span>':''}).filter(Boolean).join('<br>');
+    return '<tr><td style="white-space:nowrap">'+(r.record_date||'').substring(0,10)+'</td>'+
       '<td>'+(r.record_time||'—')+'</td>'+
       '<td>'+(r.category||'—')+'</td>'+
       '<td>'+(r.item||'—')+'</td>'+
