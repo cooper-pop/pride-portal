@@ -1,14 +1,28 @@
 
-// Helper: normalize record_date from timestamptz to YYYY-MM-DD string
+// Helper: normalize record_date to YYYY-MM-DD, correcting UTC midnight offset
 function normalizeRows(rows) {
-  return rows.map(r => ({
-    ...r,
-    record_date: r.record_date
-      ? (typeof r.record_date === 'string'
-          ? r.record_date.substring(0, 10)
-          : new Date(r.record_date).toISOString().substring(0, 10))
-      : r.record_date
-  }));
+  return rows.map(r => {
+    let d = r.record_date;
+    if (d) {
+      // If it's a Date object, use UTC components to avoid timezone shift
+      if (d instanceof Date) {
+        d = d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+      } else if (typeof d === 'string') {
+        // "2026-03-24T00:00:00.000Z" → take first 10 chars = "2026-03-24"
+        d = d.substring(0, 10);
+      }
+    }
+    // Apply same fix to report_date (trimmer)
+    let rd = r.report_date;
+    if (rd) {
+      if (rd instanceof Date) {
+        rd = rd.getUTCFullYear() + '-' + String(rd.getUTCMonth()+1).padStart(2,'0') + '-' + String(rd.getUTCDate()).padStart(2,'0');
+      } else if (typeof rd === 'string') {
+        rd = rd.substring(0, 10);
+      }
+    }
+    return { ...r, record_date: d, report_date: rd !== undefined ? rd : r.report_date };
+  });
 }
 const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
