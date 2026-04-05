@@ -24,7 +24,8 @@ function buildDash() {
       { id:'yield',     label:'Yield Calc',    icon:'⚖️', color:'#1a3a6b' },
       { id:'injection', label:'Injection Calc', icon:'💉', color:'#c0392b' },
       { id:'trimmer',   label:'Trimmer Log',   icon:'✂️', color:'#1d9e75' },
-      { id:'ai',        label:'AI Analysis',   icon:'🤖', color:'#8e44ad' }
+      { id:'ai',        label:'AI Analysis',   icon:'🤖', color:'#8e44ad' },
+      { id:'todo',       label:'To-Do List',    icon:'📋', color:'#1a3a6b' }
     ];
   } else {
     apps = [{ id:'coming', label:'Coming Soon', icon:'🚧', color:'#5a6a85' }];
@@ -52,6 +53,7 @@ function openWidget(id, label) {
   else if (id === 'trimmer') buildTrimmerWidget();
   else if (id === 'ai') buildAIWidget();
   else if (id === 'admin') buildAdminWidget();
+  else if (id === 'todo') todoRender();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
 // Expose functions globally for inline onclick handlers
