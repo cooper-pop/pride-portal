@@ -6,12 +6,16 @@ export default async function handler(req, res) {
   if (secret !== 'potp-seed-2026') return res.status(401).json({ error: 'Unauthorized' });
   try {
     const sql = neon(process.env.DATABASE_URL);
-    // Check column type first
-    const cols = await sql`SELECT column_name, data_type FROM information_schema.columns WHERE table_name IN ('yield_records','injection_records','trimmer_reports') AND column_name IN ('record_date','report_date') ORDER BY table_name, column_name`;
-    // Also get sample values
-    const samples = await sql`SELECT 'yield' as tbl, record_date::text FROM yield_records LIMIT 2`;
-    return res.json({ cols, samples });
+    // Add 1 day to all existing records (stored 1 day early due to UTC offset bug)
+    // Safety: only fix records before 2026-04-01 (the bug was present before the normalizeRows fix)
+    const y = await sql`UPDATE yield_records SET record_date = record_date + 1 WHERE record_date < '2026-04-06' RETURNING id`;
+    const i = await sql`UPDATE injection_records SET record_date = record_date + 1 WHERE record_date < '2026-04-06' RETURNING id`;
+    const t = await sql`UPDATE trimmer_reports SET report_date = report_date + 1 WHERE report_date < '2026-04-06' RETURNING id`;
+    return res.json({
+      success: true,
+      updated: { yield: y.length, injection: i.length, trimmer: t.length }
+    });
   } catch(e) {
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message, stack: e.stack?.substring(0,200) });
   }
 }
