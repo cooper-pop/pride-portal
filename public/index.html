@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="POTP Portal"/>
-<link rel="stylesheet" href="/css/style.css?v=1775365357911"/>
+<link rel="stylesheet" href="/css/style.css?v=1775366146529"/>
 <title>Employee Portal</title>
 </head>
 <body>
@@ -96,9 +96,9 @@
   <div class="login-box">
     <div class="login-logo-wrap"><img id="login-logo" class="login-logo" src="" alt=""/></div>
     <div class="login-title"><h2 id="login-co-name"></h2><p>Employee Login</p></div>
-    <div class="lf"><label>Username</label><input type="text" id="login-user" autocapitalize="none" autocorrect="off" placeholder="Enter username"/></div>
-    <div class="lf"><label>Password</label><input type="password" id="login-pass" placeholder="Enter password"/></div>
-    <button class="login-btn" id="login-btn">Sign In</button>
+    <div class="lf"><label>Username</label><input type="text" id="login-user" onkeydown="if(event.key==='Enter')doLogin()" autocapitalize="none" autocorrect="off" placeholder="Enter username"/></div>
+    <div class="lf"><label>Password</label><input type="password" id="login-pass" onkeydown="if(event.key==='Enter')doLogin()" placeholder="Enter password"/></div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
     <div class="login-error" id="login-error">Incorrect username or password.</div>
     <span class="back-link" id="back-link">← Back to company selection</span>
   </div>
@@ -143,15 +143,15 @@
 
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/js/utils.js?v=1775365357911"></script>
-<script src="/js/auth.js?v=1775365357911"></script>
-<script src="/js/dashboard.js?v=1775365357911"></script>
-<script src="/js/yield.js?v=1775365357911"></script>
-<script src="/js/injector.js?v=1775365357911"></script>
-<script src="/js/trimmer.js?v=1775365357911"></script>
-<script src="/js/ai.js?v=1775365357911"></script>
-<script src="/js/admin.js?v=1775365357911"></script>
-<script src="/js/print.js?v=1775365357911"></script>
+<script src="/js/utils.js?v=1775366146529"></script>
+<script src="/js/auth.js?v=1775366146529"></script>
+<script src="/js/dashboard.js?v=1775366146529"></script>
+<script src="/js/yield.js?v=1775366146529"></script>
+<script src="/js/injector.js?v=1775366146529"></script>
+<script src="/js/trimmer.js?v=1775366146529"></script>
+<script src="/js/ai.js?v=1775366146529"></script>
+<script src="/js/admin.js?v=1775366146529"></script>
+<script src="/js/print.js?v=1775366146529"></script>
 <script>
 (function() {
   // Show company selection immediately as default
