@@ -1,12 +1,10 @@
 
-  // Fix dates that were stored as UTC midnight (appearing 1 day early)
   if (action === 'fixdates') {
-    // Update all record tables: shift dates stored at T00:00:00.000Z by +1 day
-    // These were entered as local dates but stored as UTC midnight
-    await sql`UPDATE trimmer_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
-    await sql`UPDATE yield_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
-    await sql`UPDATE injection_records SET record_date = record_date + INTERVAL '1 day' WHERE record_date::time = '00:00:00'`;
-    return res.json({ success: true, message: 'Dates fixed +1 day for all midnight UTC records' });
+    // Shift all record_dates stored at UTC midnight +1 day to correct the timezone offset
+    const t1 = await sql`UPDATE trimmer_records SET record_date = record_date + INTERVAL '1 day' WHERE EXTRACT(HOUR FROM record_date) = 0 AND EXTRACT(MINUTE FROM record_date) = 0 AND EXTRACT(SECOND FROM record_date) = 0`;
+    const y1 = await sql`UPDATE yield_records SET record_date = record_date + INTERVAL '1 day' WHERE EXTRACT(HOUR FROM record_date) = 0 AND EXTRACT(MINUTE FROM record_date) = 0 AND EXTRACT(SECOND FROM record_date) = 0`;
+    const i1 = await sql`UPDATE injection_records SET record_date = record_date + INTERVAL '1 day' WHERE EXTRACT(HOUR FROM record_date) = 0 AND EXTRACT(MINUTE FROM record_date) = 0 AND EXTRACT(SECOND FROM record_date) = 0`;
+    return res.json({ success: true, updated: { trimmer: t1.count, yield: y1.count, injection: i1.count } });
   }
 
   const { neon } = require('@neondatabase/serverless');
