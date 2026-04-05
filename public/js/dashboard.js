@@ -59,3 +59,8 @@ window.showScreen = showScreen;
 window.buildDash = buildDash;
 window.closeWidget = closeWidget;
 window.openWidget = openWidget;
+// Expose to global scope for inline onclick handlers
+window.showScreen = showScreen;
+window.buildDash = buildDash;
+window.closeWidget = closeWidget;
+window.openWidget = openWidget;

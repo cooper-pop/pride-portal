@@ -47,3 +47,7 @@ async function aiSend() {
 window.buildAIWidget = buildAIWidget;
 window.aiAsk = aiAsk;
 window.aiSend = aiSend;
+// Expose to global scope for inline onclick handlers
+window.buildAIWidget = buildAIWidget;
+window.aiAsk = aiAsk;
+window.aiSend = aiSend;

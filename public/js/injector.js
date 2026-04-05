@@ -75,3 +75,15 @@ window.injCalcAll = injCalcAll;
 window.injSave = injSave;
 window.injRenderLog = injRenderLog;
 window.injDelete = injDelete;
+// Expose to global scope for inline onclick handlers
+window.buildInjectionWidget = buildInjectionWidget;
+window.injShowTab = injShowTab;
+window.injRenderCalc = injRenderCalc;
+window.injBuildItems = injBuildItems;
+window.injGetChecked = injGetChecked;
+window.injUpdateSteps = injUpdateSteps;
+window.injOnOut = injOnOut;
+window.injCalcAll = injCalcAll;
+window.injSave = injSave;
+window.injRenderLog = injRenderLog;
+window.injDelete = injDelete;

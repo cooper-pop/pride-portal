@@ -139,3 +139,14 @@ window.skipPasskeySetup = skipPasskeySetup;
 window.base64urlToBuffer = base64urlToBuffer;
 window.bufferToBase64url = bufferToBase64url;
 window.submitPasswordChange = submitPasswordChange;
+// Expose to global scope for inline onclick handlers
+window.loadSession = loadSession;
+window.saveSession = saveSession;
+window.clearSession = clearSession;
+window.selectCompany = selectCompany;
+window.doLogin = doLogin;
+window.setupPasskey = setupPasskey;
+window.skipPasskeySetup = skipPasskeySetup;
+window.base64urlToBuffer = base64urlToBuffer;
+window.bufferToBase64url = bufferToBase64url;
+window.submitPasswordChange = submitPasswordChange;
