@@ -54,3 +54,8 @@ function openWidget(id, label) {
   else if (id === 'admin') buildAdminWidget();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
+// Expose functions globally for inline onclick handlers
+window.showScreen = showScreen;
+window.buildDash = buildDash;
+window.closeWidget = closeWidget;
+window.openWidget = openWidget;

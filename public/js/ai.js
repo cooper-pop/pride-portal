@@ -43,3 +43,7 @@ async function aiSend() {
     chat.scrollTop = chat.scrollHeight;
   }
 }
+// Expose functions globally for inline onclick handlers
+window.buildAIWidget = buildAIWidget;
+window.aiAsk = aiAsk;
+window.aiSend = aiSend;

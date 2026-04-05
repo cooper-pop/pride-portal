@@ -63,3 +63,15 @@ async function injRenderLog(){
 }
 
 async function injDelete(id){if(!confirm('Delete this batch?'))return;try{await apiCall('DELETE','/api/records?type=injection&id='+id);injRenderLog();}catch(e){toast('⚠️ Delete failed');}}
+// Expose functions globally for inline onclick handlers
+window.buildInjectionWidget = buildInjectionWidget;
+window.injShowTab = injShowTab;
+window.injRenderCalc = injRenderCalc;
+window.injBuildItems = injBuildItems;
+window.injGetChecked = injGetChecked;
+window.injUpdateSteps = injUpdateSteps;
+window.injOnOut = injOnOut;
+window.injCalcAll = injCalcAll;
+window.injSave = injSave;
+window.injRenderLog = injRenderLog;
+window.injDelete = injDelete;

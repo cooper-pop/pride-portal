@@ -349,3 +349,23 @@ async function trimShowTrend(encodedName, btn) {
     area.scrollIntoView({behavior:"smooth",block:"start"});
     btn.disabled = false;
   }
+// Expose functions globally for inline onclick handlers
+window.buildTrimmerWidget = buildTrimmerWidget;
+window.trimShowTab = trimShowTab;
+window.trimRenderUpload = trimRenderUpload;
+window.trimHandleFile = trimHandleFile;
+window.trimEmptyRow = trimEmptyRow;
+window.trimRenderForm = trimRenderForm;
+window.trimUpdate = trimUpdate;
+window.trimAddRow = trimAddRow;
+window.trimDeleteRow = trimDeleteRow;
+window.trimReset = trimReset;
+window.trimSave = trimSave;
+window.trimSaveEntry = trimSaveEntry;
+window.trimDeleteEntry = trimDeleteEntry;
+window.trimDeleteReport = trimDeleteReport;
+window.trimRenderHistory = trimRenderHistory;
+window.trimRenderAnalytics = trimRenderAnalytics;
+window.trimSparkline = trimSparkline;
+window.trimBarChart = trimBarChart;
+window.trimShowTrend = trimShowTrend;

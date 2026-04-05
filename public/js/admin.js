@@ -166,3 +166,18 @@ async function umToggleActive(uid, currentlyActive) {
     loadUserMgmt();
   } catch(e) { toast('Error: '+e.message); }
 }
+// Expose functions globally for inline onclick handlers
+window.buildAdminWidget = buildAdminWidget;
+window.adminShowTab = adminShowTab;
+window.adminRenderUsers = adminRenderUsers;
+window.adminRenderAddUser = adminRenderAddUser;
+window.adminAddUser = adminAddUser;
+window.adminDeleteUser = adminDeleteUser;
+window.loadUserMgmt = loadUserMgmt;
+window.loadPasskeyStatus = loadPasskeyStatus;
+window.umShowAddModal = umShowAddModal;
+window.umEditUser = umEditUser;
+window.umCloseModal = umCloseModal;
+window.umSaveUser = umSaveUser;
+window.umResetPasskey = umResetPasskey;
+window.umToggleActive = umToggleActive;

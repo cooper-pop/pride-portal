@@ -123,3 +123,15 @@ function yToggleLine(line) {
   else { yActiveTrend.push(line); }
   apiCall('GET','/api/records?type=yield').then(function(log){ yDrawTrends(log); });
 }
+// Expose functions globally for inline onclick handlers
+window.buildYieldWidget = buildYieldWidget;
+window.yShowTab = yShowTab;
+window.yRenderCalc = yRenderCalc;
+window.yCalc = yCalc;
+window.yClear = yClear;
+window.ySave = ySave;
+window.yRenderLog = yRenderLog;
+window.yDelete = yDelete;
+window.yRenderTrends = yRenderTrends;
+window.yDrawTrends = yDrawTrends;
+window.yToggleLine = yToggleLine;
