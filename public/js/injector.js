@@ -2,7 +2,20 @@
 
 function buildInjectionWidget(){document.getElementById('widget-tabs').innerHTML=['🧪 New Batch','📋 Batch Log','📈 Analytics'].map(function(t,i){return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="injShowTab('+i+')">'+t+'</div>';}).join('');injShowTab(0);}
 
-function injShowTab(idx){document.querySelectorAll('.widget-tab').forEach(function(t,i){t.classList.toggle('active',i===idx);});if(idx===0)injRenderCalc();else if(idx===1)injRenderLog();else injRenderAnalytics();}
+function injShowTab(idx){
+  const isAdmin = (typeof currentUser!=='undefined' && currentUser?.role==='admin');
+  // Block non-admins from Batch Log (1) and Analytics (2)
+  if((idx===1||idx===2) && !isAdmin){
+    document.getElementById('widget-content').innerHTML='<div style="padding:40px;text-align:center;color:#888"><div style="font-size:2rem;margin-bottom:12px">🔒</div><div style="font-size:1rem;font-weight:600;color:#1a3a6b">Admin Access Only</div><div style="font-size:.85rem;margin-top:6px">Batch Log and Analytics are restricted to administrators.</div></div>';
+    // Still update tab highlight
+    document.querySelectorAll('.widget-tab').forEach(function(t,i){t.classList.toggle('active',i===idx);});
+    return;
+  }
+  document.querySelectorAll('.widget-tab').forEach(function(t,i){t.classList.toggle('active',i===idx);});
+  if(idx===0)injRenderCalc();
+  else if(idx===1)injRenderLog();
+  else injRenderAnalytics();
+}
 
 function injRenderCalc(){var nd=new Date();document.getElementById('widget-content').innerHTML='<div class="wcard"><h3>📅 Date & Shift</h3><div class="wrow"><div class="wfield"><label>Date</label><input type="date" id="inj-date" value="'+nd.toISOString().split('T')[0]+'"/></div><div class="wfield"><label>Time</label><input type="time" id="inj-time" style="width:110px"></div><div class="wfield"><label>Shift</label><select id="inj-shift"><option>AM</option><option>PM</option></select></div></div></div><div class="wcard"><h3>🐟 Product</h3><div class="wfield"><label>Category</label><select id="inj-cat" onchange="injBuildItems()"><option value="">— Select Category —</option>'+Object.keys(INJ_CAT_LABELS).map(function(k){return '<option value="'+k+'">'+INJ_CAT_LABELS[k]+'</option>';}).join('')+'</select></div><div class="wfield" id="inj-item-wrap" style="display:none"><label>Size / Item</label><select id="inj-item"><option value="">— Select Size / Item —</option></select></div></div><div class="wcard"><h3>☑️ Select Tests</h3><div class="check-grid">'+INJ_STEPS.map(function(s,i){return '<label class="chk-item" id="chk-wrap-'+s.id+'"><input type="checkbox" id="chk-'+s.id+'" onchange="injUpdateSteps()"><div class="chk-item-lbl"><span>'+s.icon+' '+s.label+'</span><small>Step '+(i+1)+'</small></div></label>';}).join('')+'</div></div><div id="inj-steps"></div><div id="inj-results" style="display:none"></div><div class="wcard"><h3>📝 Notes</h3><div class="wfield"><textarea id="inj-notes" placeholder="Observations..."></textarea></div><div class="wbtn-row"><button class="wbtn wbtn-primary" onclick="injSave()">💾 Save Batch</button><button class="wbtn wbtn-danger" onclick="injRenderCalc()">Clear</button></div></div>';}
 
@@ -47,7 +60,7 @@ async function injRenderLog(){
     var stepColors={soak:'var(--green)',inj:'var(--blue)',dehy:'var(--purple)',glaze:'var(--teal)'};
     var stepIcons={soak:'🪣',inj:'💉',dehy:'🌡️',glaze:'✨'};
     var stepLabels={soak:'Soak',inj:'Injection',dehy:'Dehydration',glaze:'Glaze'};
-    var html='<div class="wcard" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:0.82rem;font-weight:700;color:var(--blue)">'+log.length+' batch'+(log.length===1?'':'es')+'</span><button class="wbtn wbtn-danger" style="padding:5px 10px;font-size:0.73rem" onclick="injRenderLog()">🔄 Refresh</button></div>';
+    var html='<div class="wcard" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:0.82rem;font-weight:700;color:var(--blue)">'+log.length+' batch'+(log.length===1?'':'es')+'</span><button class="wbtn wbtn-success" style="padding:5px 10px;font-size:0.73rem;background:#2e7d32;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="injPrintLog()">🖨️ Print</button><button class="wbtn wbtn-danger" style="padding:5px 10px;font-size:0.73rem" onclick="injRenderLog()">🔄 Refresh</button></div>';
     if(!log.length){html+='<div class="log-empty">No batches yet.</div>';}
     else {
       log.forEach(function(e){
@@ -275,6 +288,27 @@ function injPrintAnalytics() {
   printReport('Injection Calculator Analytics — Pride of the Pond', html);
 }
 
+
+async function injPrintLog() {
+  const isAdmin = (typeof currentUser!=='undefined' && currentUser?.role==='admin');
+  if(!isAdmin){ toast('Admin access required'); return; }
+  let data;
+  try { data = await apiCall('GET','/api/records?type=injection&limit=500'); } catch(e){ toast('Error loading data'); return; }
+  if(!data||!data.length){ toast('No records to print'); return; }
+  function getYieldPct(r){ if(r.total_pct!=null&&r.total_pct!=='')return parseFloat(r.total_pct); const pre=parseFloat(r.pre_injection_lbs)||0,post=parseFloat(r.post_injection_lbs)||0; return pre>0&&post>0?(post-pre)/pre*100:0; }
+  function getBrinePct(r){ if(r.brine_pct!=null&&r.brine_pct!=='')return parseFloat(r.brine_pct); const sd=(r.batch_data||{}).stepData||{}; return parseFloat((sd['inj']||{}).pct)||0; }
+  const rows = data.sort((a,b)=>b.record_date>a.record_date?1:-1);
+  const tableRows = rows.map(r=>{
+    const bd=r.batch_data||{}, steps=(bd.steps||[]).map(s=>s.toUpperCase()).join(', ')||'—';
+    const sd=bd.stepData||{};
+    const detail=Object.entries(sd).map(([sid,s])=>{const p=[];if(s.in!=null)p.push('In:'+s.in);if(s.lbs!=null)p.push((s.lbs>=0?'+':'')+s.lbs+'lbs');if(s.pct!=null)p.push(parseFloat(s.pct).toFixed(1)+'%');return '<b>'+sid.toUpperCase()+':</b> '+p.join(' ');}).join(' &nbsp;|&nbsp; ');
+    return '<tr><td>'+r.record_date+'</td><td>'+(r.record_time||'—')+'</td><td>'+(r.shift||'')+'</td><td>'+(r.category||'—')+'</td><td>'+(r.item||'—')+'</td><td style="text-align:right">'+(parseFloat(r.pre_injection_lbs)||0)+'</td><td style="text-align:right">'+(parseFloat(r.post_injection_lbs)||0)+'</td><td style="text-align:right">'+getBrinePct(r).toFixed(1)+'%</td><td style="text-align:right;font-weight:700">'+getYieldPct(r).toFixed(1)+'%</td><td style="font-size:.8rem">'+steps+'<br>'+detail+'</td><td>'+(r.notes||'')+'</td></tr>';
+  }).join('');
+  const html='<div style="background:#f5f5f5;padding:12px;border-radius:6px;margin-bottom:16px;font-size:.85rem"><b>Total Batches:</b> '+rows.length+' &nbsp;|&nbsp; <b>Generated:</b> '+new Date().toLocaleString()+'</div>'+
+    '<table style="border-collapse:collapse;width:100%;font-size:.8rem"><thead><tr style="background:#1a3a6b;color:#fff"><th style="padding:6px">Date</th><th>Time</th><th>Shift</th><th>Category</th><th>Size</th><th style="text-align:right">Pre Lbs</th><th style="text-align:right">Post Lbs</th><th style="text-align:right">Brine%</th><th style="text-align:right">Yield%</th><th>Tests Applied</th><th>Notes</th></tr></thead><tbody>'+tableRows+'</tbody></table>';
+  printReport('Injection Batch Log — Pride of the Pond', html);
+}
+
 // Expose to global scope for inline onclick handlers
 window.buildInjectionWidget = buildInjectionWidget;
 window.injShowTab = injShowTab;
@@ -290,3 +324,4 @@ window.injDelete = injDelete;
 window.injRenderAnalytics = injRenderAnalytics;
 window.injFilterAnalytics = injFilterAnalytics;
 window.injPrintAnalytics = injPrintAnalytics;
+window.injPrintLog = injPrintLog;
