@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="POTP Portal"/>
-<link rel="stylesheet" href="/css/style.css?v=1775364005985"/>
+<link rel="stylesheet" href="/css/style.css?v=1775364477932"/>
 <title>Employee Portal</title>
 </head>
 <body>
@@ -143,19 +143,28 @@
 
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/js/utils.js?v=1775364005985"></script>
-<script src="/js/auth.js?v=1775364005985"></script>
-<script src="/js/dashboard.js?v=1775364005985"></script>
-<script src="/js/yield.js?v=1775364005985"></script>
-<script src="/js/injector.js?v=1775364005985"></script>
-<script src="/js/trimmer.js?v=1775364005985"></script>
-<script src="/js/ai.js?v=1775364005985"></script>
-<script src="/js/admin.js?v=1775364005985"></script>
-<script src="/js/print.js?v=1775364005985"></script>
+<script src="/js/utils.js?v=1775364477932"></script>
+<script src="/js/auth.js?v=1775364477932"></script>
+<script src="/js/dashboard.js?v=1775364477932"></script>
+<script src="/js/yield.js?v=1775364477932"></script>
+<script src="/js/injector.js?v=1775364477932"></script>
+<script src="/js/trimmer.js?v=1775364477932"></script>
+<script src="/js/ai.js?v=1775364477932"></script>
+<script src="/js/admin.js?v=1775364477932"></script>
+<script src="/js/print.js?v=1775364477932"></script>
 <script>
-(async function() {
-
-window.addEventListener('DOMContentLoaded', asyn
+(function() {
+  // Show company selection immediately as default
+  showScreen('screen-select');
+  // Try to restore existing session
+  const saved = loadSession();
+  if (saved) {
+    if (currentUser && currentUser.needs_passkey_setup) {
+      buildDash(); showScreen('screen-passkey-setup');
+    } else {
+      buildDash(); showScreen('screen-dash');
+    }
+  }
 })();
 </script>
 </body>
