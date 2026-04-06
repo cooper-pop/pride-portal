@@ -76,7 +76,7 @@ module.exports = async function handler(req, res) {
                u.username as created_by_name
         FROM task_instances ti
         JOIN tasks t ON ti.task_id = t.id
-        JOIN users u ON t.created_by = u.id
+        JOIN users u ON t.created_by = u.id::text
         WHERE ti.assigned_to = ${userId}
           AND ti.instance_date = ${today}
           AND ti.company_id = ${companyId}
@@ -93,7 +93,7 @@ module.exports = async function handler(req, res) {
                u.username as assigned_username, u.role as assigned_role
         FROM task_instances ti
         JOIN tasks t ON ti.task_id = t.id
-        JOIN users u ON ti.assigned_to = u.id
+        JOIN users u ON ti.assigned_to = u.id::text
         WHERE ti.instance_date = ${date}
           AND ti.company_id = ${companyId}
         ORDER BY u.username, t.due_time ASC NULLS LAST`;
@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='complete') as completions,
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='pending'
             AND ti.instance_date < CURRENT_DATE) as overdue_count
-        FROM tasks t JOIN users u ON t.created_by = u.id
+        FROM tasks t JOIN users u ON t.created_by = u.id::text
         WHERE t.company_id = ${companyId} AND t.is_active = TRUE
         ORDER BY t.created_at DESC`;
       return res.json(rows);
@@ -118,7 +118,7 @@ module.exports = async function handler(req, res) {
     if (action === 'messages') {
       const rows = await sql`
         SELECT tm.*, u.username as from_name, u.role as from_role
-        FROM task_messages tm JOIN users u ON tm.from_user_id = u.id
+        FROM task_messages tm JOIN users u ON tm.from_user_id = u.id::text
         WHERE tm.to_user_id = ${userId}
           AND tm.acknowledged = FALSE
           AND tm.company_id = ${companyId}
@@ -136,7 +136,7 @@ module.exports = async function handler(req, res) {
             SUM(CASE WHEN ti.status='complete' THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN ti.status='pending' AND ti.instance_date < CURRENT_DATE THEN 1 ELSE 0 END) as missed
           FROM users u
-          LEFT JOIN task_instances ti ON ti.assigned_to=u.id
+          LEFT JOIN task_instances ti ON ti.assigned_to=u.id::text
             AND ti.instance_date >= ${thirtyAgo}
             AND ti.company_id=${companyId}
           WHERE u.company_id=${companyId}
@@ -149,10 +149,10 @@ module.exports = async function handler(req, res) {
           SUM(CASE WHEN ti.status='complete' THEN 1 ELSE 0 END) as completed,
           SUM(CASE WHEN ti.status='pending' AND ti.instance_date < CURRENT_DATE THEN 1 ELSE 0 END) as missed
         FROM users u
-        LEFT JOIN task_instances ti ON ti.assigned_to=u.id
+        LEFT JOIN task_instances ti ON ti.assigned_to=u.id::text
           AND ti.instance_date >= ${thirtyAgo}
           AND ti.company_id=${companyId}
-        WHERE u.id=${userId}
+        WHERE u.id::text=${userId}
         GROUP BY u.id, u.username, u.role`;
       return res.json(rows);
     }
@@ -168,7 +168,7 @@ module.exports = async function handler(req, res) {
           COALESCE(SUM(el.tasks_completed),0) as tasks_completed,
           MAX(el.session_end) as last_seen
         FROM users u
-        LEFT JOIN engagement_logs el ON el.user_id=u.id
+        LEFT JOIN engagement_logs el ON el.user_id=u.id::text
           AND el.company_id=${companyId}
           AND el.session_date >= CURRENT_DATE - INTERVAL '30 days'
         WHERE u.company_id=${companyId}
