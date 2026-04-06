@@ -120,11 +120,15 @@ module.exports = async function handler(req, res) {
     if (action === 'all_tasks') {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       const rows = await sql`
-        SELECT t.*, u.username as created_by_name,
+        SELECT t.*,
+          u.username as created_by_name,
+          COALESCE(u2.username, t.assigned_to) as assigned_username,
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='complete') as completions,
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='pending'
             AND ti.instance_date < CURRENT_DATE) as overdue_count
-        FROM tasks t JOIN users u ON t.created_by = u.id::text
+        FROM tasks t
+        JOIN users u ON t.created_by = u.id::text
+        LEFT JOIN users u2 ON u2.id::text = t.assigned_to
         WHERE t.company_id = ${companyId} AND t.is_active = TRUE
         ORDER BY t.created_at DESC`;
       return res.json(rows);
