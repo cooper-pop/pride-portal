@@ -22,7 +22,7 @@ async function ensureTables(sql) {
   await sql`CREATE TABLE IF NOT EXISTS engagement_logs (id SERIAL PRIMARY KEY, company_id INTEGER, user_id INTEGER, session_date DATE NOT NULL DEFAULT CURRENT_DATE, session_start TIMESTAMPTZ DEFAULT NOW(), session_end TIMESTAMPTZ, task_time_seconds INTEGER DEFAULT 0, tasks_completed INTEGER DEFAULT 0)`;
 }
 let _tablesEnsured = false;
-import jwt from 'jsonwebtoken';
+const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'potp-secret-2026-xk9q7r';
 
@@ -34,7 +34,7 @@ function getUser(req) {
   } catch { return null; }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
 
 // Auto-create tables if they don't exist
