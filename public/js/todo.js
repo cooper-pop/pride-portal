@@ -437,6 +437,10 @@ async function todoManage(body) {
   var msgBtn = document.getElementById('todo-send-msg-btn2');
   if(newBtn) newBtn.addEventListener('click', todoShowCreateTask);
   if(msgBtn) msgBtn.addEventListener('click', todoShowSendMessage);
+  // Wire Message User button
+  var msgUserBtn = body.querySelector('#todo-msg-user-btn') || body.querySelector('[id*="msg-user"]') ||
+    Array.from(body.querySelectorAll('button')).find(function(b){return b.textContent.includes('Message User');});
+  if(msgUserBtn) msgUserBtn.addEventListener('click', todoShowMessageUser);
   body.querySelectorAll('.todo-del-task').forEach(function(btn) {
     btn.addEventListener('click', function(){ todoDeleteTask(parseInt(this.dataset.tid)); });
   });
@@ -620,6 +624,56 @@ async function todoSubmitWaitingParts(instanceId, modal) {
 
 window.todoShowWaitingParts = todoShowWaitingParts;
 window.todoSubmitWaitingParts = todoSubmitWaitingParts;
+
+
+// ── MESSAGE USER MODAL ──
+function todoShowMessageUser() {
+  var users = _todoUsers || [];
+  var m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  var userOpts = users.filter(function(u){ return u.id !== currentUser.id; })
+    .map(function(u){ return '<option value="'+u.id+'">'+u.username+' ('+u.role+')</option>'; }).join('');
+  m.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px">'
+    +'<h3 style="margin:0 0 14px;color:#1a3a6b">✉️ Send Message</h3>'
+    +'<div style="display:grid;gap:10px">'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Send To *</label>'
+    +'<select id="mu-user" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
+    +'<option value="">-- Select employee --</option>'+userOpts+'</select></div>'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Message *</label>'
+    +'<textarea id="mu-body" rows="4" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.85rem" placeholder="Type your message..."></textarea></div>'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">📷 Photo (optional)</label>'
+    +'<input type="file" id="mu-photo" accept="image/*" style="width:100%;font-size:.8rem">'
+    +'<div id="mu-preview" style="margin-top:6px"></div></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:14px">'
+    +'<button id="mu-send" style="flex:1;background:#d97706;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">✉️ Send Message</button>'
+    +'<button id="mu-cancel" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'
+    +'</div></div>';
+  document.body.appendChild(m);
+  var _muPhoto = null;
+  document.getElementById('mu-photo').addEventListener('change', function() {
+    var file = this.files[0];
+    if(!file) return;
+    if(file.size>1048576){ toast('Photo must be under 1MB'); this.value=''; return; }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('mu-preview').innerHTML = '<img src="'+e.target.result+'" style="max-width:100%;border-radius:6px;max-height:80px">';
+      _muPhoto = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('mu-send').addEventListener('click', function() {
+    var toId = document.getElementById('mu-user').value;
+    var body = document.getElementById('mu-body').value.trim();
+    if(!toId){ toast('Please select an employee'); return; }
+    if(!body){ toast('Please enter a message'); return; }
+    apiCall('POST','/api/tasks?action=send_message',{to_user_id:toId, body:body, photo:_muPhoto||null})
+      .then(function(){ m.remove(); toast('✉️ Message sent!'); })
+      .catch(function(e){ toast('❌ '+e.message); });
+  });
+  document.getElementById('mu-cancel').addEventListener('click', function(){ m.remove(); });
+}
+window.todoShowMessageUser = todoShowMessageUser;
 
 // ── BADGE UPDATE ──
 async function todoBadgeUpdate() {
