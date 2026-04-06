@@ -52,6 +52,14 @@ async function ensureTables(sql) {
     await sql`ALTER TABLE task_messages ALTER COLUMN to_user_id TYPE TEXT`;
     await sql`ALTER TABLE engagement_logs ALTER COLUMN user_id TYPE TEXT`;
   } catch(e) { /* columns already correct type */ }
+  try {
+    await sql`ALTER TABLE task_instances ADD COLUMN IF NOT EXISTS parts_note TEXT`;
+    await sql`ALTER TABLE task_instances ADD COLUMN IF NOT EXISTS parts_number TEXT`;
+    await sql`ALTER TABLE task_instances ADD COLUMN IF NOT EXISTS parts_photo TEXT`;
+    await sql`ALTER TABLE task_instances ADD COLUMN IF NOT EXISTS parts_ordered BOOLEAN DEFAULT FALSE`;
+    await sql`ALTER TABLE task_instances ADD COLUMN IF NOT EXISTS parts_eta DATE`;
+    await sql`ALTER TABLE task_instances ADD COLUMN IF NOT EXISTS parts_received BOOLEAN DEFAULT FALSE`;
+  } catch(e) { /* columns may already exist */ }
 
 }
 
@@ -140,7 +148,7 @@ module.exports = async function handler(req, res) {
       if (user.role === 'admin') {
         const rows = await sql`
           SELECT u.id, u.username, u.role,
-            COUNT(ti.id) as total_tasks,
+            COUNT(CASE WHEN ti.status!='waiting_parts' THEN 1 END) as total_tasks,
             SUM(CASE WHEN ti.status='complete' THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN ti.status='pending' AND ti.instance_date < CURRENT_DATE THEN 1 ELSE 0 END) as missed
           FROM users u
@@ -153,7 +161,7 @@ module.exports = async function handler(req, res) {
       }
       const rows = await sql`
         SELECT u.id, u.username, u.role,
-          COUNT(ti.id) as total_tasks,
+          COUNT(CASE WHEN ti.status!='waiting_parts' THEN 1 END) as total_tasks,
           SUM(CASE WHEN ti.status='complete' THEN 1 ELSE 0 END) as completed,
           SUM(CASE WHEN ti.status='pending' AND ti.instance_date < CURRENT_DATE THEN 1 ELSE 0 END) as missed
         FROM users u
@@ -212,9 +220,27 @@ module.exports = async function handler(req, res) {
 
     // ── update_instance: complete/start a task ──
     if (action === 'update_instance') {
-      const { instance_id, status, completion_photo, completion_note, step_completions } = body;
+      const { instance_id, status, completion_photo, completion_note, step_completions,
+              parts_note, parts_number, parts_photo } = body;
       if (status === 'complete' && !completion_photo) {
         return res.status(400).json({error:'Photo required to complete task'});
+      }
+      // waiting_parts: store part info, send message to admin
+      if (status === 'waiting_parts') {
+        await sql`UPDATE task_instances SET
+          status='waiting_parts', parts_note=${parts_note||null},
+          parts_number=${parts_number||null}, parts_photo=${parts_photo||null}
+          WHERE id=${instance_id} AND assigned_to=${userId}`;
+        // Auto-notify all admins
+        const admins = await sql`SELECT id::text FROM users WHERE role='admin' AND company_id=${companyId}`;
+        const inst = await sql`SELECT ti.*, t.title FROM task_instances ti JOIN tasks t ON ti.task_id=t.id WHERE ti.id=${instance_id}`;
+        const msgBody = '⏳ PARTS REQUEST: Task "'+( inst[0]?.title||'Task')+'" is waiting on parts.'
+          +(parts_number?' Part #: '+parts_number:'')+(parts_note?' Note: '+parts_note:'');
+        for (const admin of admins) {
+          await sql`INSERT INTO task_messages (company_id,from_user_id,to_user_id,body,photo)
+            VALUES (${companyId},${userId},${admin.id},${msgBody},${parts_photo||null})`;
+        }
+        return res.json({ok:true});
       }
       await sql`
         UPDATE task_instances SET
@@ -296,6 +322,51 @@ module.exports = async function handler(req, res) {
         }
       }
       return res.json({ok:true, spawned});
+    }
+
+
+    // ── mark_parts_ordered: admin marks part as ordered ──
+    if (action === 'mark_parts_ordered') {
+      if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+      const { instance_id, parts_eta } = body;
+      await sql`UPDATE task_instances SET parts_ordered=TRUE, parts_eta=${parts_eta||null}
+        WHERE id=${instance_id} AND company_id=${companyId}`;
+      // Notify the assigned user
+      const inst = await sql`SELECT ti.assigned_to, t.title FROM task_instances ti JOIN tasks t ON ti.task_id=t.id WHERE ti.id=${instance_id}`;
+      if (inst[0]) {
+        const eta = parts_eta ? ' Expected arrival: '+parts_eta : '';
+        await sql`INSERT INTO task_messages (company_id,from_user_id,to_user_id,body)
+          VALUES (${companyId},${userId},${inst[0].assigned_to},${'✅ Part ordered for task "'+inst[0].title+'".'+eta+' You will be notified when it arrives.'})`;
+      }
+      return res.json({ok:true});
+    }
+
+    // ── mark_parts_received: admin marks part arrived, reopens task ──
+    if (action === 'mark_parts_received') {
+      if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+      const { instance_id } = body;
+      await sql`UPDATE task_instances SET parts_received=TRUE, status='in_progress', parts_ordered=TRUE
+        WHERE id=${instance_id} AND company_id=${companyId}`;
+      // Notify assigned user
+      const inst = await sql`SELECT ti.assigned_to, t.title FROM task_instances ti JOIN tasks t ON ti.task_id=t.id WHERE ti.id=${instance_id}`;
+      if (inst[0]) {
+        await sql`INSERT INTO task_messages (company_id,from_user_id,to_user_id,body)
+          VALUES (${companyId},${userId},${inst[0].assigned_to},${'🚀 Part has arrived! Task "'+inst[0].title+'" is ready to complete. Please finish as soon as possible.'})`;
+      }
+      return res.json({ok:true});
+    }
+
+    // ── waiting_parts_list: get all tasks waiting on parts (admin) ──
+    if (action === 'waiting_parts_list') {
+      if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+      const rows = await sql`
+        SELECT ti.*, t.title, t.category, u.username as assigned_username
+        FROM task_instances ti
+        JOIN tasks t ON ti.task_id=t.id
+        JOIN users u ON ti.assigned_to=u.id::text
+        WHERE ti.status='waiting_parts' AND ti.company_id=${companyId}
+        ORDER BY ti.created_at DESC`;
+      return res.json(rows);
     }
 
     return res.status(400).json({error:'Unknown action: ' + action});

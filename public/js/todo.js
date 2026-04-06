@@ -58,7 +58,8 @@ function statusBadge(s) {
   var map={pending:{bg:'#f1f5f9',color:'#64748b',label:'Pending'},
     in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
     complete:{bg:'#dcfce7',color:'#16a34a',label:'Complete'},
-    overdue:{bg:'#fee2e2',color:'#dc2626',label:'Overdue'}};
+    overdue:{bg:'#fee2e2',color:'#dc2626',label:'Overdue'},
+    waiting_parts:{bg:'#f3e8ff',color:'#7c3aed',label:'⏳ Waiting on Parts'}};
   var m=map[s]||map.pending;
   return '<span style="padding:2px 8px;border-radius:12px;font-size:.72rem;font-weight:600;background:'+m.bg+';color:'+m.color+'">'+m.label+'</span>';
 }
@@ -116,7 +117,7 @@ async function todoMyTasks(body) {
   _todoTasks = tasks;
   var msgs = await apiCall('POST','/api/tasks',{action:'messages'});
   _todoMessages = msgs;
-  var pending = tasks.filter(function(t){return t.status!=='complete';}).length;
+  var pending = tasks.filter(function(t){return t.status!=='complete'&&t.status!=='waiting_parts';}).length;
   var done = tasks.filter(function(t){return t.status==='complete';}).length;
   var today = new Date().toISOString().split('T')[0];
   var overdue = tasks.filter(function(t){return t.status==='pending'&&t.instance_date<today;}).length;
@@ -142,6 +143,9 @@ async function todoMyTasks(body) {
   });
   body.querySelectorAll('.todo-start-btn').forEach(function(btn) {
     btn.addEventListener('click', function(){ todoStartComplete(parseInt(this.dataset.id)); });
+  });
+  body.querySelectorAll('.todo-parts-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(){ todoShowWaitingParts(parseInt(this.dataset.id)); });
   });
   body.querySelectorAll('.todo-step-check').forEach(function(chk) {
     chk.addEventListener('change', function(){ todoToggleStep(parseInt(this.dataset.tid), parseInt(this.dataset.idx), this.checked); });
@@ -179,9 +183,23 @@ function todoTaskCard(t) {
       c += '</div>';
     }
   }
-  if(!isComplete) {
+  if(!isComplete && t.status!=='waiting_parts') {
     var lbl = t.status==='in_progress'?'📷 Add Completion Photo':'▶ Start / Complete';
-    c += '<div style="margin-top:8px"><button class="todo-start-btn" data-id="'+t.id+'" style="background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:.82rem;font-weight:600">'+lbl+'</button></div>';
+    c += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">';
+    c += '<button class="todo-start-btn" data-id="'+t.id+'" style="background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:.82rem;font-weight:600">'+lbl+'</button>';
+    if(t.status==='in_progress'||t.status==='pending') {
+      c += '<button class="todo-parts-btn" data-id="'+t.id+'" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:.82rem;font-weight:600">⏳ Waiting on Parts</button>';
+    }
+    c += '</div>';
+  } else if(t.status==='waiting_parts') {
+    c += '<div style="margin-top:8px;background:#f3e8ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px">';
+    c += '<div style="font-weight:700;color:#7c3aed;font-size:.82rem;margin-bottom:4px">⏳ Waiting on Parts</div>';
+    if(t.parts_number) c += '<div style="font-size:.8rem;color:#6d28d9">Part #: <strong>'+t.parts_number+'</strong></div>';
+    if(t.parts_note) c += '<div style="font-size:.78rem;color:#6d28d9;margin-top:2px">'+t.parts_note+'</div>';
+    if(t.parts_photo) c += '<img src="'+t.parts_photo+'" style="max-width:100%;border-radius:6px;margin-top:6px;max-height:120px;cursor:pointer" class="todo-photo-thumb">';
+    if(t.parts_ordered) c += '<div style="font-size:.75rem;color:#16a34a;margin-top:4px;font-weight:600">✅ Part ordered'+(t.parts_eta?' · ETA: '+fmtDate(t.parts_eta):'')+'</div>';
+    else c += '<div style="font-size:.75rem;color:#92400e;margin-top:4px">⏳ Awaiting order — grade not affected</div>';
+    c += '</div>';
   } else {
     c += '<div style="margin-top:6px;font-size:.75rem;color:#16a34a">✅ Completed '+fmtDate(t.completed_at)+'</div>';
     if(t.completion_photo) c += '<div style="margin-top:4px"><img src="'+t.completion_photo+'" style="max-width:120px;border-radius:6px;cursor:pointer" class="todo-photo-thumb"></div>';
@@ -378,6 +396,35 @@ async function todoManage(body) {
     html += '</div>';
   } catch(ex){}
   html += '<div style="font-weight:700;color:#1a3a6b;margin-bottom:8px">Active Tasks ('+allTasks.length+')</div>';
+  // Parts waiting section
+  try {
+    var waitingParts = await apiCall('GET','/api/tasks?action=waiting_parts_list');
+    if(waitingParts && waitingParts.length>0) {
+      html += '<div style="background:#f3e8ff;border:1px solid #c4b5fd;border-radius:10px;padding:12px;margin-bottom:14px">';
+      html += '<div style="font-weight:700;color:#7c3aed;font-size:.85rem;margin-bottom:8px">⏳ Parts Requests ('+waitingParts.length+')</div>';
+      waitingParts.forEach(function(p) {
+        html += '<div style="background:#fff;border-radius:8px;padding:10px;margin-bottom:6px;border:1px solid #ddd6fe">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">';
+        html += '<div style="flex:1">';
+        html += '<div style="font-weight:600;font-size:.83rem">'+p.title+' — <span style="color:#7c3aed">'+p.assigned_username+'</span></div>';
+        if(p.parts_number) html += '<div style="font-size:.78rem;color:#6d28d9">Part #: <strong>'+p.parts_number+'</strong></div>';
+        if(p.parts_note) html += '<div style="font-size:.75rem;color:#64748b">'+p.parts_note+'</div>';
+        if(p.parts_photo) html += '<img src="'+p.parts_photo+'" style="max-width:100%;border-radius:6px;margin-top:4px;max-height:80px">';
+        html += '</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">';
+        if(!p.parts_ordered) {
+          html += '<button class="todo-order-btn" data-id="'+p.id+'" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.75rem;font-weight:600">📦 Mark Ordered</button>';
+        } else if(!p.parts_received) {
+          html += '<span style="font-size:.72rem;color:#16a34a;font-weight:600">✅ Ordered'+(p.parts_eta?' ETA: '+fmtDate(p.parts_eta):'')+'</span>';
+          html += '<button class="todo-received-btn" data-id="'+p.id+'" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.75rem;font-weight:600">✅ Part Arrived!</button>';
+        } else {
+          html += '<span style="font-size:.72rem;color:#16a34a;font-weight:600">✅ Part received</span>';
+        }
+        html += '</div></div></div>';
+      });
+      html += '</div>';
+    }
+  } catch(ex){}
   if(!allTasks.length) html += '<div style="text-align:center;padding:24px;color:#94a3b8">No tasks created yet</div>';
   else allTasks.forEach(function(t) {
     html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:flex-start">';
@@ -392,6 +439,24 @@ async function todoManage(body) {
   if(msgBtn) msgBtn.addEventListener('click', todoShowSendMessage);
   body.querySelectorAll('.todo-del-task').forEach(function(btn) {
     btn.addEventListener('click', function(){ todoDeleteTask(parseInt(this.dataset.tid)); });
+  });
+  body.querySelectorAll('.todo-order-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(){
+      var id = parseInt(this.dataset.id);
+      var eta = prompt('Enter expected arrival date (YYYY-MM-DD) or leave blank:');
+      apiCall('POST','/api/tasks?action=mark_parts_ordered',{instance_id:id, parts_eta:eta||null})
+        .then(function(){ toast('📦 Part marked as ordered!'); todoLoadTab(); })
+        .catch(function(e){ toast('❌ '+e.message); });
+    });
+  });
+  body.querySelectorAll('.todo-received-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(){
+      var id = parseInt(this.dataset.id);
+      if(!confirm('Mark part as received and reopen task?')) return;
+      apiCall('POST','/api/tasks?action=mark_parts_received',{instance_id:id})
+        .then(function(){ toast('✅ Part received! Task reopened and user notified.'); todoLoadTab(); })
+        .catch(function(e){ toast('❌ '+e.message); });
+    });
   });
 }
 
@@ -484,6 +549,71 @@ async function todoSendMessage(modal) {
     toast('✅ Message sent!');
   } catch(e){ toast('❌ '+e.message); }
 }
+
+
+// ── WAITING ON PARTS MODAL ──
+var _partsPhotoData = null;
+
+function todoShowWaitingParts(instanceId) {
+  var task = _todoTasks.find(function(t){return t.id===instanceId;});
+  if(!task) return;
+  _partsPhotoData = null;
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px">'
+    +'<h3 style="margin:0 0 6px;color:#7c3aed">⏳ Waiting on Parts</h3>'
+    +'<p style="font-size:.82rem;color:#64748b;margin:0 0 14px"><strong>'+task.title+'</strong> — your grade will NOT be affected while waiting</p>'
+    +'<div style="display:grid;gap:10px">'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Part Number</label>'
+    +'<input id="wp-partnum" placeholder="e.g. MC-4421-B" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.85rem"></div>'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Description / Note</label>'
+    +'<textarea id="wp-note" rows="3" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.82rem" placeholder="Describe what part is needed and why..."></textarea></div>'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">📷 Photo of Part (Optional, max 1MB)</label>'
+    +'<input type="file" id="wp-photo" accept="image/*" style="width:100%;font-size:.8rem">'
+    +'<div id="wp-preview" style="margin-top:6px"></div></div>'
+    +'</div>'
+    +'<p style="font-size:.75rem;color:#7c3aed;margin:10px 0 0;background:#f3e8ff;padding:8px;border-radius:6px">📋 This will automatically notify the admin to order the part. You will be notified when it arrives.</p>'
+    +'<div style="display:flex;gap:8px;margin-top:14px">'
+    +'<button id="wp-submit" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Submit Parts Request</button>'
+    +'<button id="wp-cancel" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+  document.getElementById('wp-photo').addEventListener('change', function() {
+    var file = this.files[0];
+    if(!file) return;
+    if(file.size>1048576){ toast('Photo must be under 1MB'); this.value=''; return; }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('wp-preview').innerHTML = '<img src="'+e.target.result+'" style="max-width:100%;border-radius:6px;max-height:100px">';
+      _partsPhotoData = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('wp-submit').addEventListener('click', function(){ todoSubmitWaitingParts(instanceId, modal); });
+  document.getElementById('wp-cancel').addEventListener('click', function(){ modal.remove(); });
+}
+
+async function todoSubmitWaitingParts(instanceId, modal) {
+  var partNum = (document.getElementById('wp-partnum')||{}).value||'';
+  var note = (document.getElementById('wp-note')||{}).value||'';
+  if(!partNum && !note && !_partsPhotoData) { toast('Please provide a part number, note, or photo'); return; }
+  try {
+    await apiCall('POST','/api/tasks?action=update_instance',{
+      instance_id: instanceId,
+      status: 'waiting_parts',
+      parts_note: note||null,
+      parts_number: partNum||null,
+      parts_photo: _partsPhotoData||null
+    });
+    _partsPhotoData = null;
+    if(modal) modal.remove();
+    toast('⏳ Parts request submitted! Admin notified. Grade protected.');
+    todoLoadTab(); todoBadgeUpdate();
+  } catch(e) { toast('❌ '+e.message); }
+}
+
+window.todoShowWaitingParts = todoShowWaitingParts;
+window.todoSubmitWaitingParts = todoSubmitWaitingParts;
 
 // ── BADGE UPDATE ──
 async function todoBadgeUpdate() {
