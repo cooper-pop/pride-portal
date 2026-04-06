@@ -42,6 +42,9 @@ function closeWidget() {
   document.getElementById('widget-content').innerHTML = '';
   document.getElementById('widget-tabs').innerHTML = '';
   document.getElementById('ai-input-area').style.display = 'none';
+
+  // Start message notification polling
+  if(typeof startMsgPolling !== "undefined") startMsgPolling();
 }
 
 function openWidget(id, label) {

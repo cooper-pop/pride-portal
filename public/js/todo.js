@@ -518,3 +518,122 @@ window.todoSubmitTask=todoSubmitTask;
 window.todoShowSendMessage=todoShowSendMessage;
 window.todoSendMessage=todoSendMessage;
 window.todoBadgeUpdate=todoBadgeUpdate;
+
+// ════════════════════════════════════════════════════════
+//  MESSAGE NOTIFICATION SYSTEM
+//  Shows a persistent banner on login + every widget open
+// ════════════════════════════════════════════════════════
+
+var _msgCheckInterval = null;
+
+// Check for unread messages and show banner if any
+async function checkAndShowMsgBanner() {
+  if (!currentUser) return;
+  try {
+    var msgs = await apiCall('GET', '/api/tasks?action=messages');
+    if (msgs && msgs.length > 0) {
+      showMsgBanner(msgs);
+    } else {
+      hideMsgBanner();
+    }
+  } catch(e) {}
+}
+
+function showMsgBanner(msgs) {
+  // Remove existing banner if any
+  var existing = document.getElementById('msg-alert-banner');
+  if (existing) existing.remove();
+
+  var banner = document.createElement('div');
+  banner.id = 'msg-alert-banner';
+  banner.style.cssText = [
+    'position:fixed',
+    'top:0','left:0','right:0',
+    'z-index:99999',
+    'background:#f59e0b',
+    'box-shadow:0 4px 20px rgba(0,0,0,.4)',
+    'display:flex',
+    'flex-direction:column',
+    'max-height:60vh',
+    'overflow-y:auto',
+  ].join(';');
+
+  var header = document.createElement('div');
+  header.style.cssText = 'background:#d97706;padding:10px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:1';
+  header.innerHTML = '<span style="font-size:1.3rem">🔔</span>' +
+    '<span style="font-weight:800;color:#fff;font-size:.95rem">You have '+msgs.length+' new message'+(msgs.length>1?'s':'')+' — must acknowledge to continue</span>';
+  banner.appendChild(header);
+
+  msgs.forEach(function(m) {
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#fffbeb;border-bottom:2px solid #f59e0b;padding:14px 16px;display:flex;align-items:flex-start;gap:12px';
+    var txt = document.createElement('div');
+    txt.style.cssText = 'flex:1';
+    txt.innerHTML = '<div style="font-weight:700;color:#92400e;font-size:.85rem;margin-bottom:4px">💬 From: '+m.from_name+'</div>' +
+      '<div style="color:#78350f;font-size:.9rem;line-height:1.4">'+m.body+'</div>' +
+      (m.photo ? '<img src="'+m.photo+'" style="max-width:200px;border-radius:6px;margin-top:8px;max-height:120px">' : '') +
+      '<div style="font-size:.72rem;color:#92400e;margin-top:4px;opacity:.7">'+new Date(m.created_at).toLocaleString()+'</div>';
+    var ackBtn = document.createElement('button');
+    ackBtn.textContent = 'Got It ✓';
+    ackBtn.dataset.msgid = m.id;
+    ackBtn.style.cssText = 'background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:700;font-size:.85rem;white-space:nowrap;flex-shrink:0;margin-top:2px';
+    ackBtn.addEventListener('click', function() {
+      var id = parseInt(this.dataset.msgid);
+      apiCall('POST', '/api/tasks?action=ack_message', {message_id: id})
+        .then(function() {
+          card.style.opacity = '0.4';
+          card.style.pointerEvents = 'none';
+          ackBtn.textContent = '✅ Acknowledged';
+          // Remove this card after short delay and recheck
+          setTimeout(function() {
+            card.remove();
+            // Recount remaining
+            var remaining = banner.querySelectorAll('[data-msgid]').length;
+            if (remaining === 0) {
+              hideMsgBanner();
+              todoBadgeUpdate();
+            } else {
+              header.querySelector('span:last-child').textContent =
+                'You have '+remaining+' new message'+(remaining>1?'s':'')+' — must acknowledge to continue';
+            }
+          }, 600);
+        })
+        .catch(function(e) { alert('Error: '+e.message); });
+    });
+    card.appendChild(txt);
+    card.appendChild(ackBtn);
+    banner.appendChild(card);
+  });
+
+  document.body.appendChild(banner);
+
+  // Push page content down so banner is visible
+  var mainContent = document.getElementById('screen-dashboard');
+  if (mainContent) mainContent.style.paddingTop = banner.offsetHeight + 'px';
+}
+
+function hideMsgBanner() {
+  var b = document.getElementById('msg-alert-banner');
+  if (b) b.remove();
+  // Restore padding
+  var mainContent = document.getElementById('screen-dashboard');
+  if (mainContent) mainContent.style.paddingTop = '';
+}
+
+// Start polling for messages every 60 seconds while logged in
+function startMsgPolling() {
+  if (_msgCheckInterval) clearInterval(_msgCheckInterval);
+  checkAndShowMsgBanner();
+  _msgCheckInterval = setInterval(checkAndShowMsgBanner, 60000);
+}
+
+function stopMsgPolling() {
+  if (_msgCheckInterval) { clearInterval(_msgCheckInterval); _msgCheckInterval = null; }
+  hideMsgBanner();
+}
+
+window.checkAndShowMsgBanner = checkAndShowMsgBanner;
+window.showMsgBanner = showMsgBanner;
+window.hideMsgBanner = hideMsgBanner;
+window.startMsgPolling = startMsgPolling;
+window.stopMsgPolling = stopMsgPolling;
