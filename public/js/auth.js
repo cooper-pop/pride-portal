@@ -150,3 +150,26 @@ window.skipPasskeySetup = skipPasskeySetup;
 window.base64urlToBuffer = base64urlToBuffer;
 window.bufferToBase64url = bufferToBase64url;
 window.submitPasswordChange = submitPasswordChange;
+
+// ── SIGN OUT BUTTON ──
+document.addEventListener('DOMContentLoaded', function() {
+  var logoutBtn = document.getElementById('logout-btn');
+  if(logoutBtn) {
+    logoutBtn.addEventListener('click', function() {
+      // Stop message polling
+      if(typeof stopMsgPolling === 'function') stopMsgPolling();
+      // Close any open widget
+      if(typeof closeWidget === 'function') closeWidget();
+      // Clear session data
+      clearSession();
+      // Remove all stored sessions
+      Object.keys(localStorage).filter(function(k){ return k.endsWith('_session'); })
+        .forEach(function(k){ localStorage.removeItem(k); });
+      // Show login screen
+      document.getElementById('screen-dashboard').style.display = 'none';
+      document.getElementById('screen-login').style.display = '';
+      document.getElementById('login-user').value = '';
+      document.getElementById('login-pass').value = '';
+    });
+  }
+});
