@@ -112,9 +112,9 @@ async function todoLoadTab() {
 
 // ── TAB 0: MY TASKS ──
 async function todoMyTasks(body) {
-  var tasks = await apiCall('GET','/api/tasks?action=my_tasks');
+  var tasks = await apiCall('POST','/api/tasks',{action:'my_tasks'});
   _todoTasks = tasks;
-  var msgs = await apiCall('GET','/api/tasks?action=messages');
+  var msgs = await apiCall('POST','/api/tasks',{action:'messages'});
   _todoMessages = msgs;
   var pending = tasks.filter(function(t){return t.status!=='complete';}).length;
   var done = tasks.filter(function(t){return t.status==='complete';}).length;
@@ -255,7 +255,7 @@ async function todoAckMsg(msgId) {
 
 // ── TAB 1: SCHEDULE ──
 async function todoSchedule(body) {
-  var tasks = await apiCall('GET','/api/tasks?action=day_tasks&date='+_todoDate);
+  var tasks = await apiCall('POST','/api/tasks',{action:'day_tasks',date:_todoDate});
   var isAdmin = currentUser&&currentUser.role==='admin';
   var today = new Date().toISOString().split('T')[0];
   var prevDate = new Date(new Date(_todoDate).getTime()-86400000).toISOString().split('T')[0];
@@ -296,7 +296,7 @@ function todoSchedCard(t) {
 
 // ── TAB 2: MESSAGES ──
 async function todoMessages(body) {
-  var msgs = await apiCall('GET','/api/tasks?action=messages');
+  var msgs = await apiCall('POST','/api/tasks',{action:'messages'});
   _todoMessages = msgs;
   var isAdmin = currentUser&&currentUser.role==='admin';
   var html = '';
@@ -322,9 +322,9 @@ async function todoMessages(body) {
 // ── TAB 3: GRADES ──
 async function todoGrades(body) {
   var isAdmin = currentUser&&currentUser.role==='admin';
-  var grades = await apiCall('GET','/api/tasks?action=grades');
+  var grades = await apiCall('POST','/api/tasks',{action:'grades'});
   var engagement = [];
-  if(isAdmin) { try { engagement = await apiCall('GET','/api/tasks?action=engagement'); } catch(e){} }
+  if(isAdmin) { try { engagement = await apiCall('POST','/api/tasks',{action:'engagement'}); } catch(e){} }
   _todoGrades = grades; _todoEngagement = engagement;
   var html = '';
   if(!isAdmin) {
@@ -360,14 +360,14 @@ async function todoGrades(body) {
 // ── TAB 4: MANAGE ──
 async function todoManage(body) {
   if(!currentUser||currentUser.role!=='admin'){ body.innerHTML='<p>Admin only</p>'; return; }
-  var allTasks = await apiCall('GET','/api/tasks?action=all_tasks');
-  var grades = await apiCall('GET','/api/tasks?action=grades');
+  var allTasks = await apiCall('POST','/api/tasks',{action:'all_tasks'});
+  var grades = await apiCall('POST','/api/tasks',{action:'grades'});
   _todoAllTasks = allTasks; _todoUsers = grades;
   var html = '<div style="display:flex;gap:8px;margin-bottom:16px">';
   html += '<button id="todo-new-task-btn" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">+ New Task</button>';
   html += '<button id="todo-send-msg-btn2" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">✉️ Message User</button></div>';
   try {
-    var eng = await apiCall('GET','/api/tasks?action=engagement');
+    var eng = await apiCall('POST','/api/tasks',{action:'engagement'});
     html += '<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:14px">';
     html += '<div style="font-weight:700;color:#1a3a6b;font-size:.85rem;margin-bottom:8px">⏱ App Engagement (Last 30 Days)</div>';
     eng.forEach(function(e) {
@@ -488,8 +488,8 @@ async function todoSendMessage(modal) {
 // ── BADGE UPDATE ──
 async function todoBadgeUpdate() {
   try {
-    var tasks = await apiCall('GET','/api/tasks?action=my_tasks');
-    var msgs = await apiCall('GET','/api/tasks?action=messages');
+    var tasks = await apiCall('POST','/api/tasks',{action:'my_tasks'});
+    var msgs = await apiCall('POST','/api/tasks',{action:'messages'});
     var today = new Date().toISOString().split('T')[0];
     var pending = tasks.filter(function(t){return t.status!=='complete';}).length;
     var overdue = tasks.filter(function(t){return t.status==='pending'&&t.instance_date<today;}).length;

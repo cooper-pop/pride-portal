@@ -49,10 +49,8 @@ async function ensureTables(sql) {
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { action } = req.query;
-
-  // ── GET handlers ──
-  if (req.method === 'GET') {
+  const action = (req.query && req.query.action) || (req.body && req.body.action);
+  const body = req.body || {};
 
     // Get today's tasks for current user
     if (action === 'my_tasks') {
