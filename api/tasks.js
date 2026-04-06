@@ -43,6 +43,16 @@ async function ensureTables(sql) {
     session_date DATE NOT NULL DEFAULT CURRENT_DATE,
     session_start TIMESTAMPTZ DEFAULT NOW(), session_end TIMESTAMPTZ,
     task_time_seconds INTEGER DEFAULT 0, tasks_completed INTEGER DEFAULT 0)`;
+
+  // Fix column types if they're wrong (alter existing tables)
+  try {
+    await sql`ALTER TABLE tasks ALTER COLUMN created_by TYPE TEXT`;
+    await sql`ALTER TABLE task_instances ALTER COLUMN assigned_to TYPE TEXT`;
+    await sql`ALTER TABLE task_messages ALTER COLUMN from_user_id TYPE TEXT`;
+    await sql`ALTER TABLE task_messages ALTER COLUMN to_user_id TYPE TEXT`;
+    await sql`ALTER TABLE engagement_logs ALTER COLUMN user_id TYPE TEXT`;
+  } catch(e) { /* columns already correct type */ }
+
 }
 
 module.exports = async function handler(req, res) {
