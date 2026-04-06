@@ -199,9 +199,8 @@ function wireSignOut() {
   fresh.addEventListener('click', function() {
     if (typeof stopMsgPolling === 'function') stopMsgPolling();
     if (typeof closeWidget === 'function') closeWidget();
-    Object.keys(localStorage).filter(function(k){
-      return k.indexOf('_session') > -1 || k.indexOf('_company') > -1;
-    }).forEach(function(k){ localStorage.removeItem(k); });
+    localStorage.clear();
+    sessionStorage.clear();
     window.currentUser = null;
     location.reload();
   });
