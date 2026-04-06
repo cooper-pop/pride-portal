@@ -1,5 +1,5 @@
-import { neon } from '@neondatabase/serverless';
-import jwt from 'jsonwebtoken';
+const { neon } = require('@neondatabase/serverless');
+const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'potp-secret-2026-xk9q7r';
 
@@ -11,7 +11,7 @@ function getUser(req) {
   } catch { return null; }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
 
 // Auto-create tables if they don't exist
