@@ -192,15 +192,22 @@ window.doSignOut = doSignOut;
 // Wire sign-out button - callable after dynamic render
 function wireSignOut() {
   var btn = document.getElementById('logout-btn');
-  if(btn) {
-    btn.onclick = null;
-    btn.addEventListener('click', doSignOut);
-  }
+  if (!btn) return;
+  // Remove any old listeners by replacing with clone
+  var fresh = btn.cloneNode(true);
+  btn.parentNode.replaceChild(fresh, btn);
+  fresh.addEventListener('click', function() {
+    if (typeof stopMsgPolling === 'function') stopMsgPolling();
+    if (typeof closeWidget === 'function') closeWidget();
+    Object.keys(localStorage).filter(function(k){
+      return k.indexOf('_session') > -1 || k.indexOf('_company') > -1;
+    }).forEach(function(k){ localStorage.removeItem(k); });
+    window.currentUser = null;
+    location.reload();
+  });
 }
 window.wireSignOut = wireSignOut;
 
-
-// Override doSignOut to guarantee clean navigation to login
 function doSignOut() {
   if(typeof stopMsgPolling === 'function') stopMsgPolling();
   if(typeof closeWidget === 'function') closeWidget();
