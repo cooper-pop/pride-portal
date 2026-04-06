@@ -460,7 +460,6 @@ async function todoManage(body) {
   body.querySelectorAll('.todo-received-btn').forEach(function(btn) {
     btn.addEventListener('click', function(){
       var id = parseInt(this.dataset.id);
-      if(!confirm('Mark part as received and reopen task?')) return;
       apiCall('POST','/api/tasks?action=mark_parts_received',{instance_id:id})
         .then(function(){ toast('✅ Part received! Task reopened and user notified.'); todoLoadTab(); })
         .catch(function(e){ toast('❌ '+e.message); });
@@ -469,7 +468,6 @@ async function todoManage(body) {
 }
 
 async function todoDeleteTask(taskId) {
-  if(!confirm('Delete this task?')) return;
   await apiCall('POST','/api/tasks?action=delete_task',{task_id:taskId});
   toast('🗑 Task deleted'); todoLoadTab();
 }
