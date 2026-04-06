@@ -217,3 +217,27 @@ function doSignOut() {
   location.reload();
 }
 window.doSignOut = doSignOut;
+
+// Delegated Sign Out handler — survives DOM re-renders
+(function() {
+  var _soWired = false;
+  function attachSignOut() {
+    if (_soWired) return;
+    _soWired = true;
+    document.addEventListener('click', function(e) {
+      var t = e.target;
+      if (t && (t.id === 'logout-btn' || (t.closest && t.closest('#logout-btn')))) {
+        e.preventDefault();
+        if (typeof stopMsgPolling === 'function') stopMsgPolling();
+        if (typeof closeWidget === 'function') closeWidget();
+        localStorage.clear();
+        sessionStorage.clear();
+        window.currentUser = null;
+        location.reload();
+      }
+    });
+  }
+  // Attach immediately and also when DOM is ready
+  attachSignOut();
+  document.addEventListener('DOMContentLoaded', attachSignOut);
+})();
