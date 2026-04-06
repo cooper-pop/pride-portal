@@ -7,7 +7,14 @@ function getUser(req) {
   try {
     const auth = req.headers.authorization || '';
     const token = auth.replace('Bearer ', '');
-    return jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // Normalize: JWT has user_id, but we use id throughout
+    return {
+      id: String(decoded.user_id || decoded.id),
+      username: decoded.username,
+      role: decoded.role,
+      company_id: parseInt(decoded.company_id)
+    };
   } catch(e) { return null; }
 }
 
@@ -58,9 +65,8 @@ module.exports = async function handler(req, res) {
 
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  // Normalize IDs - user.id is UUID string, company_id may be int or string
-  const userId = String(user.id);
-  const companyId = parseInt(user.company_id) || user.company_id;
+  const userId = user.id;
+  const companyId = user.company_id;
 
   const action = req.query.action || (req.body && req.body.action);
   const body = req.body || {};
