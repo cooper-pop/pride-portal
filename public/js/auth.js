@@ -152,6 +152,34 @@ window.bufferToBase64url = bufferToBase64url;
 window.submitPasswordChange = submitPasswordChange;
 
 // ── SIGN OUT BUTTON ──
+
+// Called after buildDash() renders the header so #logout-btn exists in DOM
+function rewireSignOut() {
+  var logoutBtn = document.getElementById('logout-btn');
+  if (!logoutBtn || logoutBtn.dataset.wired) return;
+  logoutBtn.dataset.wired = '1';
+  logoutBtn.addEventListener('click', function() {
+    // Stop message polling
+    if (typeof stopMsgPolling === 'function') stopMsgPolling();
+    // Close any open widget
+    if (typeof closeWidget === 'function') closeWidget();
+    // Clear session storage
+    var company = localStorage.getItem('potp_company') || localStorage.getItem('bfn_company') || 'potp';
+    var sessionKey = company + '_v2_session';
+    localStorage.removeItem(sessionKey);
+    localStorage.removeItem('potp_company');
+    localStorage.removeItem('bfn_company');
+    // Reset currentUser
+    window.currentUser = null;
+    window.currentCompany = null;
+    // Show login screen
+    if (typeof showScreen === 'function') showScreen('login');
+    else if (typeof showLogin === 'function') showLogin();
+    else location.reload();
+  });
+}
+window.rewireSignOut = rewireSignOut;
+
 document.addEventListener('DOMContentLoaded', function() {
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn) {
