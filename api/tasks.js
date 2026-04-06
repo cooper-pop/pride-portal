@@ -21,11 +21,7 @@ function getUser(req) {
 let _tablesReady2 = false;
 
 async function ensureTables(sql) {
-  // Drop and recreate with correct UUID-compatible column types
-  await sql`DROP TABLE IF EXISTS engagement_logs CASCADE`;
-  await sql`DROP TABLE IF EXISTS task_messages CASCADE`;
-  await sql`DROP TABLE IF EXISTS task_instances CASCADE`;
-  await sql`DROP TABLE IF EXISTS tasks CASCADE`;
+  // Tables already exist with correct column types
   await sql`CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY, company_id INTEGER, title TEXT NOT NULL,
     description TEXT, category TEXT DEFAULT 'General', priority TEXT DEFAULT 'Medium',
@@ -295,6 +291,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({error:'Unknown action: ' + action});
 
   } catch(e) {
-    return res.status(500).json({error: e.message});
+    return res.status(500).json({error: e.message, userId, companyId, action});
   }
 };
