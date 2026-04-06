@@ -200,8 +200,8 @@ module.exports = async function handler(req, res) {
         RETURNING *`;
       const taskId = task[0].id;
       const users = assigned_to === 'all'
-        ? await sql`SELECT id FROM users WHERE company_id=${companyId}`
-        : await sql`SELECT id FROM users WHERE id=${parseInt(assigned_to)} AND company_id=${companyId}`;
+        ? await sql`SELECT id::text FROM users WHERE company_id=${companyId}`
+        : await sql`SELECT id::text FROM users WHERE id=${assigned_to} AND company_id=${companyId}`;
       const instDate = due_date || today;
       for (const u of users) {
         await sql`INSERT INTO task_instances (task_id, company_id, assigned_to, instance_date)
@@ -284,8 +284,8 @@ module.exports = async function handler(req, res) {
           if (!days.some(d => d.trim().toLowerCase() === shortDay.toLowerCase())) continue;
         }
         const assignees = task.assigned_to === 'all'
-          ? await sql`SELECT id FROM users WHERE company_id=${companyId}`
-          : await sql`SELECT id FROM users WHERE id=${parseInt(task.assigned_to)} AND company_id=${companyId}`;
+          ? await sql`SELECT id::text FROM users WHERE company_id=${companyId}`
+          : await sql`SELECT id::text FROM users WHERE id=${task.assigned_to} AND company_id=${companyId}`;
         for (const u of assignees) {
           const exists = await sql`SELECT id FROM task_instances WHERE task_id=${task.id} AND assigned_to=${u.id} AND instance_date=${today}`;
           if (!exists.length) {
