@@ -437,6 +437,61 @@ async function todoManage(body) {
   var msgBtn = document.getElementById('todo-send-msg-btn2');
   if(newBtn) newBtn.addEventListener('click', todoShowCreateTask);
   if(msgBtn) msgBtn.addEventListener('click', todoShowSendMessage);
+
+function todoShowMessageUser() {
+  var users = (window._todoUsers||[]);
+  var myId = currentUser && currentUser.id ? String(currentUser.id) : '';
+  var opts = users
+    .filter(function(u){ return String(u.id) !== myId; })
+    .map(function(u){ return '<option value="'+u.id+'">'+u.username+' ('+u.role+')</option>'; }).join('');
+  var m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = '<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px">'
+    +'<h3 style="margin:0 0 14px;color:#d97706">\u2709\uFE0F Send Message</h3>'
+    +'<div style="display:grid;gap:10px">'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Send To *</label>'
+    +'<select id="mu-to" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.85rem">'
+    +'<option value="">-- Select employee --</option>'
+    +'<option value="__all__">\uD83D\uDCE2 All Employees</option>'
+    +opts+'</select></div>'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Message *</label>'
+    +'<textarea id="mu-msg" rows="4" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.85rem;resize:vertical" placeholder="Type your message..."></textarea></div>'
+    +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">\uD83D\uDCF7 Photo (optional, max 1MB)</label>'
+    +'<input type="file" id="mu-pic" accept="image/*" style="width:100%;font-size:.8rem">'
+    +'<div id="mu-prev"></div></div>'
+    +'<p style="font-size:.75rem;color:#92400e;background:#fef3c7;padding:8px;border-radius:6px;margin:8px 0 0">\uD83D\uDD14 The employee will receive a notification they must acknowledge.</p>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px">'
+    +'<button id="mu-go" style="flex:1;background:#d97706;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:700">\u2709\uFE0F Send</button>'
+    +'<button id="mu-cx" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'
+    +'</div></div>';
+  document.body.appendChild(m);
+  var _pic = null;
+  document.getElementById('mu-pic').addEventListener('change', function(){
+    var f=this.files[0]; if(!f) return;
+    if(f.size>1048576){ toast('Photo max 1MB'); this.value=''; return; }
+    var rd=new FileReader();
+    rd.onload=function(e){ document.getElementById('mu-prev').innerHTML='<img src="'+e.target.result+'" style="max-width:100%;border-radius:6px;max-height:80px;margin-top:4px">'; _pic=e.target.result; };
+    rd.readAsDataURL(f);
+  });
+  document.getElementById('mu-go').addEventListener('click', function(){
+    var toId=(document.getElementById('mu-to')||{}).value||'';
+    var body=((document.getElementById('mu-msg')||{}).value||'').trim();
+    if(!toId){ toast('Select a recipient'); return; }
+    if(!body){ toast('Enter a message'); return; }
+    var btn=this; btn.disabled=true; btn.textContent='Sending...';
+    var targets = toId==='__all__'
+      ? (window._todoUsers||[]).filter(function(u){return String(u.id)!==myId;}).map(function(u){return u.id;})
+      : [toId];
+    Promise.all(targets.map(function(id){
+      return apiCall('POST','/api/tasks?action=send_message',{to_user_id:id,body:body,photo:_pic||null});
+    })).then(function(){ m.remove(); toast(toId==='__all__'?'\uD83D\uDCE2 Sent to all employees!':'\u2709\uFE0F Message sent!'); })
+    .catch(function(e){ btn.disabled=false; btn.textContent='\u2709\uFE0F Send'; toast('\u274C '+e.message); });
+  });
+  document.getElementById('mu-cx').addEventListener('click', function(){ m.remove(); });
+}
+window.todoShowMessageUser = todoShowMessageUser;
+
   // Wire Message User button
   var _muBtn = Array.from(body.querySelectorAll('button')).find(function(b){return b.textContent.trim().includes('Message User');});
   if(_muBtn) _muBtn.addEventListener('click', todoShowMessageUser);
