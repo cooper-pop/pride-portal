@@ -173,3 +173,28 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+
+// Global sign-out function callable from anywhere after buildDash
+function doSignOut() {
+  // Stop message polling
+  if(typeof stopMsgPolling === 'function') stopMsgPolling();
+  // Close any open widget
+  if(typeof closeWidget === 'function') closeWidget();
+  // Clear session data
+  clearSession();
+  // Remove all stored sessions
+  Object.keys(localStorage).filter(function(k){ return k.endsWith('_session'); })
+  .forEach(function(k){ localStorage.removeItem(k); });
+}
+window.doSignOut = doSignOut;
+
+// Wire sign-out button - callable after dynamic render
+function wireSignOut() {
+  var btn = document.getElementById('logout-btn');
+  if(btn) {
+    btn.onclick = null;
+    btn.addEventListener('click', doSignOut);
+  }
+}
+window.wireSignOut = wireSignOut;

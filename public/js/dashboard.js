@@ -45,6 +45,8 @@ function closeWidget() {
 
   // Start message notification polling
   if(typeof startMsgPolling !== "undefined") startMsgPolling();
+  // Wire sign out button after dynamic render
+  if(typeof wireSignOut !== "undefined") wireSignOut();
 }
 
 function openWidget(id, label) {
