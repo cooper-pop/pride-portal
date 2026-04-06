@@ -439,7 +439,7 @@ async function todoManage(body) {
   if(msgBtn) msgBtn.addEventListener('click', todoShowSendMessage);
   // Wire Message User button
   var _muBtn = Array.from(body.querySelectorAll('button')).find(function(b){return b.textContent.trim().includes('Message User');});
-  if(_muBtn) _muBtn.addEventListener('click', todoShowMessageUser);
+  if(_muBtn) _muBtn.addEventListener('click', function(){ if(typeof todoShowMessageUser==='function') todoShowMessageUser(); else toast('Message feature loading...'); });
   body.querySelectorAll('.todo-del-task').forEach(function(btn) {
     btn.addEventListener('click', function(){ todoDeleteTask(parseInt(this.dataset.tid)); });
   });
