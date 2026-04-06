@@ -198,3 +198,19 @@ function wireSignOut() {
   }
 }
 window.wireSignOut = wireSignOut;
+
+
+// Override doSignOut to guarantee clean navigation to login
+function doSignOut() {
+  if(typeof stopMsgPolling === 'function') stopMsgPolling();
+  if(typeof closeWidget === 'function') closeWidget();
+  // Clear all session data
+  Object.keys(localStorage).filter(function(k){
+    return k.indexOf('_session') > -1 || k.indexOf('_company') > -1;
+  }).forEach(function(k){ localStorage.removeItem(k); });
+  window.currentUser = null;
+  window.currentCompany = null;
+  // Reload to return to login screen
+  location.reload();
+}
+window.doSignOut = doSignOut;
