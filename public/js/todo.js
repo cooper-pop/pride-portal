@@ -429,7 +429,7 @@ async function todoManage(body) {
   else allTasks.forEach(function(t) {
     html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:flex-start">';
     html += '<div><div style="font-weight:600;font-size:.85rem">'+catIcon(t.category)+' '+t.title+'</div>';
-    html += '<div style="font-size:.73rem;color:#64748b">'+t.assigned_to+' · '+(t.recurring!=='none'?'🔄 '+t.recurring:'One-time')+' · '+fmtDate(t.due_date)+' · ✅ '+t.completions+' done'+(parseInt(t.overdue_count)>0?' · 🔴 '+t.overdue_count+' overdue':'')+'</div></div>';
+    html += '<div style="font-size:.73rem;color:#64748b">'+(t.assigned_username||t.assigned_to)+' · '+(t.recurring!=='none'?'🔄 '+t.recurring:'One-time')+' · '+fmtDate(t.due_date)+' · ✅ '+t.completions+' done'+(parseInt(t.overdue_count)>0?' · 🔴 '+t.overdue_count+' overdue':'')+'</div></div>';
     html += '<button class="todo-del-task" data-tid="'+t.id+'" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:.75rem">Delete</button></div></div>';
   });
   body.innerHTML = html;
