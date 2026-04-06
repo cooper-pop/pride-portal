@@ -443,10 +443,18 @@ async function todoManage(body) {
   body.querySelectorAll('.todo-order-btn').forEach(function(btn) {
     btn.addEventListener('click', function(){
       var id = parseInt(this.dataset.id);
-      var eta = prompt('Enter expected arrival date (YYYY-MM-DD) or leave blank:');
-      apiCall('POST','/api/tasks?action=mark_parts_ordered',{instance_id:id, parts_eta:eta||null})
-        .then(function(){ toast('📦 Part marked as ordered!'); todoLoadTab(); })
-        .catch(function(e){ toast('❌ '+e.message); });
+      var m=document.createElement('div');
+      m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+      m.innerHTML='<div style="background:#fff;border-radius:12px;padding:20px;width:100%;max-width:340px"><h3 style="margin:0 0 12px;color:#7c3aed">📦 Mark Part Ordered</h3><label style="font-size:.82rem;font-weight:600;display:block;margin-bottom:4px">Expected Arrival Date (optional)</label><input type="date" id="eta-input" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;margin-bottom:12px"><div style="display:flex;gap:8px"><button id="eta-ok" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600">Confirm</button><button id="eta-no" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button></div></div>';
+      document.body.appendChild(m);
+      document.getElementById('eta-ok').addEventListener('click',function(){
+        var eta=document.getElementById('eta-input').value||null;
+        m.remove();
+        apiCall('POST','/api/tasks?action=mark_parts_ordered',{instance_id:id,parts_eta:eta})
+          .then(function(){ toast('📦 Part ordered! Employee notified.'); todoLoadTab(); })
+          .catch(function(e){ toast('❌ '+e.message); });
+      });
+      document.getElementById('eta-no').addEventListener('click',function(){ m.remove(); });
     });
   });
   body.querySelectorAll('.todo-received-btn').forEach(function(btn) {
