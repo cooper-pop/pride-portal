@@ -15,12 +15,17 @@ let _tablesReady = false;
 
 async function ensureTables(sql) {
   if (_tablesReady) return;
+  // Drop and recreate with correct UUID-compatible column types
+  await sql`DROP TABLE IF EXISTS engagement_logs CASCADE`;
+  await sql`DROP TABLE IF EXISTS task_messages CASCADE`;
+  await sql`DROP TABLE IF EXISTS task_instances CASCADE`;
+  await sql`DROP TABLE IF EXISTS tasks CASCADE`;
   await sql`CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY, company_id INTEGER, title TEXT NOT NULL,
     description TEXT, category TEXT DEFAULT 'General', priority TEXT DEFAULT 'Medium',
     assigned_to TEXT NOT NULL, due_date DATE, due_time TIME, shift TEXT DEFAULT 'Any',
     recurring TEXT DEFAULT 'none', recurring_days TEXT, steps JSONB DEFAULT '[]',
-    created_by INTEGER, created_at TIMESTAMPTZ DEFAULT NOW(), is_active BOOLEAN DEFAULT TRUE)`;
+    created_by TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), is_active BOOLEAN DEFAULT TRUE)`;
   await sql`CREATE TABLE IF NOT EXISTS task_instances (
     id SERIAL PRIMARY KEY, task_id INTEGER, company_id INTEGER, assigned_to INTEGER,
     instance_date DATE NOT NULL, status TEXT DEFAULT 'pending',
@@ -28,11 +33,11 @@ async function ensureTables(sql) {
     completion_photo TEXT, completion_note TEXT,
     step_completions JSONB DEFAULT '[]', created_at TIMESTAMPTZ DEFAULT NOW())`;
   await sql`CREATE TABLE IF NOT EXISTS task_messages (
-    id SERIAL PRIMARY KEY, company_id INTEGER, from_user_id INTEGER, to_user_id INTEGER,
+    id SERIAL PRIMARY KEY, company_id INTEGER, from_user_id TEXT, to_user_id TEXT,
     body TEXT NOT NULL, photo TEXT, acknowledged BOOLEAN DEFAULT FALSE,
     acknowledged_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())`;
   await sql`CREATE TABLE IF NOT EXISTS engagement_logs (
-    id SERIAL PRIMARY KEY, company_id INTEGER, user_id INTEGER,
+    id SERIAL PRIMARY KEY, company_id INTEGER, user_id TEXT,
     session_date DATE NOT NULL DEFAULT CURRENT_DATE,
     session_start TIMESTAMPTZ DEFAULT NOW(), session_end TIMESTAMPTZ,
     task_time_seconds INTEGER DEFAULT 0, tasks_completed INTEGER DEFAULT 0)`;
@@ -53,6 +58,9 @@ module.exports = async function handler(req, res) {
 
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  // Normalize IDs - user.id is UUID string, company_id may be int or string
+  const userId = String(user.id);
+  const companyId = parseInt(user.company_id) || user.company_id;
 
   const action = req.query.action || (req.body && req.body.action);
   const body = req.body || {};
@@ -69,9 +77,9 @@ module.exports = async function handler(req, res) {
         FROM task_instances ti
         JOIN tasks t ON ti.task_id = t.id
         JOIN users u ON t.created_by = u.id
-        WHERE ti.assigned_to = ${user.id}
+        WHERE ti.assigned_to = ${userId}
           AND ti.instance_date = ${today}
-          AND ti.company_id = ${user.company_id}
+          AND ti.company_id = ${companyId}
         ORDER BY t.priority DESC, t.due_time ASC NULLS LAST`;
       return res.json(rows);
     }
@@ -87,7 +95,7 @@ module.exports = async function handler(req, res) {
         JOIN tasks t ON ti.task_id = t.id
         JOIN users u ON ti.assigned_to = u.id
         WHERE ti.instance_date = ${date}
-          AND ti.company_id = ${user.company_id}
+          AND ti.company_id = ${companyId}
         ORDER BY u.username, t.due_time ASC NULLS LAST`;
       return res.json(rows);
     }
@@ -101,7 +109,7 @@ module.exports = async function handler(req, res) {
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='pending'
             AND ti.instance_date < CURRENT_DATE) as overdue_count
         FROM tasks t JOIN users u ON t.created_by = u.id
-        WHERE t.company_id = ${user.company_id} AND t.is_active = TRUE
+        WHERE t.company_id = ${companyId} AND t.is_active = TRUE
         ORDER BY t.created_at DESC`;
       return res.json(rows);
     }
@@ -111,9 +119,9 @@ module.exports = async function handler(req, res) {
       const rows = await sql`
         SELECT tm.*, u.username as from_name, u.role as from_role
         FROM task_messages tm JOIN users u ON tm.from_user_id = u.id
-        WHERE tm.to_user_id = ${user.id}
+        WHERE tm.to_user_id = ${userId}
           AND tm.acknowledged = FALSE
-          AND tm.company_id = ${user.company_id}
+          AND tm.company_id = ${companyId}
         ORDER BY tm.created_at DESC`;
       return res.json(rows);
     }
@@ -130,8 +138,8 @@ module.exports = async function handler(req, res) {
           FROM users u
           LEFT JOIN task_instances ti ON ti.assigned_to=u.id
             AND ti.instance_date >= ${thirtyAgo}
-            AND ti.company_id=${user.company_id}
-          WHERE u.company_id=${user.company_id}
+            AND ti.company_id=${companyId}
+          WHERE u.company_id=${companyId}
           GROUP BY u.id, u.username, u.role ORDER BY u.username`;
         return res.json(rows);
       }
@@ -143,8 +151,8 @@ module.exports = async function handler(req, res) {
         FROM users u
         LEFT JOIN task_instances ti ON ti.assigned_to=u.id
           AND ti.instance_date >= ${thirtyAgo}
-          AND ti.company_id=${user.company_id}
-        WHERE u.id=${user.id}
+          AND ti.company_id=${companyId}
+        WHERE u.id=${userId}
         GROUP BY u.id, u.username, u.role`;
       return res.json(rows);
     }
@@ -161,9 +169,9 @@ module.exports = async function handler(req, res) {
           MAX(el.session_end) as last_seen
         FROM users u
         LEFT JOIN engagement_logs el ON el.user_id=u.id
-          AND el.company_id=${user.company_id}
+          AND el.company_id=${companyId}
           AND el.session_date >= CURRENT_DATE - INTERVAL '30 days'
-        WHERE u.company_id=${user.company_id}
+        WHERE u.company_id=${companyId}
         GROUP BY u.id, u.username, u.role ORDER BY total_session_seconds DESC`;
       return res.json(rows);
     }
@@ -177,19 +185,19 @@ module.exports = async function handler(req, res) {
       const task = await sql`
         INSERT INTO tasks (company_id, title, description, category, priority,
           assigned_to, due_date, due_time, shift, recurring, recurring_days, steps, created_by)
-        VALUES (${user.company_id}, ${title}, ${description||''}, ${category||'General'},
+        VALUES (${companyId}, ${title}, ${description||''}, ${category||'General'},
           ${priority||'Medium'}, ${assigned_to}, ${due_date||null}, ${due_time||null},
           ${shift||'Any'}, ${recurring||'none'}, ${recurring_days||null},
-          ${JSON.stringify(steps||[])}, ${user.id})
+          ${JSON.stringify(steps||[])}, ${userId})
         RETURNING *`;
       const taskId = task[0].id;
       const users = assigned_to === 'all'
-        ? await sql`SELECT id FROM users WHERE company_id=${user.company_id}`
-        : await sql`SELECT id FROM users WHERE id=${parseInt(assigned_to)} AND company_id=${user.company_id}`;
+        ? await sql`SELECT id FROM users WHERE company_id=${companyId}`
+        : await sql`SELECT id FROM users WHERE id=${parseInt(assigned_to)} AND company_id=${companyId}`;
       const instDate = due_date || today;
       for (const u of users) {
         await sql`INSERT INTO task_instances (task_id, company_id, assigned_to, instance_date)
-          VALUES (${taskId}, ${user.company_id}, ${u.id}, ${instDate}) ON CONFLICT DO NOTHING`;
+          VALUES (${taskId}, ${companyId}, ${u.id}, ${instDate}) ON CONFLICT DO NOTHING`;
       }
       return res.json({ok:true, task:task[0]});
     }
@@ -208,10 +216,10 @@ module.exports = async function handler(req, res) {
           completion_photo = COALESCE(${completion_photo||null}, completion_photo),
           completion_note = COALESCE(${completion_note||null}, completion_note),
           step_completions = COALESCE(${JSON.stringify(step_completions||null)}::jsonb, step_completions)
-        WHERE id = ${instance_id} AND assigned_to = ${user.id}`;
+        WHERE id = ${instance_id} AND assigned_to = ${userId}`;
       if (status === 'complete') {
         await sql`INSERT INTO engagement_logs (company_id, user_id, session_date, tasks_completed)
-          VALUES (${user.company_id}, ${user.id}, CURRENT_DATE, 1)`.catch(()=>{});
+          VALUES (${companyId}, ${userId}, CURRENT_DATE, 1)`.catch(()=>{});
       }
       return res.json({ok:true});
     }
@@ -223,7 +231,7 @@ module.exports = async function handler(req, res) {
       if (!msgBody) return res.status(400).json({error:'Message required'});
       if (photo && photo.length > 1400000) return res.status(400).json({error:'Photo exceeds 1MB'});
       await sql`INSERT INTO task_messages (company_id, from_user_id, to_user_id, body, photo)
-        VALUES (${user.company_id}, ${user.id}, ${to_user_id}, ${msgBody}, ${photo||null})`;
+        VALUES (${companyId}, ${userId}, ${to_user_id}, ${msgBody}, ${photo||null})`;
       return res.json({ok:true});
     }
 
@@ -231,7 +239,7 @@ module.exports = async function handler(req, res) {
     if (action === 'ack_message') {
       const { message_id } = body;
       await sql`UPDATE task_messages SET acknowledged=TRUE, acknowledged_at=NOW()
-        WHERE id=${message_id} AND to_user_id=${user.id}`;
+        WHERE id=${message_id} AND to_user_id=${userId}`;
       return res.json({ok:true});
     }
 
@@ -239,7 +247,7 @@ module.exports = async function handler(req, res) {
     if (action === 'log_session') {
       const { task_time_seconds } = body;
       await sql`INSERT INTO engagement_logs (company_id, user_id, session_date, task_time_seconds)
-        VALUES (${user.company_id}, ${user.id}, CURRENT_DATE, ${task_time_seconds||0})`;
+        VALUES (${companyId}, ${userId}, CURRENT_DATE, ${task_time_seconds||0})`;
       return res.json({ok:true});
     }
 
@@ -247,7 +255,7 @@ module.exports = async function handler(req, res) {
     if (action === 'delete_task') {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       const { task_id } = body;
-      await sql`UPDATE tasks SET is_active=FALSE WHERE id=${task_id} AND company_id=${user.company_id}`;
+      await sql`UPDATE tasks SET is_active=FALSE WHERE id=${task_id} AND company_id=${companyId}`;
       return res.json({ok:true});
     }
 
@@ -257,7 +265,7 @@ module.exports = async function handler(req, res) {
       const recurringTasks = await sql`
         SELECT t.id, t.assigned_to, t.recurring, t.recurring_days, t.due_date
         FROM tasks t
-        WHERE t.company_id=${user.company_id}
+        WHERE t.company_id=${companyId}
           AND t.is_active=TRUE
           AND t.recurring != 'none'`;
       let spawned = 0;
@@ -268,13 +276,13 @@ module.exports = async function handler(req, res) {
           if (!days.some(d => d.trim().toLowerCase() === shortDay.toLowerCase())) continue;
         }
         const assignees = task.assigned_to === 'all'
-          ? await sql`SELECT id FROM users WHERE company_id=${user.company_id}`
-          : await sql`SELECT id FROM users WHERE id=${parseInt(task.assigned_to)} AND company_id=${user.company_id}`;
+          ? await sql`SELECT id FROM users WHERE company_id=${companyId}`
+          : await sql`SELECT id FROM users WHERE id=${parseInt(task.assigned_to)} AND company_id=${companyId}`;
         for (const u of assignees) {
           const exists = await sql`SELECT id FROM task_instances WHERE task_id=${task.id} AND assigned_to=${u.id} AND instance_date=${today}`;
           if (!exists.length) {
             await sql`INSERT INTO task_instances (task_id, company_id, assigned_to, instance_date)
-              VALUES (${task.id}, ${user.company_id}, ${u.id}, ${today})`;
+              VALUES (${task.id}, ${companyId}, ${u.id}, ${today})`;
             spawned++;
           }
         }
