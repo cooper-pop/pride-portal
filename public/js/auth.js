@@ -193,17 +193,14 @@ window.doSignOut = doSignOut;
 function wireSignOut() {
   var btn = document.getElementById('logout-btn');
   if (!btn) return;
-  // Remove any old listeners by replacing with clone
-  var fresh = btn.cloneNode(true);
-  btn.parentNode.replaceChild(fresh, btn);
-  fresh.addEventListener('click', function() {
+  btn.onclick = function() {
     if (typeof stopMsgPolling === 'function') stopMsgPolling();
     if (typeof closeWidget === 'function') closeWidget();
     localStorage.clear();
     sessionStorage.clear();
     window.currentUser = null;
     location.reload();
-  });
+  };
 }
 window.wireSignOut = wireSignOut;
 
