@@ -18,10 +18,9 @@ function getUser(req) {
   } catch(e) { return null; }
 }
 
-let _tablesReady = false;
+let _tablesReady2 = false;
 
 async function ensureTables(sql) {
-  if (_tablesReady) return;
   // Drop and recreate with correct UUID-compatible column types
   await sql`DROP TABLE IF EXISTS engagement_logs CASCADE`;
   await sql`DROP TABLE IF EXISTS task_messages CASCADE`;
@@ -48,7 +47,6 @@ async function ensureTables(sql) {
     session_date DATE NOT NULL DEFAULT CURRENT_DATE,
     session_start TIMESTAMPTZ DEFAULT NOW(), session_end TIMESTAMPTZ,
     task_time_seconds INTEGER DEFAULT 0, tasks_completed INTEGER DEFAULT 0)`;
-  _tablesReady = true;
 }
 
 module.exports = async function handler(req, res) {
@@ -59,9 +57,7 @@ module.exports = async function handler(req, res) {
 
   const sql = neon(process.env.DATABASE_URL);
   
-  try { await ensureTables(sql); } catch(e) {
-    return res.status(503).json({ error: 'DB initializing: ' + e.message });
-  }
+  try { await ensureTables(sql); } catch(e) { console.error('ensureTables:',e.message); }
 
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
