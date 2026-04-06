@@ -189,7 +189,7 @@ async function ensureTables(sql) {
   }
 
   // ── POST handlers ──
-  if (req.method === 'POST') {
+  if (true) {
 
     // Create task (admin only)
     if (action === 'create_task') {
@@ -331,5 +331,5 @@ async function ensureTables(sql) {
     return res.status(400).json({error:'Unknown action'});
   }
 
-  res.status(405).end();
+  res.status(400).json({error:'Unknown action: '+action});
 }
