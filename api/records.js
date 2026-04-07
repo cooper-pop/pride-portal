@@ -150,27 +150,27 @@ module.exports = async function handler(req, res) {
       if (recType === 'yield') {
         const ok = ['record_date','shift','line','live_weight_lbs','dressed_weight_lbs','fillet_weight_lbs','trim_weight_lbs','yield_pct','notes'];
         if (!ok.includes(field)) return res.status(400).json({error:'Field not allowed'});
-        if (field==='record_date') await sql`UPDATE yield_records SET record_date=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='shift') await sql`UPDATE yield_records SET shift=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='line') await sql`UPDATE yield_records SET line=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='live_weight_lbs') await sql`UPDATE yield_records SET live_weight_lbs=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='dressed_weight_lbs') await sql`UPDATE yield_records SET dressed_weight_lbs=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='fillet_weight_lbs') await sql`UPDATE yield_records SET fillet_weight_lbs=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='trim_weight_lbs') await sql`UPDATE yield_records SET trim_weight_lbs=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='yield_pct') await sql`UPDATE yield_records SET yield_pct=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='notes') await sql`UPDATE yield_records SET notes=${value} WHERE id=${recId} AND company_id=${companyId}`;
+        if (field==='record_date') await sql`UPDATE yield_records SET record_date=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='shift') await sql`UPDATE yield_records SET shift=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='line') await sql`UPDATE yield_records SET line=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='live_weight_lbs') await sql`UPDATE yield_records SET live_weight_lbs=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='dressed_weight_lbs') await sql`UPDATE yield_records SET dressed_weight_lbs=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='fillet_weight_lbs') await sql`UPDATE yield_records SET fillet_weight_lbs=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='trim_weight_lbs') await sql`UPDATE yield_records SET trim_weight_lbs=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='yield_pct') await sql`UPDATE yield_records SET yield_pct=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='notes') await sql`UPDATE yield_records SET notes=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
       } else if (recType === 'injection') {
         const ok = ['report_date','shift','category','item','batch_num','pre_injection_lbs','post_injection_lbs','brine_pct','target_brine_pct','notes'];
         if (!ok.includes(field)) return res.status(400).json({error:'Field not allowed'});
-        if (field==='report_date') await sql`UPDATE injection_records SET report_date=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='shift') await sql`UPDATE injection_records SET shift=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='category') await sql`UPDATE injection_records SET category=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='item') await sql`UPDATE injection_records SET item=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='batch_num') await sql`UPDATE injection_records SET batch_num=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='pre_injection_lbs') await sql`UPDATE injection_records SET pre_injection_lbs=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='post_injection_lbs') await sql`UPDATE injection_records SET post_injection_lbs=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='brine_pct') await sql`UPDATE injection_records SET brine_pct=${value} WHERE id=${recId} AND company_id=${companyId}`;
-        else if (field==='notes') await sql`UPDATE injection_records SET notes=${value} WHERE id=${recId} AND company_id=${companyId}`;
+        if (field==='report_date') await sql`UPDATE injection_records SET report_date=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='shift') await sql`UPDATE injection_records SET shift=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='category') await sql`UPDATE injection_records SET category=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='item') await sql`UPDATE injection_records SET item=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='batch_num') await sql`UPDATE injection_records SET batch_num=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='pre_injection_lbs') await sql`UPDATE injection_records SET pre_injection_lbs=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='post_injection_lbs') await sql`UPDATE injection_records SET post_injection_lbs=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='brine_pct') await sql`UPDATE injection_records SET brine_pct=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
+        else if (field==='notes') await sql`UPDATE injection_records SET notes=${value} WHERE id=${recId} AND company_id=${user.company_id}`;
       } else {
         return res.status(400).json({error:'Unknown type'});
       }
