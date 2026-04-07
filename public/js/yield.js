@@ -138,8 +138,9 @@ window.yToggleLine = yToggleLine;
 
 function yUpdateRecord(id, field, value) {
   if(typeof currentUser==='undefined'||!currentUser){toast('Not logged in');return;}
-  try{await apiCall('PUT','/api/records',{id,type:'yield',field,value});toast('✅ Saved');}
-  catch(e){toast('❌ '+e.message);}
+  apiCall('PUT','/api/records',{id,type:'yield',field,value})
+    .then(function(){ toast('✅ Saved'); })
+    .catch(function(e){ toast('❌ '+(e&&e.message||'Save failed')); });
 }
 
 // Expose to global scope for inline onclick handlers
