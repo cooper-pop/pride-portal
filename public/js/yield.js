@@ -136,11 +136,10 @@ window.yRenderTrends = yRenderTrends;
 window.yDrawTrends = yDrawTrends;
 window.yToggleLine = yToggleLine;
 
-async function yUpdateRecord(id, field, value) {
+function yUpdateRecord(id, field, value) {
   if(typeof currentUser==='undefined'||!currentUser){toast('Not logged in');return;}
-  apiCall('PUT','/api/records',{id,type:'yield',field,value})
-    .then(function(){ toast('✅ Saved'); })
-    .catch(function(e){ toast('❌ '+(e&&e.message?e.message:'Save failed')); });
+  try{await apiCall('PUT','/api/records',{id,type:'yield',field,value});toast('✅ Saved');}
+  catch(e){toast('❌ '+e.message);}
 }
 
 // Expose to global scope for inline onclick handlers
