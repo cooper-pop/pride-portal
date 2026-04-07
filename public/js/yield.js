@@ -136,8 +136,8 @@ window.yRenderTrends = yRenderTrends;
 window.yDrawTrends = yDrawTrends;
 window.yToggleLine = yToggleLine;
 
-async function yUpdateRecord(id, field, value) {
-  if(typeof currentUser==='undefined'||currentUser?.role!=='admin'){toast('Admin only');return;}
+async async function yUpdateRecord(id, field, value) {
+  if(typeof currentUser==='undefined'||!currentUser){toast('Not logged in');return;}
   try{await apiCall('PUT','/api/records',{id,type:'yield',field,value});toast('✅ Saved');}
   catch(e){toast('❌ '+e.message);}
 }
