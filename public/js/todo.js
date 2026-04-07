@@ -284,7 +284,12 @@ async function todoSchedule(body) {
   var dayLabel = _todoDate===today?'Today':dayNames[dateObj.getDay()]+', '+monthNames[dateObj.getMonth()]+' '+dateObj.getDate();
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
   html += '<button id="todo-prev-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">‹</button>';
-  html += '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+'</div></div>';
+  html += '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+(currentUser&&currentUser.role==='admin'?
+            '<div style="display:flex;gap:6px;margin-top:8px">'+
+            '<button class="sched-edit-btn" data-tid="'+t.id+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit Task</button>'+
+            '<button class="sched-del-inst-btn" data-iid="'+t.instance_id+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete Day</button>'+
+            '</div>':'')+
+          '</div></div>';
   html += '<button id="todo-next-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button></div>';
   if(isAdmin) html += '<button id="todo-create-btn" style="width:100%;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;margin-bottom:14px;font-size:.85rem">+ Create Task for This Day</button>';
   if(!tasks.length) html += '<div style="text-align:center;padding:32px;color:#94a3b8"><div style="font-size:2rem">📅</div><div>No tasks scheduled for this day</div></div>';
@@ -383,7 +388,7 @@ async function todoManage(body) {
   _todoAllTasks = allTasks; _todoUsers = grades;
   var html = '<div style="display:flex;gap:8px;margin-bottom:16px">';
   html += '<button id="todo-new-task-btn" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">+ New Task</button>';
-  html += '<button id="todo-send-msg-btn2" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">✉️ Message User</button></div>';
+  html += '<button id="todo-send-msg-btn2" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">✉️ Message User</button><button onclick="todoShowResetGrades()" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:600;font-size:.82rem">🔄 Reset Grades</button></div>';
   try {
     var eng = await apiCall('POST','/api/tasks',{action:'engagement'});
     html += '<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:14px">';
@@ -437,6 +442,91 @@ async function todoManage(body) {
   var msgBtn = document.getElementById('todo-send-msg-btn2');
   if(newBtn) newBtn.addEventListener('click', todoShowCreateTask);
   if(msgBtn) msgBtn.addEventListener('click', todoShowSendMessage);
+
+
+// ── EDIT TASK MODAL ──
+function todoShowEditTask(taskId) {
+  apiCall('GET','/api/tasks?action=all_tasks').then(function(tasks) {
+    var t = tasks.find(function(x){ return x.id===taskId; });
+    if(!t){ toast('Task not found'); return; }
+    var users = window._todoUsers||[];
+    var userOpts = users.map(function(u){
+      return '<option value="'+u.id+'"'+(String(u.id)===String(t.assigned_to)?' selected':'')+'>'+u.username+' ('+u.role+')</option>';
+    }).join('');
+    var m = document.createElement('div');
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    m.innerHTML='<div style="background:#fff;border-radius:14px;padding:20px;width:100%;max-width:460px;margin:20px auto">'
+      +'<h3 style="margin:0 0 14px;color:#1a3a6b">✏️ Edit Task</h3>'
+      +'<div style="display:grid;gap:10px">'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Title</label>'
+      +'<input id="et-title" value="'+t.title.replace(/"/g,"&quot;")+'" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.85rem"></div>'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Description</label>'
+      +'<textarea id="et-desc" rows="3" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box;font-size:.82rem">'+(t.description||'')+'</textarea></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Category</label>'
+      +'<select id="et-cat" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
+      +['Production','Maintenance','Sanitation','Safety','Quality','Admin'].map(function(c){return'<option value="'+c+'"'+(c===t.category?' selected':'')+'>'+c+'</option>';}).join('')
+      +'</select></div>'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Priority</label>'
+      +'<select id="et-pri" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
+      +['Low','Medium','High','Critical'].map(function(p){return'<option value="'+p+'"'+(p===t.priority?' selected':'')+'>'+p+'</option>';}).join('')
+      +'</select></div></div>'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Assign To</label>'
+      +'<select id="et-user" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'+userOpts+'</select></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Due Time</label>'
+      +'<input type="time" id="et-time" value="'+(t.due_time?t.due_time.substring(0,5):'')+'" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box"></div>'
+      +'<div><label style="font-size:.78rem;font-weight:600;display:block;margin-bottom:3px">Recurring</label>'
+      +'<select id="et-rec" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;box-sizing:border-box">'
+      +['none','daily','weekly','monthly'].map(function(r){return'<option value="'+r+'"'+(r===(t.recurring||'none')?' selected':'')+'>'+r.charAt(0).toUpperCase()+r.slice(1)+'</option>';}).join('')
+      +'</select></div></div>'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:14px">'
+      +'<button id="et-save" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:700">💾 Save Changes</button>'
+      +'<button id="et-cancel" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:10px;cursor:pointer">Cancel</button>'
+      +'</div></div>';
+    document.body.appendChild(m);
+    document.getElementById('et-save').addEventListener('click', function(){
+      var btn=this; btn.disabled=true; btn.textContent='Saving...';
+      apiCall('POST','/api/tasks?action=update_task',{
+        task_id:taskId,
+        title:document.getElementById('et-title').value,
+        description:document.getElementById('et-desc').value,
+        category:document.getElementById('et-cat').value,
+        priority:document.getElementById('et-pri').value,
+        assigned_to:document.getElementById('et-user').value,
+        due_time:document.getElementById('et-time').value||null,
+        recurring:document.getElementById('et-rec').value,
+      }).then(function(){ m.remove(); toast('✅ Task updated!'); todoLoadTab(); })
+        .catch(function(e){ btn.disabled=false; btn.textContent='💾 Save Changes'; toast('❌ '+e.message); });
+    });
+    document.getElementById('et-cancel').addEventListener('click', function(){ m.remove(); });
+  }).catch(function(e){ toast('❌ '+e.message); });
+}
+window.todoShowEditTask = todoShowEditTask;
+
+// ── RESET GRADES MODAL ──
+function todoShowResetGrades() {
+  var m = document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML='<div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:380px;text-align:center">'
+    +'<div style="font-size:2.5rem;margin-bottom:8px">🔄</div>'
+    +'<h3 style="margin:0 0 8px;color:#dc2626">Reset All Grades?</h3>'
+    +'<p style="font-size:.85rem;color:#64748b;margin:0 0 20px">This deletes ALL task history for every employee. Tasks stay active but grades start fresh. This cannot be undone.</p>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="rg-confirm" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:12px;cursor:pointer;font-weight:700">Yes, Reset Everything</button>'
+    +'<button id="rg-cancel" style="flex:1;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;padding:12px;cursor:pointer">Cancel</button>'
+    +'</div></div>';
+  document.body.appendChild(m);
+  document.getElementById('rg-confirm').addEventListener('click', function(){
+    var btn=this; btn.disabled=true; btn.textContent='Resetting...';
+    apiCall('POST','/api/tasks?action=reset_instances',{})
+      .then(function(){ m.remove(); toast('✅ Grades reset — fresh start for everyone!'); todoLoadTab(); })
+      .catch(function(e){ btn.disabled=false; btn.textContent='Yes, Reset Everything'; toast('❌ '+e.message); });
+  });
+  document.getElementById('rg-cancel').addEventListener('click', function(){ m.remove(); });
+}
+window.todoShowResetGrades = todoShowResetGrades;
 
 function todoShowMessageUser() {
   var users = (window._todoUsers||[]);

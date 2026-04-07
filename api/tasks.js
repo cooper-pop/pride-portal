@@ -120,7 +120,7 @@ module.exports = async function handler(req, res) {
     if (action === 'all_tasks') {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       const rows = await sql`
-        SELECT t.*,
+        SELECT t.*, ti.id as instance_id,
           u.username as created_by_name,
           COALESCE(u2.username, t.assigned_to) as assigned_username,
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='complete') as completions,
@@ -371,6 +371,46 @@ module.exports = async function handler(req, res) {
         WHERE ti.status='waiting_parts' AND ti.company_id=${companyId}
         ORDER BY ti.created_at DESC`;
       return res.json(rows);
+    }
+
+
+    // ── reset_instances: admin wipes all task history for fresh grade start ──
+    if (action === 'reset_instances') {
+      if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+      await sql`DELETE FROM task_instances WHERE company_id=${companyId}`;
+      return res.json({ok:true});
+    }
+
+    // ── delete_instance: remove one specific task instance ──
+    if (action === 'delete_instance') {
+      if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+      const { instance_id } = body;
+      await sql`DELETE FROM task_instances WHERE id=${instance_id} AND company_id=${companyId}`;
+      return res.json({ok:true});
+    }
+
+    // ── update_task: edit a task definition ──
+    if (action === 'update_task') {
+      if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
+      const { task_id, title, description, category, priority, assigned_to, due_time, shift, recurring } = body;
+      // Look up assigned user
+      let assignedTo = assigned_to;
+      if (assigned_to && assigned_to !== 'all') {
+        const urows = await sql`SELECT id::text FROM users WHERE id::text=${assigned_to} AND company_id=${companyId}`;
+        if (!urows.length) return res.status(400).json({error:'User not found'});
+        assignedTo = urows[0].id;
+      }
+      await sql`UPDATE tasks SET
+        title=COALESCE(${title||null},title),
+        description=COALESCE(${description||null},description),
+        category=COALESCE(${category||null},category),
+        priority=COALESCE(${priority||null},priority),
+        assigned_to=COALESCE(${assignedTo||null},assigned_to),
+        due_time=COALESCE(${due_time||null},due_time),
+        shift=COALESCE(${shift||null},shift),
+        recurring=COALESCE(${recurring||null},recurring)
+        WHERE id=${task_id} AND company_id=${companyId}`;
+      return res.json({ok:true});
     }
 
     return res.status(400).json({error:'Unknown action: ' + action});
