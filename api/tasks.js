@@ -120,7 +120,7 @@ module.exports = async function handler(req, res) {
     if (action === 'all_tasks') {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       const rows = await sql`
-        SELECT t.*, ti.id as instance_id,
+        SELECT t.*,
           u.username as created_by_name,
           COALESCE(u2.username, t.assigned_to) as assigned_username,
           (SELECT COUNT(*) FROM task_instances ti WHERE ti.task_id=t.id AND ti.status='complete') as completions,
