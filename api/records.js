@@ -177,7 +177,7 @@ module.exports = async function handler(req, res) {
       return res.json({ok:true});
     }
 
-    req.method === 'DELETE' && type==='trimmer-entry') {
+    if (req.method === 'DELETE' && type==='trimmer-entry') {
     if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
     const id = req.query.id;
     if (!id) return res.status(400).json({ error: 'Missing id' });
