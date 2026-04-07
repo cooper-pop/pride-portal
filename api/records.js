@@ -140,7 +140,22 @@ module.exports = async function handler(req, res) {
   }
 
   // DELETE individual trimmer entry (admin only)
-  if (req.method === 'DELETE' && type==='trimmer-entry') {
+  if (    // ── PUT: inline field edit for yield and injection records ──
+    if (req.method === 'PUT') {
+      const { id, type: recType, field, value } = req.body;
+      if (!id || !recType || !field) return res.status(400).json({error:'Missing id, type, or field'});
+      // Whitelist allowed fields to prevent SQL injection
+      const allowedYield = ['record_date','shift','line','live_weight_lbs','dressed_weight_lbs','fillet_weight_lbs','trim_weight_lbs','yield_pct','notes'];
+      const allowedInject = ['report_date','shift','category','item','batch_num','pre_injection_lbs','post_injection_lbs','brine_pct','target_brine_pct','total_pct','total_lbs','batch_data','notes'];
+      const allowed = recType === 'yield' ? allowedYield : recType === 'injection' ? allowedInject : [];
+      if (!allowed.includes(field)) return res.status(400).json({error:'Field not allowed: '+field});
+      const table = recType === 'yield' ? 'yield_records' : recType === 'injection' ? 'injection_records' : null;
+      if (!table) return res.status(400).json({error:'Unknown type'});
+      await sql(`UPDATE ${table} SET ${field} = ${value} WHERE id = ${id} AND company_id = ${companyId}`);
+      return res.json({ok:true});
+    }
+
+req.method === 'DELETE' && type==='trimmer-entry') {
     if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
     const id = req.query.id;
     if (!id) return res.status(400).json({ error: 'Missing id' });
