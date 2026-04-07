@@ -140,7 +140,7 @@ module.exports = async function handler(req, res) {
   }
 
   // DELETE individual trimmer entry (admin only)
-  if (req.method === 'PUT' {
+    if (req.method === 'PUT') {
       const body = req.body;
       const recId = body.id;
       const recType = body.type;
