@@ -286,8 +286,8 @@ async function todoSchedule(body) {
   html += '<button id="todo-prev-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">‹</button>';
   html += '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+(currentUser&&currentUser.role==='admin'?
             '<div style="display:flex;gap:6px;margin-top:8px">'+
-            '<button class="sched-edit-btn" data-tid="'+(t.id||0)+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit Task</button>'+
-            '<button class="sched-del-inst-btn" data-iid="'+tva.id+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete Day</button>'+
+            '<button class="sched-edit-btn" data-tid="'+tva.task_id+'" data-iid="'+tva.id+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit Task</button>'+
+            '<button class="sched-del-inst-btn" data-iid="'+(t.instance_id||t.id||0)+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete Day</button>'+
             '</div>':'')+
           '</div></div>';
   html += '<button id="todo-next-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button></div>';
