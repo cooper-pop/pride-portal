@@ -274,6 +274,7 @@ async function todoAckMsg(msgId) {
 // ── TAB 1: SCHEDULE ──
 async function todoSchedule(body) {
   var tasks = await apiCall('POST','/api/tasks',{action:'day_tasks',date:_todoDate});
+  window._schedTasks = tasks;
   var isAdmin = currentUser&&currentUser.role==='admin';
   var today = new Date().toISOString().split('T')[0];
   var prevDate = new Date(new Date(_todoDate).getTime()-86400000).toISOString().split('T')[0];
@@ -284,11 +285,7 @@ async function todoSchedule(body) {
   var dayLabel = _todoDate===today?'Today':dayNames[dateObj.getDay()]+', '+monthNames[dateObj.getMonth()]+' '+dateObj.getDate();
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
   html += '<button id="todo-prev-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">‹</button>';
-  html += '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+(currentUser&&currentUser.role==='admin'?
-            '<div style="display:flex;gap:6px;margin-top:8px">'+
-            '<button class="sched-edit-btn" data-tid="'+t.task_id+'" data-iid="'+t.id+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit Task</button>'+
-            '<button class="sched-del-inst-btn" data-iid="'+(t.instance_id||t.id||0)+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete Day</button>'+
-            '</div>':'')+
+  html += '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+
           '</div></div>';
   html += '<button id="todo-next-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button></div>';
   if(isAdmin) html += '<button id="todo-create-btn" style="width:100%;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;margin-bottom:14px;font-size:.85rem">+ Create Task for This Day</button>';
@@ -434,7 +431,7 @@ async function todoManage(body) {
   else allTasks.forEach(function(t) {
     html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:flex-start">';
     html += '<div><div style="font-weight:600;font-size:.85rem">'+catIcon(t.category)+' '+t.title+'</div>';
-    html += '<div style="font-size:.73rem;color:#64748b">'+(t.assigned_username||t.assigned_to)+' · '+(t.recurring!=='none'?'🔄 '+t.recurring:'One-time')+' · '+fmtDate(t.due_date)+' · ✅ '+t.completions+' done'+(parseInt(t.overdue_count)>0?' · 🔴 '+t.overdue_count+' overdue':'')+(currentUser&&currentUser.role==='admin'?'<div style="display:flex;gap:6px;margin-top:8px"><button class="sched-edit-btn" data-tid="'+t.task_id+'" data-iid="'+t.id+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit</button><button class="sched-del-inst-btn" data-iid="'+t.id+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:6px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete</button></div>':'')++'</div></div>';
+    html += '<div style="font-size:.73rem;color:#64748b">'+(t.assigned_username||t.assigned_to)+' · '+(t.recurring!=='none'?'🔄 '+t.recurring:'One-time')+' · '+fmtDate(t.due_date)+' · ✅ '+t.completions+' done'+(parseInt(t.overdue_count)>0?' · 🔴 '+t.overdue_count+' overdue':'')++'</div></div>';
     html += '<button class="todo-del-task" data-tid="'+t.id+'" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:.75rem">Delete</button></div></div>';
   });
   body.innerHTML = html;
