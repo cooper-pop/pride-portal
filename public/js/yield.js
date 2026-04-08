@@ -190,14 +190,14 @@ function yDrawTrends(records) {
   html += '<div style="'+cardStyle+'">';
   html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Fillet Machine Yield % by Line</h3>';
   html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Fillet weight as % of live weight — all 4 lines on one chart</p>';
-  html += '<canvas id="yc-fillet" style="'+lineChartCSS+'"></canvas>';
+  html += '<div style="position:relative;height:220px;width:100%"><canvas id="yc-fillet"></canvas></div>';
   html += '</div>';
 
   // ── CHART 2: Trim Yield % ──
   html += '<div style="'+cardStyle+'">';
   html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Trim % by Line</h3>';
   html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Trim weight as % of live weight — all 4 lines on one chart</p>';
-  html += '<canvas id="yc-trim" style="'+lineChartCSS+'"></canvas>';
+  html += '<div style="position:relative;height:220px;width:100%"><canvas id="yc-trim"></canvas></div>';
   html += '</div>';
 
   // ── SUMMARY TABLE: Fillet ──
