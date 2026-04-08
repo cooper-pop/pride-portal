@@ -257,7 +257,7 @@ function yRenderTrends(records, period) {
           })
         },
         options:{
-          responsive:true,maintainAspectRatio:false,
+          responsive:true,maintainAspectRatio:false,aspectRatio:2,
           interaction:{mode:'index',intersect:false},
           plugins:{
             legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
