@@ -285,13 +285,7 @@ async function todoSchedule(body) {
   var dayLabel = _todoDate===today?'Today':dayNames[dateObj.getDay()]+', '+monthNames[dateObj.getMonth()]+' '+dateObj.getDate();
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
   html += '<button id="todo-prev-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">‹</button>';
-  html += '<div style="text-align:center"><div style="font-weight:700;color:#1a3a6b">'+dayLabel+'</div><div style="font-size:.75rem;color:#94a3b8">'+_todoDate+(currentUser&&currentUser.role==='admin'?
-            '<div style="display:flex;gap:6px;margin-top:8px">'+
-            '<button class="sched-edit-btn" data-tid="'+((typeof inst!=='undefined'?inst:t||{}).task_id||'')+'" data-iid="'+((typeof inst!=='undefined'?inst:t||{}).id||'')+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit Task</button>'+
-            '<button class="sched-del-inst-btn" data-iid="'+(t.instance_id||t.id||0)+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:5px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete Day</button>'+
-            '</div>':'')+
-          '</div></div>';
-  html += '<button id="todo-next-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button></div>';
+  // edit button rendered inside todoSchedCard(task)  html += '<button id="todo-next-day" style="background:#f1f5f9;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:1rem">›</button></div>';
   if(isAdmin) html += '<button id="todo-create-btn" style="width:100%;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;margin-bottom:14px;font-size:.85rem">+ Create Task for This Day</button>';
   if(!tasks.length) html += '<div style="text-align:center;padding:32px;color:#94a3b8"><div style="font-size:2rem">📅</div><div>No tasks scheduled for this day</div></div>';
   else {
