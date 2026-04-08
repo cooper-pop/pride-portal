@@ -202,12 +202,12 @@ function yRenderTrends(records, period) {
     html += '<div style="'+cardStyle+'">';
     html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Fillet Machine Yield % by Line</h3>';
     html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Fillet weight as % of live weight — all 4 lines</p>';
-    html += '<canvas id="yc-fillet" style="width:100%;height:220px;display:block"></canvas></div>';
+    html += '<div style="position:relative;height:220px;overflow:hidden"><canvas id="yc-fillet"></canvas></div></div>';
 
     html += '<div style="'+cardStyle+'">';
     html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Trim % by Line</h3>';
     html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Trim weight as % of live weight — all 4 lines</p>';
-    html += '<canvas id="yc-trim" style="width:100%;height:220px;display:block"></canvas></div>';
+    html += '<div style="position:relative;height:220px;overflow:hidden"><canvas id="yc-trim"></canvas></div></div>';
   }
 
   // Summary tables (always show all-time 7/14/30 day averages)
@@ -257,7 +257,7 @@ function yRenderTrends(records, period) {
           })
         },
         options:{
-          responsive:true,maintainAspectRatio:false,aspectRatio:2,
+          responsive:true,maintainAspectRatio:false,
           interaction:{mode:'index',intersect:false},
           plugins:{
             legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
