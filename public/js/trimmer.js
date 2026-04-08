@@ -398,3 +398,203 @@ window.trimSparkline = trimSparkline;
 window.trimBarChart = trimBarChart;
 window.trimShowTrend = trimShowTrend;
 window.trimSetPeriod = trimSetPeriod;
+
+
+// ── TRIMMER GRADING SYSTEM ──
+function getTrimmerGrade(pct) {
+  if (pct === null || isNaN(pct)) return {letter:'N/A', color:'#94a3b8', bg:'#f8fafc'};
+  if (pct >= 100) return {letter:'A+', color:'#fff', bg:'#059669'};
+  if (pct >= 90)  return {letter:'A',  color:'#fff', bg:'#10b981'};
+  if (pct >= 80)  return {letter:'B',  color:'#fff', bg:'#3b82f6'};
+  if (pct >= 65)  return {letter:'C',  color:'#fff', bg:'#f59e0b'};
+  if (pct >= 50)  return {letter:'D',  color:'#fff', bg:'#f97316'};
+  return           {letter:'F',  color:'#fff', bg:'#dc2626'};
+}
+
+function getTrendArrow(curr, prev) {
+  if (curr === null || prev === null) return {arrow:'—', color:'#94a3b8'};
+  if (curr > prev + 2)  return {arrow:'↑', color:'#059669'};
+  if (curr < prev - 2)  return {arrow:'↓', color:'#dc2626'};
+  return                 {arrow:'→', color:'#64748b'};
+}
+
+function buildTrimmerGrades() {
+  var el = document.getElementById('widget-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading grades...</div>';
+
+  apiCall('GET', '/api/records?type=trimmer').then(function(records) {
+    if (!records || !records.length) {
+      el.innerHTML = '<div class="log-empty">No trimmer records found.</div>';
+      return;
+    }
+
+    var now = new Date(); now.setHours(0,0,0,0);
+    var PERIODS = [
+      {key:'7d',  label:'7 Days',  days:7},
+      {key:'14d', label:'14 Days', days:14},
+      {key:'30d', label:'30 Days', days:30},
+      {key:'ytd', label:'YTD',     days:null}
+    ];
+
+    function recDate(r) {
+      var p = String(r.record_date||r.created_at||'').substring(0,10).split('-');
+      return p.length===3 ? new Date(p[0],p[1]-1,p[2]) : new Date(0);
+    }
+    function filterPeriod(recs, days) {
+      if (!days) {
+        var jan1 = new Date(now.getFullYear(),0,1);
+        return recs.filter(function(r){return recDate(r)>=jan1;});
+      }
+      var cut = new Date(now); cut.setDate(cut.getDate()-days);
+      return recs.filter(function(r){return recDate(r)>=cut;});
+    }
+    function completionPct(recs) {
+      if (!recs.length) return null;
+      var total = recs.length;
+      var done = recs.filter(function(r){
+        return r.status==='completed'||r.status==='done'||r.completion_pct>=100||r.fillet_weight_lbs > 0;
+      }).length;
+      return Math.round(done/total*100);
+    }
+
+    // Get unique trimmer names
+    var trimmers = {};
+    records.forEach(function(r){
+      var name = r.trimmer_name||r.assigned_to||r.recorded_by||'Unknown';
+      if(!trimmers[name]) trimmers[name]=[];
+      trimmers[name].push(r);
+    });
+    var names = Object.keys(trimmers).sort();
+
+    // For each trimmer compute grades per period
+    var activePeriod = window._trimGradePeriod || '30d';
+
+    function renderGrades(period) {
+      window._trimGradePeriod = period;
+      var pConf = PERIODS.find(function(p){return p.key===period;})||PERIODS[2];
+      var prevDays = pConf.days ? pConf.days*2 : null;
+
+      var cardStyle = 'background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)';
+      var btnBase = 'border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;margin-right:4px';
+
+      var html = '<div style="padding:4px 0 12px">';
+
+      // Period pills
+      html += '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap" id="tg-pills">';
+      PERIODS.forEach(function(p){
+        var active = p.key===period;
+        html += '<button data-period="'+p.key+'" style="'+btnBase+';background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+p.label+'</button>';
+      });
+      html += '</div>';
+
+      // Grade cards per trimmer
+      names.forEach(function(name){
+        var allRecs = trimmers[name];
+        var currRecs = filterPeriod(allRecs, pConf.days);
+        var prevRecs = prevDays ? filterPeriod(allRecs, prevDays).filter(function(r){
+          return !currRecs.includes(r);
+        }) : [];
+
+        var currPct = completionPct(currRecs);
+        var prevPct = completionPct(prevRecs);
+        var grade = getTrimmerGrade(currPct);
+        var trend = getTrendArrow(currPct, prevPct);
+
+        html += '<div style="'+cardStyle+'">';
+        // Header row
+        html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">';
+        html += '<div style="width:52px;height:52px;border-radius:10px;background:'+grade.bg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:'+grade.color+'">'+grade.letter+'</div>';
+        html += '<div style="flex:1">';
+        html += '<div style="font-weight:700;font-size:.95rem;color:#1a3a6b">'+name+'</div>';
+        html += '<div style="font-size:.78rem;color:#64748b;margin-top:2px">'+(currPct!==null?currPct+'% completion':'No data for period')+'</div>';
+        html += '</div>';
+        // Trend arrow
+        html += '<div style="text-align:right">';
+        html += '<div style="font-size:1.5rem;color:'+trend.color+'">'+trend.arrow+'</div>';
+        html += '<div style="font-size:.68rem;color:#94a3b8">'+(prevPct!==null?'prev: '+prevPct+'%':'')+'</div>';
+        html += '</div>';
+        html += '</div>';
+
+        // Period breakdown mini-row
+        html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+        PERIODS.forEach(function(pp){
+          var pRecs = filterPeriod(allRecs, pp.days);
+          var pPct = completionPct(pRecs);
+          var pg = getTrimmerGrade(pPct);
+          html += '<div style="flex:1;min-width:60px;text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px">';
+          html += '<div style="font-size:.65rem;color:#64748b;margin-bottom:3px">'+pp.label+'</div>';
+          html += '<div style="font-size:.9rem;font-weight:700;color:'+pg.bg+'">'+pg.letter+'</div>';
+          html += '<div style="font-size:.65rem;color:#94a3b8">'+(pPct!==null?pPct+'%':'—')+'</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+
+        // AI suggestion button
+        html += '<button data-trimmer="'+name+'" data-pct="'+(currPct||0)+'" data-grade="'+grade.letter+'" class="tg-ai-btn" ';
+        html += 'style="width:100%;background:#f0f4ff;border:1px solid #c7d7fd;border-radius:8px;padding:8px;font-size:.78rem;color:#3730a3;cursor:pointer;text-align:left;font-weight:500">';
+        html += '✨ Generate AI improvement suggestions for '+name+'</button>';
+        html += '<div class="tg-ai-result" id="ai-'+name.replace(/[^a-z0-9]/gi,'_')+'" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border-radius:8px;font-size:.78rem;color:#374151;line-height:1.5"></div>';
+
+        html += '</div>'; // end card
+      });
+
+      html += '</div>';
+      el.innerHTML = html;
+
+      // Wire period pills
+      document.querySelectorAll('#tg-pills button').forEach(function(btn){
+        btn.addEventListener('click', function(){ renderGrades(this.dataset.period); });
+      });
+
+      // Wire AI buttons
+      document.querySelectorAll('.tg-ai-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var name = this.dataset.trimmer;
+          var pct = this.dataset.pct;
+          var grade = this.dataset.grade;
+          var resultEl = document.getElementById('ai-'+name.replace(/[^a-z0-9]/gi,'_'));
+          if (!resultEl) return;
+          this.disabled = true;
+          this.textContent = 'Generating suggestions...';
+          var self = this;
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = '<div class="spinner" style="display:inline-block"></div> Analyzing performance...';
+
+          var allRecs = trimmers[name]||[];
+          var currRecs = filterPeriod(allRecs, pConf.days);
+          var totalRecs = currRecs.length;
+          var avgWeight = 0;
+          var filletWeights = currRecs.map(function(r){return parseFloat(r.fillet_weight_lbs)||0;}).filter(function(x){return x>0;});
+          if(filletWeights.length) avgWeight = Math.round(filletWeights.reduce(function(a,b){return a+b;},0)/filletWeights.length*10)/10;
+
+          var prompt = 'You are a catfish processing plant performance coach. Trimmer: '+name+'. Grade: '+grade+' ('+pct+'% completion rate) over the last '+pConf.label+' period. Total records: '+totalRecs+'. Average fillet weight: '+avgWeight+' lbs. Provide 3 specific, actionable improvement suggestions in 2-3 sentences each. Be direct, practical, and encouraging. Format as a numbered list. Keep total response under 200 words.';
+
+          fetch('https://api.anthropic.com/v1/messages', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              model:'claude-sonnet-4-20250514',
+              max_tokens:400,
+              messages:[{role:'user',content:prompt}]
+            })
+          }).then(function(res){return res.json();})
+          .then(function(data){
+            var text = (data.content&&data.content[0]&&data.content[0].text)||'Unable to generate suggestions.';
+            resultEl.innerHTML = '<strong style="color:#1a3a6b">AI Improvement Suggestions:</strong><br><br>'+text.replace(/\n/g,'<br>');
+            self.textContent = '✨ Refresh suggestions for '+name;
+            self.disabled = false;
+          }).catch(function(e){
+            resultEl.innerHTML = 'Error generating suggestions. Please try again.';
+            self.textContent = '✨ Generate AI improvement suggestions for '+name;
+            self.disabled = false;
+          });
+        });
+      });
+    }
+
+    renderGrades(activePeriod);
+  }).catch(function(e){
+    el.innerHTML = '<div class="log-empty">' + e.message + '</div>';
+  });
+}
