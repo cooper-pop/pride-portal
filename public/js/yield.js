@@ -105,6 +105,13 @@ function yDrawTrends(records) {
 }
 
 function yRenderTrends(records, period) {
+  // If called with no args, fetch records first
+  if (!records) {
+    var el2 = document.getElementById('widget-content');
+    if(el2) el2.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
+    apiCall('GET','/api/records?type=yield').then(function(log){ yDrawTrends(log); }).catch(function(e){ if(el2) el2.innerHTML = '<div class="log-empty">'+e.message+'</div>'; });
+    return;
+  }
   var el = document.getElementById('widget-content');
   if (!el) return;
 
