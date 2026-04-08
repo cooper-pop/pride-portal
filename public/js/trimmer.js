@@ -513,3 +513,112 @@ function buildTrimmerGrades() {
     render(activePeriod);
   }).catch(function(e){ el.innerHTML='<div class="log-empty">'+e.message+'</div>'; });
 }
+
+function buildTrimmerGrades() {
+  var el = document.getElementById('widget-content');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading grades...</div>';
+  apiCall('GET','/api/records?type=trimmer').then(function(recs){
+    window._tgRecs = recs;
+    renderTrimmerGrades(recs,'30d');
+  }).catch(function(e){ el.innerHTML='<div class="log-empty">'+e.message+'</div>'; });
+}
+
+function renderTrimmerGrades(records, period) {
+  var el = document.getElementById('widget-content');
+  if(!el) return;
+  window._tgRecs = window._tgRecs||records;
+  var PERIODS=[{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
+  function recDate(r){ var p=String(r.report_date||r.record_date||'').split('-'); return new Date(p[0],p[1]-1,p[2]); }
+  function filterPeriod(recs,key){
+    var now=new Date(); now.setHours(0,0,0,0);
+    var cut = key==='ytd' ? new Date(now.getFullYear(),0,1) : (function(){ var d=new Date(now); d.setDate(d.getDate()-(key==='7d'?7:key==='14d'?14:30)); return d; })();
+    return recs.filter(function(r){ return recDate(r)>=cut; });
+  }
+  function calcCompletion(recs, name) {
+    var mine=recs.filter(function(r){ return (r.trimmer_name||r.recorded_by||r.name||'')===name; });
+    if(!mine.length) return null;
+    var done=mine.filter(function(r){ return r.status==='complete'||r.completed||r.grade; }).length;
+    return Math.round(done/mine.length*100);
+  }
+  function letterGrade(pct) {
+    if(pct===null) return {g:'N/A',c:'#94a3b8',bg:'#f8fafc'};
+    if(pct>=100) return {g:'A+',c:'#fff',bg:'#059669'};
+    if(pct>=90)  return {g:'A', c:'#fff',bg:'#10b981'};
+    if(pct>=80)  return {g:'B', c:'#fff',bg:'#3b82f6'};
+    if(pct>=65)  return {g:'C', c:'#fff',bg:'#f59e0b'};
+    if(pct>=50)  return {g:'D', c:'#fff',bg:'#f97316'};
+    return         {g:'F', c:'#fff',bg:'#dc2626'};
+  }
+  var allRecs=window._tgRecs||[];
+  var nameSet={};
+  allRecs.forEach(function(r){ var n=r.trimmer_name||r.recorded_by||r.name; if(n) nameSet[n]=true; });
+  var names=Object.keys(nameSet).sort();
+  var filtered=filterPeriod(allRecs,period);
+  var prevKey=period==='7d'?'14d':period==='14d'?'30d':period==='30d'?'ytd':'ytd';
+  var prevFiltered=filterPeriod(allRecs,prevKey);
+  var cs='background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);';
+  var btnSt='border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;';
+  var html='<div style="padding:4px 0 12px">';
+  html+='<div id="tg-pills" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+  PERIODS.forEach(function(p){
+    var act=p.key===period;
+    html+='<button data-period="'+p.key+'" style="'+btnSt+'background:'+(act?'#1a3a6b':'#f1f5f9')+';color:'+(act?'#fff':'#475569')+'">'+p.label+'</button>';
+  });
+  html+='</div>';
+  if(!names.length){
+    html+='<div style="'+cs+'text-align:center;color:#94a3b8;padding:24px">No trimmer records found. Add records in the Trimmer Log first.</div>';
+  } else {
+    names.forEach(function(name){
+      var pct=calcCompletion(filtered,name);
+      var prevPct=calcCompletion(prevFiltered,name);
+      var gr=letterGrade(pct);
+      var trend='';
+      if(pct!==null&&prevPct!==null){
+        if(pct>prevPct+2) trend=' <span style="color:#059669" title="Improving vs previous period">&#8593; Improving</span>';
+        else if(pct<prevPct-2) trend=' <span style="color:#dc2626" title="Regressing vs previous period">&#8595; Regressing</span>';
+        else trend=' <span style="color:#64748b" title="Stable">&#8594; Stable</span>';
+      }
+      var safeId='ai-'+name.replace(/[^a-zA-Z0-9]/g,'_');
+      html+='<div style="'+cs+'">';
+      html+='<div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">';
+      html+='<div style="width:54px;height:54px;border-radius:10px;background:'+gr.bg+';display:flex;align-items:center;justify-content:center;color:'+gr.c+';font-size:1.35rem;font-weight:800;flex-shrink:0">'+gr.g+'</div>';
+      html+='<div><div style="font-weight:700;color:#1a3a6b;font-size:.95rem">'+name+'</div>';
+      html+='<div style="font-size:.8rem;color:#64748b;margin-top:1px">'+(pct!==null?pct+'% completion rate':'No data for this period')+trend+'</div></div></div>';
+      html+='<div id="'+safeId+'" style="font-size:.78rem;color:#475569;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:8px"><em style="color:#94a3b8">&#129302; Loading AI suggestions...</em></div>';
+      html+='</div>';
+    });
+  }
+  html+='</div>';
+  el.innerHTML=html;
+  document.querySelectorAll('#tg-pills button').forEach(function(btn){
+    btn.addEventListener('click',function(){ renderTrimmerGrades(window._tgRecs,this.getAttribute('data-period')); });
+  });
+  if(names.length){
+    names.forEach(function(name){
+      var pct=calcCompletion(filtered,name);
+      if(pct===null) return;
+      var gr=letterGrade(pct);
+      var safeId='ai-'+name.replace(/[^a-zA-Z0-9]/g,'_');
+      var aiEl=document.getElementById(safeId);
+      if(!aiEl) return;
+      var periodLabel=period==='7d'?'7 days':period==='14d'?'14 days':period==='30d'?'30 days':'year to date';
+      fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:1000,
+          messages:[{role:'user',content:'You are a catfish processing plant supervisor reviewing trimmer performance. Trimmer "'+name+'" earned a grade of '+gr.g+' ('+pct+'% task completion) over the past '+periodLabel+'. Give exactly 2 specific, actionable improvement suggestions. Each suggestion should be 1 sentence. Use a bullet point (\u2022) before each. Be direct and practical. No intro text, just the 2 bullets.'}]
+        })
+      }).then(function(r){return r.json();})
+      .then(function(d){
+        var text=(d.content&&d.content[0]&&d.content[0].text)||'';
+        var aiEl2=document.getElementById(safeId);
+        if(aiEl2&&text) aiEl2.innerHTML='<strong style="color:#1a3a6b">AI Suggestions:</strong><br>'+text.replace(/
+/g,'<br>');
+        else if(aiEl2) aiEl2.innerHTML='';
+      }).catch(function(){ var aiEl2=document.getElementById(safeId); if(aiEl2) aiEl2.innerHTML=''; });
+    });
+  }
+}

@@ -311,6 +311,7 @@ async function todoSchedule(body) {
 }
 
 function todoSchedCard(t) {
+  if(!t) return '';
   return '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start"><div style="width:42px;text-align:center;flex-shrink:0"><div style="font-size:1.2rem">'+catIcon(t.category)+'</div><div style="font-size:.65rem;color:#94a3b8;margin-top:2px">'+(t.due_time?t.due_time.substring(0,5):'Any')+'</div></div><div style="flex:1"><div style="font-weight:600;color:#1e293b;font-size:.85rem">'+t.title+'</div>'+(t.description?'<div style="font-size:.75rem;color:#64748b">'+t.description+'</div>':'')+'<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><span style="padding:1px 6px;border-radius:8px;font-size:.68rem;'+priorityBg(t.priority)+'">'+t.priority+'</span>'+statusBadge(t.status)+'</div></div></div>';
 }
 
