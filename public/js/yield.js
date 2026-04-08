@@ -174,12 +174,12 @@ function yRenderTrends(records, period) {
 
   // Filter pill buttons
   var btnStyle = 'border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .15s';
-  var pillBar = '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+    var pillBar = '<div id="ytrend-pills" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
   PERIODS.forEach(function(p){
     var active = p.key===period;
     var bg = active?'#1a3a6b':'#f1f5f9';
     var col = active?'#fff':'#475569';
-    pillBar += '<button style="'+btnStyle+';background:'+bg+';color:'+col+'" onclick="yRenderTrends(window._yldAllRecords,''+p.key+'')">'+p.label+'</button>';
+    pillBar += '<button data-period="'+p.key+'" style="'+btnStyle+';background:'+bg+';color:'+col+'">'+p.label+'</button>';
   });
   pillBar += '</div>';
 
@@ -226,6 +226,12 @@ function yRenderTrends(records, period) {
   html += '</div>';
 
   el.innerHTML = html;
+  // Wire period pill buttons
+  document.querySelectorAll('#ytrend-pills button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      yRenderTrends(window._yldAllRecords, this.dataset.period);
+    });
+  });
 
   if(noDataMsg) return;
 
