@@ -100,207 +100,174 @@ function yRenderTrends() {
 function yDrawTrends(records) {
   var el = document.getElementById('widget-content');
   if (!el) return;
+  window._yldAllRecords = records;
+  yRenderTrends(records, 'ytd');
+}
 
-  // Sort records by date ascending
-  var sorted = records.slice().sort(function(a,b){ return a.record_date < b.record_date ? -1 : 1; });
+function yRenderTrends(records, period) {
+  var el = document.getElementById('widget-content');
+  if (!el) return;
 
-  // Lines we care about
   var LINES = ['Line 1','Line 2','Line 3','Line 4'];
   var LINE_COLORS = ['#1a3a6b','#d97706','#059669','#dc2626'];
+  var PERIODS = [{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
 
-  // Helper: compute fillet% and trim% for a record
-  function filletPct(r){ var l=parseFloat(r.live_weight_lbs)||0; var f=parseFloat(r.fillet_weight_lbs)||0; return l>0?Math.round(f/l*1000)/10:null; }
-  function trimPct(r){ var l=parseFloat(r.live_weight_lbs)||0; var t=parseFloat(r.trim_weight_lbs)||0; return l>0?Math.round(t/l*1000)/10:null; }
-
-  // Helper: average of values ignoring nulls
+  function recDate(r){ var p=String(r.record_date).split('-'); return new Date(p[0],p[1]-1,p[2]); }
+  function filletPct(r){ var l=parseFloat(r.live_weight_lbs)||0,f=parseFloat(r.fillet_weight_lbs)||0; return l>0?Math.round(f/l*1000)/10:null; }
+  function trimPct(r){ var l=parseFloat(r.live_weight_lbs)||0,t=parseFloat(r.trim_weight_lbs)||0; return l>0?Math.round(t/l*1000)/10:null; }
   function avg(arr){ var v=arr.filter(function(x){return x!==null&&!isNaN(x);}); return v.length?Math.round(v.reduce(function(a,b){return a+b;},0)/v.length*10)/10:null; }
+  function fmt(v){ return v!==null&&v!==undefined?v+'%':'—'; }
 
-  // Group by line
-  function byLine(recs, fn) {
-    var out = {};
-    LINES.forEach(function(l){ out[l]=[]; });
-    recs.forEach(function(r){ if(out[r.line]) out[r.line].push(fn(r)); });
-    return out;
+  function filterByPeriod(recs, key) {
+    var now = new Date(); now.setHours(0,0,0,0);
+    if (key==='ytd') {
+      var jan1 = new Date(now.getFullYear(),0,1);
+      return recs.filter(function(r){ return recDate(r)>=jan1; });
+    }
+    var days = key==='7d'?7:key==='14d'?14:30;
+    var cut = new Date(now); cut.setDate(cut.getDate()-days);
+    return recs.filter(function(r){ return recDate(r)>=cut; });
   }
 
-  // Date cutoff helper
-  function daysAgo(n){ var d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-n); return d; }
-  function recDate(r){ var p=String(r.record_date).split('-'); return new Date(p[0],p[1]-1,p[2]); }
-  function filterDays(recs,n){ var cut=daysAgo(n); return recs.filter(function(r){return recDate(r)>=cut;}); }
+  var filtered = filterByPeriod(records, period);
+  var sorted = filtered.slice().sort(function(a,b){ return recDate(a)-recDate(b); });
 
-  // Build chart datasets from sorted records
-  // Get unique dates across all lines for x-axis
-  var allDates = [];
-  var seenDates = {};
-  sorted.forEach(function(r){
-    var d = String(r.record_date).substring(0,10);
-    if(!seenDates[d]){ seenDates[d]=true; allDates.push(d); }
-  });
+  // Unique dates for x-axis
+  var seenDates={}, allDates=[];
+  sorted.forEach(function(r){ var d=String(r.record_date).substring(0,10); if(!seenDates[d]){seenDates[d]=true;allDates.push(d);} });
 
-  // For each line, map date->avg value
+  // Build per-line datasets
   function buildDataset(recs, valueFn) {
-    var result = {};
+    var result={};
     LINES.forEach(function(line){
-      var byDate = {};
+      var byDate={};
       recs.forEach(function(r){
         if(r.line!==line) return;
         var d=String(r.record_date).substring(0,10);
         if(!byDate[d]) byDate[d]=[];
-        var v=valueFn(r);
-        if(v!==null) byDate[d].push(v);
+        var v=valueFn(r); if(v!==null) byDate[d].push(v);
       });
-      result[line] = allDates.map(function(d){ var arr=byDate[d]; return arr&&arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length*10)/10:null; });
+      result[line]=allDates.map(function(d){ var arr=byDate[d]; return arr&&arr.length?Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length*10)/10:null; });
     });
     return result;
   }
 
   var filletData = buildDataset(sorted, filletPct);
-  var trimData = buildDataset(sorted, trimPct);
+  var trimData   = buildDataset(sorted, trimPct);
 
-  // Summary averages
-  function summaryRows(recs) {
-    var periods = [{label:'7 days',days:7},{label:'14 days',days:14},{label:'30 days',days:30}];
-    return periods.map(function(p){
-      var sub = filterDays(recs, p.days);
-      var fpct = LINES.map(function(l){ return avg(sub.filter(function(r){return r.line===l;}).map(filletPct)); });
-      var tpct = LINES.map(function(l){ return avg(sub.filter(function(r){return r.line===l;}).map(trimPct)); });
-      var overallF = avg(sub.map(filletPct));
-      var overallT = avg(sub.map(trimPct));
-      return {label:p.label, fpct:fpct, tpct:tpct, overallF:overallF, overallT:overallT};
-    });
-  }
-  var summary = summaryRows(sorted);
-
-  // Helper: format value
-  function fmt(v){ return v!==null&&v!==undefined ? v+'%' : '—'; }
-
-  // Format date labels for x axis (show MMM D)
   var xLabels = allDates.map(function(d){
     var p=d.split('-'); var dt=new Date(p[0],p[1]-1,p[2]);
     return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   });
 
-  // Build chart HTML using SVG-based canvas
-  var lineChartCSS = 'width:100%;height:220px;display:block;';
+  // Summary averages across all records (not filtered) for the 3 fixed periods
+  function summaryRows(allRecs) {
+    var ps=[{label:'7 days',days:7},{label:'14 days',days:14},{label:'30 days',days:30}];
+    return ps.map(function(p){
+      var sub=filterByPeriod(allRecs,p.days===7?'7d':p.days===14?'14d':'30d');
+      var fpct=LINES.map(function(l){ return avg(sub.filter(function(r){return r.line===l;}).map(filletPct)); });
+      var tpct=LINES.map(function(l){ return avg(sub.filter(function(r){return r.line===l;}).map(trimPct)); });
+      return {label:p.label, fpct:fpct, tpct:tpct, overallF:avg(sub.map(filletPct)), overallT:avg(sub.map(trimPct))};
+    });
+  }
+  var summary = summaryRows(records);
+
+  // Filter pill buttons
+  var btnStyle = 'border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .15s';
+  var pillBar = '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+  PERIODS.forEach(function(p){
+    var active = p.key===period;
+    var bg = active?'#1a3a6b':'#f1f5f9';
+    var col = active?'#fff':'#475569';
+    pillBar += '<button style="'+btnStyle+';background:'+bg+';color:'+col+'" onclick="yRenderTrends(window._yldAllRecords,''+p.key+'')">'+p.label+'</button>';
+  });
+  pillBar += '</div>';
+
   var cardStyle = 'background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)';
+  var noDataMsg = sorted.length===0 ? '<div style="text-align:center;color:#94a3b8;padding:20px;font-size:.85rem">No records in this period</div>' : '';
 
   var html = '<div style="padding:4px 0 12px">';
-
-  // ── CHART 1: Fillet Machine Yield % ──
-  html += '<div style="'+cardStyle+'">';
-  html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Fillet Machine Yield % by Line</h3>';
-  html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Fillet weight as % of live weight — all 4 lines on one chart</p>';
-  html += '<div style="position:relative;height:220px;width:100%"><canvas id="yc-fillet"></canvas></div>';
+  html += '<div style="'+cardStyle.replace('margin-bottom:14px','margin-bottom:14px')+'">'+pillBar;
+  if(noDataMsg){ html += noDataMsg; }
   html += '</div>';
 
-  // ── CHART 2: Trim Yield % ──
-  html += '<div style="'+cardStyle+'">';
-  html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Trim % by Line</h3>';
-  html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Trim weight as % of live weight — all 4 lines on one chart</p>';
-  html += '<div style="position:relative;height:220px;width:100%"><canvas id="yc-trim"></canvas></div>';
-  html += '</div>';
+  if(!noDataMsg) {
+    html += '<div style="'+cardStyle+'">';
+    html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Fillet Machine Yield % by Line</h3>';
+    html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Fillet weight as % of live weight — all 4 lines</p>';
+    html += '<canvas id="yc-fillet" style="width:100%;height:220px;display:block"></canvas></div>';
 
-  // ── SUMMARY TABLE: Fillet ──
-  html += '<div style="'+cardStyle+'">';
-  html += '<h3 style="margin:0 0 12px;font-size:.9rem;color:#1a3a6b;font-weight:700">Average Fillet Yield % Summary</h3>';
-  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">';
-  html += '<thead><tr style="background:#f1f5f9">';
-  html += '<th style="padding:7px 10px;text-align:left;font-weight:600;color:#475569">Period</th>';
-  LINES.forEach(function(l,i){ html += '<th style="padding:7px 10px;text-align:center;font-weight:600;color:'+LINE_COLORS[i]+'">'+l+'</th>'; });
-  html += '<th style="padding:7px 10px;text-align:center;font-weight:700;color:#1a3a6b">Overall</th>';
-  html += '</tr></thead><tbody>';
-  summary.forEach(function(row,i){
-    html += '<tr style="border-top:1px solid #e2e8f0;'+(i%2?'background:#fafafa':'')+'">';
-    html += '<td style="padding:7px 10px;font-weight:600;color:#374151">Last '+row.label+'</td>';
-    row.fpct.forEach(function(v){ html += '<td style="padding:7px 10px;text-align:center;color:#374151">'+fmt(v)+'</td>'; });
-    html += '<td style="padding:7px 10px;text-align:center;font-weight:700;color:#1a3a6b">'+fmt(row.overallF)+'</td>';
-    html += '</tr>';
-  });
-  html += '</tbody></table></div></div>';
+    html += '<div style="'+cardStyle+'">';
+    html += '<h3 style="margin:0 0 4px;font-size:.9rem;color:#1a3a6b;font-weight:700">Trim % by Line</h3>';
+    html += '<p style="margin:0 0 10px;font-size:.72rem;color:#64748b">Trim weight as % of live weight — all 4 lines</p>';
+    html += '<canvas id="yc-trim" style="width:100%;height:220px;display:block"></canvas></div>';
+  }
 
-  // ── SUMMARY TABLE: Trim ──
-  html += '<div style="'+cardStyle+'">';
-  html += '<h3 style="margin:0 0 12px;font-size:.9rem;color:#1a3a6b;font-weight:700">Average Trim % Summary</h3>';
-  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">';
-  html += '<thead><tr style="background:#f1f5f9">';
-  html += '<th style="padding:7px 10px;text-align:left;font-weight:600;color:#475569">Period</th>';
-  LINES.forEach(function(l,i){ html += '<th style="padding:7px 10px;text-align:center;font-weight:600;color:'+LINE_COLORS[i]+'">'+l+'</th>'; });
-  html += '<th style="padding:7px 10px;text-align:center;font-weight:700;color:#1a3a6b">Overall</th>';
-  html += '</tr></thead><tbody>';
-  summary.forEach(function(row,i){
-    html += '<tr style="border-top:1px solid #e2e8f0;'+(i%2?'background:#fafafa':'')+'">';
-    html += '<td style="padding:7px 10px;font-weight:600;color:#374151">Last '+row.label+'</td>';
-    row.tpct.forEach(function(v){ html += '<td style="padding:7px 10px;text-align:center;color:#374151">'+fmt(v)+'</td>'; });
-    html += '<td style="padding:7px 10px;text-align:center;font-weight:700;color:#1a3a6b">'+fmt(row.overallT)+'</td>';
-    html += '</tr>';
-  });
-  html += '</tbody></table></div></div>';
+  // Summary tables (always show all-time 7/14/30 day averages)
+  function summaryTable(title, key) {
+    var html2 = '<div style="'+cardStyle+'"><h3 style="margin:0 0 12px;font-size:.9rem;color:#1a3a6b;font-weight:700">'+title+'</h3>';
+    html2 += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">';
+    html2 += '<thead><tr style="background:#f1f5f9"><th style="padding:7px 10px;text-align:left;color:#475569">Period</th>';
+    LINES.forEach(function(l,i){ html2 += '<th style="padding:7px 10px;text-align:center;color:'+LINE_COLORS[i]+'">'+l+'</th>'; });
+    html2 += '<th style="padding:7px 10px;text-align:center;color:#1a3a6b;font-weight:700">Overall</th></tr></thead><tbody>';
+    summary.forEach(function(row,i){
+      html2 += '<tr style="border-top:1px solid #e2e8f0;'+(i%2?'background:#fafafa':'')+'">';
+      html2 += '<td style="padding:7px 10px;font-weight:600;color:#374151">Last '+row.label+'</td>';
+      var vals = key==='fillet'?row.fpct:row.tpct;
+      vals.forEach(function(v){ html2 += '<td style="padding:7px 10px;text-align:center;color:#374151">'+fmt(v)+'</td>'; });
+      html2 += '<td style="padding:7px 10px;text-align:center;font-weight:700;color:#1a3a6b">'+fmt(key==='fillet'?row.overallF:row.overallT)+'</td></tr>';
+    });
+    html2 += '</tbody></table></div></div>';
+    return html2;
+  }
 
+  html += summaryTable('Average Fillet Yield % Summary','fillet');
+  html += summaryTable('Average Trim % Summary','trim');
   html += '</div>';
 
   el.innerHTML = html;
 
-  // ── Draw charts using Chart.js ──
-  function drawLineChart(canvasId, datasets, labels) {
+  if(noDataMsg) return;
+
+  function drawChart(canvasId, datasets, labels) {
     var canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    // Dynamically load Chart.js if not present
     function doChart() {
       var ctx = canvas.getContext('2d');
       new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: datasets.map(function(ds,i){
-            return {
-              label: ds.label,
-              data: ds.data,
-              borderColor: LINE_COLORS[i],
-              backgroundColor: LINE_COLORS[i]+'22',
-              borderWidth: 2.5,
-              pointRadius: 3,
-              pointHoverRadius: 5,
-              tension: 0.3,
-              spanGaps: true,
-            };
+        type:'line',
+        data:{
+          labels:labels,
+          datasets:datasets.map(function(ds,i){
+            return {label:ds.label,data:ds.data,borderColor:LINE_COLORS[i],backgroundColor:LINE_COLORS[i]+'22',
+              borderWidth:2.5,pointRadius:3,pointHoverRadius:5,tension:0.3,spanGaps:true};
           })
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-            tooltip: {
-              callbacks: {
-                label: function(ctx){ return ctx.dataset.label+': '+(ctx.parsed.y!==null?ctx.parsed.y+'%':'—'); }
-              }
-            }
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
+            tooltip:{callbacks:{label:function(c){ return c.dataset.label+': '+(c.parsed.y!==null?c.parsed.y+'%':'—'); }}}
           },
-          scales: {
-            x: { ticks: { font: { size: 10 }, maxTicksLimit: 12, maxRotation: 45 } },
-            y: { ticks: { callback: function(v){ return v+'%'; }, font: { size: 10 } }, beginAtZero: false }
+          scales:{
+            x:{ticks:{font:{size:10},maxTicksLimit:14,maxRotation:45}},
+            y:{ticks:{callback:function(v){return v+'%';},font:{size:10}},beginAtZero:false}
           }
         }
       });
     }
-    if (typeof Chart !== 'undefined') {
-      doChart();
-    } else {
-      var s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
-      s.onload = doChart;
-      document.head.appendChild(s);
+    if(typeof Chart!=='undefined'){ doChart(); }
+    else {
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+      s.onload=doChart; document.head.appendChild(s);
     }
   }
 
-  var filletDs = LINES.map(function(l,i){ return {label:l, data:filletData[l]}; });
-  var trimDs = LINES.map(function(l,i){ return {label:l, data:trimData[l]}; });
-
-  // Draw after DOM paint
   setTimeout(function(){
-    drawLineChart('yc-fillet', filletDs, xLabels);
-    drawLineChart('yc-trim', trimDs, xLabels);
+    drawChart('yc-fillet', LINES.map(function(l){ return {label:l,data:filletData[l]}; }), xLabels);
+    drawChart('yc-trim',   LINES.map(function(l){ return {label:l,data:trimData[l]}; }),   xLabels);
   }, 80);
 }
 function yToggleLine(line) {
