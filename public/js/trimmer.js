@@ -439,15 +439,7 @@ function buildTrimmerGrades(period) {
   var el = document.getElementById('widget-content');
   if(!el) return;
   el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading grades...</div>';
-  function calcGrade(pct) {
-    if(pct===null||pct===undefined) return {letter:'â',color:'#94a3b8',bg:'#f1f5f9'};
-    if(pct>=100) return {letter:'A+',color:'#fff',bg:'#059669'};
-    if(pct>=90)  return {letter:'A', color:'#fff',bg:'#10b981'};
-    if(pct>=80)  return {letter:'B', color:'#fff',bg:'#3b82f6'};
-    if(pct>=65)  return {letter:'C', color:'#fff',bg:'#f59e0b'};
-    if(pct>=50)  return {letter:'D', color:'#fff',bg:'#f97316'};
-    return {letter:'F',color:'#fff',bg:'#ef4444'};
-  }
+  
   function filterPeriod(recs,key) {
     var now=new Date(); now.setHours(0,0,0,0);
     if(key==='ytd'){var jan1=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return new Date(r.created_at||r.date||Date.now())>=jan1;});}
