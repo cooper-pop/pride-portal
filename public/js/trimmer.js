@@ -286,10 +286,9 @@ async function trimRenderAnalytics(){
         row.style.display='';
         box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
         var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" averages '+yld+'% total yield at '+avg+' lbs/hr (grade '+gl+'). Give 2-3 specific actionable improvement tips. Be concise and practical. Number them.';
-        fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,messages:[{role:'user',content:prompt}]})})
-          .then(function(r){return r.json();})
+        apiCall('POST','/api/ai',{query:prompt})
           .then(function(d){
-            var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate.';
+            var text=(d.response||d.text||d.content||'Unable to generate.');
             box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
               '<div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.65rem;color:#64748b;margin-top:2px">Grade</div></div>'+
               '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' — AI Coaching</strong>'+
