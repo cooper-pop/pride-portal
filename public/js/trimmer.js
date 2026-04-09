@@ -207,218 +207,149 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-async function trimRenderAnalytics() {
+async async function trimRenderAnalytics() {
   var el = document.getElementById('widget-content');
   if(!el) return;
   el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading analytics...</div>';
-  apiCall('GET','/api/records?type=trimmer').then(function(records) {
-    window._trimAnalyticsRecords = records;
-    trimRenderGrades(records, 'ytd');
-  }).catch(function(e){ el.innerHTML = '<div class="log-empty">' + e.message + '</div>'; });
-}
-function trimRenderGrades(reports, period) {
-  var el = document.getElementById('widget-content');
-  if(!el) return;
 
-  var PERIODS = [{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
+  // Period state
+  if(!window._trimPeriod) window._trimPeriod = 30;
 
-  function repDate(r){ var p=String(r.report_date||'').split('T')[0].split('-'); return p.length===3?new Date(p[0],p[1]-1,p[2]):new Date(0); }
-  function filterByPeriod(recs,key){
-    var now=new Date(); now.setHours(0,0,0,0);
-    if(key==='ytd'){ var jan1=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return repDate(r)>=jan1;}); }
-    var days=key==='7d'?7:key==='14d'?14:30;
-    var cut=new Date(now); cut.setDate(cut.getDate()-days);
-    return recs.filter(function(r){return repDate(r)>=cut;});
-  }
-  function prevPeriodKey(k){ return k==='7d'?'14d':k==='14d'?'30d':'ytd'; }
-
-  function calcGrade(pct){
-    if(pct===null||isNaN(pct)) return {letter:'N/A',color:'#94a3b8',bg:'#f1f5f9'};
-    if(pct>=100) return {letter:'A+',color:'#fff',bg:'#059669'};
-    if(pct>=90)  return {letter:'A', color:'#fff',bg:'#10b981'};
-    if(pct>=80)  return {letter:'B', color:'#fff',bg:'#3b82f6'};
-    if(pct>=65)  return {letter:'C', color:'#fff',bg:'#f59e0b'};
-    if(pct>=50)  return {letter:'D', color:'#fff',bg:'#f97316'};
-    return {letter:'F',color:'#fff',bg:'#ef4444'};
+  // Grade helpers
+  function calcGrade(yieldPct){
+    if(yieldPct===null||yieldPct===undefined||isNaN(yieldPct)) return {letter:'N/A',bg:'#94a3b8',color:'#fff'};
+    if(yieldPct>=95) return {letter:'A+',bg:'#059669',color:'#fff'};
+    if(yieldPct>=90) return {letter:'A', bg:'#10b981',color:'#fff'};
+    if(yieldPct>=85) return {letter:'B', bg:'#3b82f6',color:'#fff'};
+    if(yieldPct>=75) return {letter:'C', bg:'#f59e0b',color:'#fff'};
+    if(yieldPct>=60) return {letter:'D', bg:'#f97316',color:'#fff'};
+    return {letter:'F',bg:'#ef4444',color:'#fff'};
   }
 
-  // Extract per-trimmer stats from nested reports
-  function buildTrimmerStats(recs) {
-    var byName = {};
-    recs.forEach(function(report){
-      var entries = report.entries||[];
-      entries.forEach(function(e){
-        var nm = e.full_name||e.name||('Emp #'+(e.emp_number||'?'));
-        if(!byName[nm]) byName[nm] = {sessions:0, totalYield:0, yieldCount:0, lbsPerHr:[], flagged:0};
-        byName[nm].sessions++;
-        var yld = parseFloat(e.total_yield_pct||0);
-        if(yld>0){ byName[nm].totalYield+=yld; byName[nm].yieldCount++; }
-        var lph = parseFloat(e.lbs_per_hour||e.eighthour_lbs_per_hour||0);
-        if(lph>0) byName[nm].lbsPerHr.push(lph);
-        if(e.flagged) byName[nm].flagged++;
+  function renderPeriodPills(activeDays){
+    var pills = [{label:'7 Day',days:7},{label:'30 Day',days:30},{label:'60 Day',days:60},{label:'YTD',days:365}];
+    var html = '<div id="trim-pills" style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
+    pills.forEach(function(p){
+      var active = p.days===activeDays;
+      html += '<button data-days="'+p.days+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+p.label+'</button>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  try {
+    var days = window._trimPeriod;
+    var data = await apiCall('GET', '/api/analytics?type=rankings&days='+days);
+    var rankings = data.rankings||data||[];
+    window._trimRankings = rankings;
+
+    var teamAvg = data.team_avg_lbs_hr || (rankings.length ? Math.round(rankings.reduce(function(s,r){return s+(r.avg_lbs_hr||0);},0)/rankings.length*10)/10 : 0);
+
+    var periodLabel = days===7?'7':days===30?'30':days===60?'60':'YTD';
+
+    var html = renderPeriodPills(days);
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<h3 style="margin:0;font-size:.95rem;color:#1a3a6b;font-weight:700">&#127942; Trimmer Rankings &#8212; Last '+periodLabel+' Days &nbsp;<span style="font-weight:400;font-size:.8rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    html += '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;cursor:pointer;display:flex;align-items:center;gap:4px">&#128438; Print Report</button>';
+    html += '</div>';
+
+    // Table
+    html += '<div style="overflow-x:auto"><table id="trim-rank-table" style="width:100%;border-collapse:collapse;font-size:.78rem">';
+    html += '<thead><tr style="background:#1a3a6b;color:#fff">';
+    ['Rank','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(h){
+      html += '<th style="padding:8px 10px;text-align:'+(h==='Rank'||h==='Days'?'center':'left')+';white-space:nowrap">'+h+'</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    rankings.forEach(function(r,i){
+      var yld = parseFloat(r.tot_yield_pct||r.total_yield_pct||0);
+      var grade = calcGrade(yld);
+      var under = r.underperformer;
+      var trendIcon = r.trend==='up'?'&#8679;':r.trend==='down'?'&#8681;':'&#8680;';
+      var trendColor = r.trend==='up'?'#059669':r.trend==='down'?'#ef4444':'#f59e0b';
+      var rowBg = i%2===0?'#fff':'#f8fafc';
+      var safeId = (r.full_name||r.name||'u'+i).replace(/[^a-zA-Z0-9]/g,'_');
+      html += '<tr style="border-top:1px solid #e2e8f0;background:'+rowBg+(under?' border-left:3px solid #ef4444;':'')+'">';
+      html += '<td style="padding:7px 10px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
+      html += '<td style="padding:7px 10px;font-weight:600;color:#1a3a6b">'+(r.full_name||r.name||'—')+'</td>';
+      html += '<td style="padding:7px 10px;text-align:center">'+(r.days_worked||r.days||'—')+'</td>';
+      html += '<td style="padding:7px 10px;font-weight:700;color:'+(r.avg_lbs_hr>=teamAvg?'#059669':'#ef4444')+'">'+(r.avg_lbs_hr||'—')+'</td>';
+      html += '<td style="padding:7px 10px">'+(r.eight_hr_lbs_hr||r['8hr_lbs_hr']||'—')+'</td>';
+      html += '<td style="padding:7px 10px">'+(r.fillet_pct||r.fillet||'—')+'%</td>';
+      html += '<td style="padding:7px 10px">'+(r.nugget_pct||r.nugget||'—')+'%</td>';
+      html += '<td style="padding:7px 10px">'+(r.misc_cut_pct||r.misccut||'—')+'%</td>';
+      html += '<td style="padding:7px 10px;font-weight:600">'+(r.tot_yield_pct||r.total_yield_pct||'—')+'%</td>';
+      html += '<td style="padding:7px 10px"><span style="display:inline-block;min-width:34px;text-align:center;padding:3px 8px;border-radius:20px;font-weight:800;font-size:.8rem;background:'+grade.bg+';color:'+grade.color+'">'+grade.letter+'</span></td>';
+      html += '<td style="padding:7px 10px"><button class="trim-trend-btn" data-id="'+safeId+'" data-name="'+(r.full_name||r.name||'')+'" data-yield="'+yld+'" data-avg="'+(r.avg_lbs_hr||0)+'" data-grade="'+grade.letter+'" data-gradevg="'+grade.bg+'" data-gradecolor="'+grade.color+'" style="border:none;background:none;cursor:pointer;font-size:1.1rem;color:'+trendColor+';font-weight:700;padding:2px 6px;border-radius:4px;transition:background .15s" title="View breakdown">'+trendIcon+'</button></td>';
+      html += '</tr>';
+      // Expandable breakdown row
+      html += '<tr id="breakdown-'+safeId+'" style="display:none"><td colspan="11" style="padding:0"><div class="trim-breakdown" style="padding:12px 16px;background:#f0f7ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+    });
+
+    html += '</tbody></table></div>';
+
+    // Print styles injected once
+    if(!document.getElementById('trim-print-style')){
+      var style = document.createElement('style');
+      style.id = 'trim-print-style';
+      style.innerHTML = '@media print{body *{visibility:hidden}#trim-rank-table,#trim-rank-table *,#trim-print-section,#trim-print-section *{visibility:visible}#trim-rank-table{position:fixed;top:0;left:0;width:100%}#trim-print-section{position:fixed;top:0;left:0;width:100%}}';
+      document.head.appendChild(style);
+    }
+
+    el.innerHTML = html;
+
+    // Wire period pills
+    document.querySelectorAll('#trim-pills button').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        window._trimPeriod=parseInt(this.dataset.days);
+        trimRenderAnalytics();
       });
     });
-    return byName;
-  }
 
-  var filteredReports = filterByPeriod(reports, period);
-  var prevReports = filterByPeriod(reports, prevPeriodKey(period));
-  var stats = buildTrimmerStats(filteredReports);
-  var prevStats = buildTrimmerStats(prevReports);
-  var names = Object.keys(stats).sort();
-
-  // Pill bar
-  var btnStyle = 'border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;margin-right:6px;margin-bottom:8px';
-  var html = '<div style="padding:4px 0 12px"><div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
-  html += '<div id="tgrade-pills" style="margin-bottom:10px">';
-  PERIODS.forEach(function(p){
-    var active=p.key===period;
-    html += '<button data-period="'+p.key+'" style="'+btnStyle+';background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+p.label+'</button>';
-  });
-  html += '</div><p style="margin:0;font-size:.78rem;color:#64748b">Grades based on avg yield %. Click <b>&#x2728; AI Suggestions</b> for personalized coaching.</p></div>';
-
-  if(names.length===0){
-    html += '<div style="background:#fff;border-radius:12px;padding:30px;text-align:center;color:#94a3b8;box-shadow:0 1px 4px rgba(0,0,0,.08)">No trimmer records in this period</div>';
-  } else {
-    names.forEach(function(nm){
-      var s=stats[nm];
-      var avgYield = s.yieldCount>0 ? Math.round(s.totalYield/s.yieldCount*10)/10 : null;
-      var grade = calcGrade(avgYield);
-      var prev=prevStats[nm];
-      var prevAvg = prev&&prev.yieldCount>0 ? Math.round(prev.totalYield/prev.yieldCount*10)/10 : null;
-      var trend = prevAvg===null ? '' :
-        avgYield>=prevAvg+3 ? '<span style="color:#059669;font-weight:700">&#8679; Improving</span>' :
-        avgYield<=prevAvg-3 ? '<span style="color:#ef4444;font-weight:700">&#8681; Declining</span>' :
-        '<span style="color:#f59e0b;font-weight:700">&#8680; Stable</span>';
-      var avgLph = s.lbsPerHr.length ? Math.round(s.lbsPerHr.reduce(function(a,b){return a+b;},0)/s.lbsPerHr.length) : null;
-      var safeId = nm.replace(/[^a-zA-Z0-9]/g,'_');
-      html += '<div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between">';
-      html += '<div style="display:flex;align-items:center;gap:12px">';
-      html += '<div style="width:56px;height:56px;border-radius:50%;background:'+grade.bg+';display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:800;color:'+grade.color+';flex-shrink:0">'+grade.letter+'</div>';
-      html += '<div><div style="font-weight:700;font-size:.95rem;color:#1a3a6b">'+nm+'</div>';
-      html += '<div style="font-size:.78rem;color:#475569">'+s.sessions+' session'+(s.sessions!==1?'s':'')+' &middot; Avg yield: '+(avgYield!==null?avgYield+'%':'—')+'</div>';
-      if(avgLph!==null) html += '<div style="font-size:.75rem;color:#64748b">'+avgLph+' lbs/hr avg</div>';
-      if(s.flagged>0) html += '<div style="font-size:.72rem;color:#ef4444">&#9888; '+s.flagged+' flagged session'+(s.flagged!==1?'s':'')+'</div>';
-      html += '</div></div>';
-      html += '<div style="text-align:right;min-width:110px">'+trend;
-      html += '<div style="margin-top:6px"><button data-nm="'+nm+'" data-yield="'+(avgYield||0)+'" data-sessions="'+s.sessions+'" data-lph="'+(avgLph||0)+'" class="tgrade-ai-btn" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:.72rem;cursor:pointer;white-space:nowrap">&#x2728; AI Suggestions</button></div>';
-      html += '</div></div>';
-      html += '<div id="tai-'+safeId+'" style="display:none;margin-top:10px;padding:10px;background:#f8fafc;border-left:3px solid #1a3a6b;border-radius:0 8px 8px 0;font-size:.8rem;color:#374151"></div>';
-      html += '</div>';
+    // Wire trend buttons
+    document.querySelectorAll('.trim-trend-btn').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var id=this.dataset.id;
+        var name=this.dataset.name;
+        var yld=parseFloat(this.dataset.yield);
+        var avg=parseFloat(this.dataset.avg);
+        var gradeLetter=this.dataset.grade;
+        var gradeBg=this.dataset.gradevg;
+        var gradeColor=this.dataset.gradecolor;
+        var row=document.getElementById('breakdown-'+id);
+        var box=row?row.querySelector('.trim-breakdown'):null;
+        if(!row||!box) return;
+        if(row.style.display!=='none'){row.style.display='none';return;}
+        row.style.display='';
+        box.innerHTML='<span style="color:#94a3b8">&#x2728; Loading AI suggestion...</span>';
+        // Generate AI suggestion
+        var prompt='You are a catfish processing plant performance coach. Trimmer "'+name+'" has a '+yld.toFixed(1)+'% total yield and averages '+avg+' lbs/hr (grade '+gradeLetter+'). Give 2-3 specific, actionable improvement suggestions. Be concise and practical. Format as a numbered list.';
+        fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:350,messages:[{role:'user',content:prompt}]})})
+          .then(function(r){return r.json();})
+          .then(function(d){
+            var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate suggestions.';
+            box.innerHTML=
+              '<div id="trim-print-section" style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">'+
+              '<div style="flex:0 0 auto">'+
+                '<div style="width:64px;height:64px;border-radius:50%;background:'+gradeBg+';display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:900;color:'+gradeColor+'">'+gradeLetter+'</div>'+
+                '<div style="text-align:center;font-size:.7rem;color:#64748b;margin-top:4px">Grade</div>'+
+              '</div>'+
+              '<div style="flex:1;min-width:200px">'+
+                '<strong style="color:#1a3a6b;display:block;margin-bottom:6px;font-size:.85rem">'+name+' &#8212; Breakdown & AI Coaching</strong>'+
+                '<div style="font-size:.78rem;color:#374151;margin-bottom:8px">Yield: <strong>'+yld.toFixed(1)+'%</strong> &nbsp;|&nbsp; Avg: <strong>'+avg+' lbs/hr</strong></div>'+
+                '<div style="font-size:.78rem;line-height:1.6;color:#374151">'+text.replace(/\n/g,'<br>')+'</div>'+
+              '</div>'+
+              '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:.75rem;cursor:pointer">&#128438; Print</button></div>'+
+              '</div>';
+          })
+          .catch(function(){box.innerHTML='<span style="color:#ef4444">Error generating suggestion.</span>';});
+      });
     });
+
+  } catch(e) {
+    el.innerHTML = '<div class="log-empty">'+e.message+'</div>';
   }
-  html += '</div>';
-  el.innerHTML = html;
-
-  // Wire pills
-  el.querySelectorAll('#tgrade-pills button').forEach(function(btn){
-    btn.addEventListener('click',function(){ trimRenderGrades(window._trimAnalyticsRecords||[], this.dataset.period); });
-  });
-
-  // Wire AI buttons
-  el.querySelectorAll('.tgrade-ai-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var nm=this.dataset.nm, yld=this.dataset.yield, sess=this.dataset.sessions, lph=this.dataset.lph;
-      var safeId=nm.replace(/[^a-zA-Z0-9]/g,'_');
-      var aiEl=document.getElementById('tai-'+safeId);
-      if(!aiEl) return;
-      if(aiEl.style.display!=='none'){aiEl.style.display='none';return;}
-      aiEl.style.display='block';
-      aiEl.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching suggestions...</span>';
-      var prompt='You are a catfish processing plant performance coach. Trimmer name: "'+nm+'". Stats for the selected period: average yield '+yld+'%, '+sess+' sessions, avg '+lph+' lbs/hr. Grade: '+calcGrade(parseFloat(yld)).letter+'. Give 2-3 specific, practical improvement suggestions to help this trimmer improve their yield % and lbs/hr output. Be direct, encouraging, and actionable. Format as a short numbered list (no more than 2 sentences each). Do not repeat the stats back.';
-      fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:[{role:'user',content:prompt}]})
-      }).then(function(r){return r.json();}).then(function(d){
-        var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate suggestions.';
-        aiEl.innerHTML='<strong style="color:#1a3a6b;display:block;margin-bottom:6px">&#x2728; Coaching Notes for '+nm+':</strong>'+text.replace(/\n/g,'<br>');
-      }).catch(function(){ aiEl.innerHTML='<span style="color:#ef4444">Error generating suggestions. Please try again.</span>'; });
-    });
-  });
-
-
-  // ── Reports & Rankings (original analytics) ──
-  var sepDiv = document.createElement('div');
-  sepDiv.style.cssText = 'margin:20px 4px 0';
-  sepDiv.innerHTML = '<hr style="border-color:#e2e8f0;margin-bottom:16px"><h3 style="font-size:.95rem;color:#1a3a6b;font-weight:700;margin:0 0 12px">Reports & Rankings</h3>';
-  el.appendChild(sepDiv);
-  trimRenderOldAnalytics();
 }
-
-async function trimRenderOldAnalytics() {
-
-    const wc = document.getElementById('trim-reports-container');
-    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analyticsâ¦</div></div></div>";
-    let data;
-    try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+(_trimPeriod||30)); }
-    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
-    const rankings = data.rankings || [];
-    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
-    let html = "<div style=\"padding:8px\">";
-    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
-    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
-      html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'+[7,30,60,0].map(function(d){var lbl=d===0?'YTD':d+' Day';var act=(_trimPeriod||30)===d;return '<button onclick="trimSetPeriod('+d+')" style="padding:6px 16px;border-radius:20px;border:2px solid #1a3a6b;cursor:pointer;font-size:.82rem;font-weight:'+(act?'700':'400')+';background:'+(act?'#1a3a6b':'#fff')+';color:'+(act?'#fff':'#1a3a6b')+'">'+lbl+'</button>';}).join('')+'</div>';
-html += "<h3 style=\"margin:0;font-size:1rem\">ð Trimmer Rankings â "+(_trimPeriod===0?"Year to Date":"Last "+(_trimPeriod||30)+" Days")+"</h3>";
-    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
-    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
-    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
-    html += "</tr></thead><tbody>";
-    rankings.forEach(function(r,i){
-      const under = r.underperformer;
-      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
-      html += "<tr style=\"background:" + bg + "\">";
-      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
-      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
-      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
-      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
-      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
-      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
-      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend â¾</button></td>";
-      html += "</tr>";
-      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">â  " + r.underperformer_reason + "</td></tr>";
-    });
-    html += "</tbody></table></div></div>";
-    html += "<div id=\"trim-trend-area\"></div></div>";
-    wc.innerHTML = html;
-    // Print button
-    setTimeout(function(){ var wc2=document.getElementById('trim-reports-container'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('trim-reports-container').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
-  
-}
-function trimSparkline(values, color, w, h) {
-    if(!values||!values.length) return "";
-    const min = Math.min.apply(null,values), max = Math.max.apply(null,values);
-    const range = max-min || 1;
-    const pts = values.map(function(v,i){
-      const x = (i/(values.length-1||1))*w;
-      const y = h - ((v-min)/range)*(h-4) - 2;
-      return x.toFixed(1)+","+y.toFixed(1);
-    }).join(" ");
-    return "<svg width=\""+w+"\" height=\""+h+"\" style=\"display:block\"><polyline points=\""+pts+"\" fill=\"none\" stroke=\""+color+"\" stroke-width=\"2\" stroke-linejoin=\"round\"/></svg>";
-  }
-
-function trimBarChart(labels, values, color, title) {
-    const max = Math.max.apply(null,values)||1;
-    const barW = Math.max(18, Math.min(40, Math.floor(340/values.length)));
-    const w = barW*values.length+40, h = 120;
-    let svg = "<svg width=\""+w+"\" height=\""+h+"\" style=\"display:block;overflow:visible\">";
-    svg += "<text x=\"0\" y=\"12\" font-size=\"11\" fill=\"#64748b\">"+title+"</text>";
-    values.forEach(function(v,i){
-      const bh = Math.max(2,((v/max)*(h-30)));
-      const x = i*barW+20, y = h-bh-16;
-      svg += "<rect x=\""+x+"\" y=\""+y+"\" width=\""+(barW-3)+"\" height=\""+bh+"\" fill=\""+color+"\" rx=\"2\"/>";
-      svg += "<text x=\""+(x+(barW-3)/2)+"\" y=\""+(h-2)+"\" font-size=\"9\" text-anchor=\"middle\" fill=\"#64748b\">"+labels[i]+"</text>";
-      svg += "<text x=\""+(x+(barW-3)/2)+"\" y=\""+(y-2)+"\" font-size=\"9\" text-anchor=\"middle\" fill=\""+color+"\">"+parseFloat(v).toFixed(1)+"</text>";
-    });
-    svg += "</svg>";
-    return svg;
-  }
-
 async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
     const area = document.getElementById("trim-trend-area");
