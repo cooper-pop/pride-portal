@@ -212,40 +212,50 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(lph,filletPct,nuggetPct,miscPct,totalYield){
-    // Score each metric 0-5 (5=A+, 4=A, 3=B, 2=C, 1=D, 0=F)
+  function calcGrade(yld,lph,fillet,nugget,misccut){
+    // Multi-factor grade: each of 5 metrics scored 0-5, averaged to final grade
+    // Params: yld=avg_total_yield%, lph=avg_lph, fillet=avg_fillet_pct%,
+    //         nugget=avg_nugget_pct%, misccut=avg_misccut_pct%
     function scoreLph(v){
-      if(v>=150)return 5; if(v>=125)return 4; if(v>=115)return 3;
-      if(v>=110)return 2; if(v>=100)return 1; return 0;
+      if(v>=150)return 5;if(v>=125)return 4;if(v>=115)return 3;
+      if(v>=110)return 2;if(v>=100)return 1;return 0;
     }
     function scoreFillet(v){
-      if(v>=65)return 5; if(v>=63)return 4; if(v>=62)return 3;
-      if(v>=61)return 2; if(v>=61)return 1; return 0;
+      if(v>=65)return 5;if(v>=63)return 4;if(v>=62)return 3;
+      if(v>=61)return 2;if(v>=61)return 1;return 0;
     }
     function scoreNugget(v){
-      if(v>=20)return 5; if(v>=19)return 4; if(v>=18)return 3;
-      if(v>=17.5)return 2; if(v>=17)return 1; return 0;
+      if(v>=20)return 5;if(v>=19)return 4;if(v>=18)return 3;
+      if(v>=17.5)return 2;if(v>=17)return 1;return 0;
     }
-    function scoreMisc(v){
-      // Lower is better
-      if(v<5)return 5; if(v<6)return 4; if(v<6.5)return 3;
-      if(v<7)return 2; if(v<7.5)return 1; return 0;
+    function scoreMisccut(v){
+      // Lower is better — invert
+      if(v<5)return 5;if(v<6)return 4;if(v<6.5)return 3;
+      if(v<7)return 2;if(v<7.5)return 1;return 0;
     }
-    function scoreYield(v){
-      if(v>=90)return 5; if(v>=88)return 4; if(v>=85)return 3;
-      if(v>=82)return 2; if(v>=78)return 1; return 0;
+    function scoreOverall(v){
+      if(v>=90)return 5;if(v>=87)return 4;if(v>=84)return 3;
+      if(v>=80)return 2;if(v>=75)return 1;return 0;
     }
-    var s1=scoreLph(lph||0);
-    var s2=scoreFillet(filletPct||0);
-    var s3=scoreNugget(nuggetPct||0);
-    var s4=scoreMisc(miscPct||99);
-    var s5=scoreYield(totalYield||0);
-    var avg=(s1+s2+s3+s4+s5)/5;
-    if(avg>=4.5)return{l:'A+',bg:'#059669',c:'#fff'};
-    if(avg>=3.5)return{l:'A', bg:'#10b981',c:'#fff'};
-    if(avg>=2.5)return{l:'B', bg:'#3b82f6',c:'#fff'};
-    if(avg>=1.5)return{l:'C', bg:'#f59e0b',c:'#fff'};
-    if(avg>=0.5)return{l:'D', bg:'#f97316',c:'#fff'};
+    // Only score metrics that were provided (non-null/NaN)
+    var scores=[], weights=[];
+    if(lph!=null&&!isNaN(lph)){scores.push(scoreLph(lph));weights.push(1);}
+    if(fillet!=null&&!isNaN(fillet)){scores.push(scoreFillet(fillet));weights.push(1);}
+    if(nugget!=null&&!isNaN(nugget)){scores.push(scoreNugget(nugget));weights.push(1);}
+    if(misccut!=null&&!isNaN(misccut)){scores.push(scoreMisccut(misccut));weights.push(1);}
+    if(yld!=null&&!isNaN(yld)){scores.push(scoreOverall(yld));weights.push(1);}
+    if(!scores.length)return{l:'N/A',bg:'#94a3b8',c:'#fff'};
+    var total=scores.reduce(function(s,v){return s+v;},0);
+    var avg=total/scores.length;
+    var gradeMap=[
+      {min:4.5,l:'A+',bg:'#059669',c:'#fff'},
+      {min:3.5,l:'A', bg:'#10b981',c:'#fff'},
+      {min:2.5,l:'B', bg:'#3b82f6',c:'#fff'},
+      {min:1.5,l:'C', bg:'#f59e0b',c:'#fff'},
+      {min:0.5,l:'D', bg:'#f97316',c:'#fff'},
+      {min:0,  l:'F', bg:'#ef4444',c:'#fff'},
+    ];
+    for(var i=0;i<gradeMap.length;i++){if(avg>=gradeMap[i].min)return gradeMap[i];}
     return{l:'F',bg:'#ef4444',c:'#fff'};
   }
   function buildTable(rankings,teamAvg,days){
@@ -269,7 +279,7 @@ async function trimRenderAnalytics(){
       var fillet=parseFloat(r.avg_fillet_pct||0);
       var nugget=parseFloat(r.avg_nugget_pct||0);
       var misccut=parseFloat(r.avg_misccut_pct||0);
-      var g=calcGrade(yld,avg,fillet,nugget,misccut);
+      var g=calcGrade(avg,parseFloat(r.avg_fillet_pct||0),parseFloat(r.avg_nugget_pct||0),parseFloat(r.avg_misccut_pct||99),yld);
       var under=r.underperformer;
       // No trend field in API — use underperformer flag for indicator
       var trendIcon=under?'&#8681;':'&#8680;';
