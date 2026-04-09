@@ -207,8 +207,93 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-async function trimRenderAnalytics(){var el=document.getElementById('widget-content');if(!el)return;if(!window._trimPeriod)window._trimPeriod=30;el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';function cg(row){var lph=parseFloat(row.avg_lph||0),fil=parseFloat(row.avg_fillet_pct||0),nug=parseFloat(row.avg_nugget_pct||0),mis=parseFloat(row.avg_misccut_pct||999),yld=parseFloat(row.avg_total_yield||0);if(lph>=150&&fil>=65&&nug>=20&&mis<5&&yld>=90)return{l:'A+',bg:'#059669',c:'#fff'};if(lph>=125&&fil>=63&&nug>=19&&mis<6&&yld>=85)return{l:'A',bg:'#10b981',c:'#fff'};if(lph>=115&&fil>=62&&nug>=18&&mis<6.5&&yld>=80)return{l:'B',bg:'#3b82f6',c:'#fff'};if(lph>=110&&fil>=61&&nug>=17.5&&mis<7&&yld>=75)return{l:'C',bg:'#f59e0b',c:'#fff'};if(lph>=100&&fil>=61&&nug>=17&&mis<7.5&&yld>=70)return{l:'D',bg:'#f97316',c:'#fff'};return{l:'F',bg:'#ef4444',c:'#fff'};}apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){var rows=data.rankings||[],ta=parseFloat(data.shift_avg_lph||0),days=window._trimPeriod,pL=days===7?'7':days===30?'30':days===60?'60':'YTD';var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}].forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});h+='</div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pL+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+ta+' lbs/hr</span></h3><button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';});h+='</tr></thead><tbody>';rows.forEach(function(r,i){var g=cg(r),lph=parseFloat(r.avg_lph||0),yld=parseFloat(r.avg_total_yield||0),fil=r.avg_fillet_pct||'',nug=r.avg_nugget_pct||'',mis=r.avg_misccut_pct||'',nm=r.full_name||'',sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i,under=r.underperformer,tc=under?'#ef4444':'#f59e0b',bg=i%2===0?'#fff':'#f8fafc';h+='<tr style="border-top:1px solid #e2e8f0;background:'+bg+(under?';border-left:3px solid #ef4444':'')+'">';h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td><td style="padding:5px 8px;font-weight:600;color:#1a3a6b">'+nm+'</td><td style="padding:5px 8px;text-align:center">'+(r.days_worked||'')+'</td><td style="padding:5px 8px;font-weight:700;color:'+(lph>=ta?'#059669':'#ef4444')+'">'+lph+'</td><td style="padding:5px 8px">'+(r.avg_8hr_lph||'')+'</td><td style="padding:5px 8px">'+(fil!==''?fil+'%':'')+'</td><td style="padding:5px 8px">'+(nug!==''?nug+'%':'')+'</td><td style="padding:5px 8px">'+(mis!==''?mis+'%':'')+'</td><td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td><td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td><td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+lph+'" data-fil="'+fil+'" data-nug="'+nug+'" data-mis="'+mis+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+tc+';font-weight:700;padding:2px 5px">'+  (under?'&#8681;':'&#8680;')+'</button></td></tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';});h+='</tbody></table></div>';if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}el.innerHTML=h;document.getElementById('tpb').addEventListener('click',function(){window.print();});document.querySelectorAll('#tp button').forEach(function(btn){btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});});document.querySelectorAll('.ttb').forEach(function(btn){btn.addEventListener('click',function(){var sid=this.dataset.sid,nm=this.dataset.nm,yld=this.dataset.yld,avg=this.dataset.avg,fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis,gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc,row=document.getElementById('bd-'+sid),box=row?row.querySelector('.tbb'):null;if(!row||!box)return;if(row.style.display!=='none'){row.style.display='none';return;}row.style.display='';box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';var prompt='Catfish plant coach. Trimmer "'+nm+'": '+avg+' lbs/hr, '+fil+'% fillet, '+nug+'% nugget, '+mis+'% miscut, '+yld+'% yield, grade '+gl+'. Thresholds: A+(150lph,65f,20n,<5m,90y) A(125,63,19,<6,85) B(115,62,18,<6.5,80) C(110,61,17.5,<7,75) D(100,61,17,<7.5,70). Give 2-3 specific tips for weakest metrics. Numbered, brief.';apiCall('POST','/api/ai',{query:prompt}).then(function(d){var text=d.response||d.text||d.content||'Unable to generate.';box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start"><div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.65rem;color:#64748b;margin-top:2px">Grade</div></div><div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' — AI Coaching</strong><div style="font-size:.72rem;color:#374151;margin-bottom:5px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div><div style="font-size:.75rem;line-height:1.55;color:#374151">'+text.replace(/
-/g,'<br>')+'</div></div><div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div></div>';}).catch(function(){box.innerHTML='<span style="color:#ef4444">Error.</span>';});});});}).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});}
+async function trimRenderAnalytics(){
+  var el=document.getElementById('widget-content');
+  if(!el)return;
+  if(!window._trimPeriod)window._trimPeriod=30;
+  el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
+  function calcGrade(r){var lph=parseFloat(r.avg_lph||0);var fil=parseFloat(r.avg_fillet_pct||0);var nug=parseFloat(r.avg_nugget_pct||0);var mis=parseFloat(r.avg_misccut_pct||999);var yld=parseFloat(r.avg_total_yield||0);var grades=[{l:'A+',lph:150,fil:65,nug:20,mis:5,yld:90,bg:'#059669',c:'#fff'},{l:'A',lph:125,fil:63,nug:19,mis:6,yld:85,bg:'#10b981',c:'#fff'},{l:'B',lph:115,fil:62,nug:18,mis:6.5,yld:80,bg:'#3b82f6',c:'#fff'},{l:'C',lph:110,fil:61,nug:17.5,mis:7,yld:75,bg:'#f59e0b',c:'#fff'},{l:'D',lph:100,fil:61,nug:17,mis:7.5,yld:70,bg:'#f97316',c:'#fff'}];for(var i=0;i<grades.length;i++){var g=grades[i];if(lph>=g.lph&&fil>=g.fil&&nug>=g.nug&&mis<=g.mis&&yld>=g.yld)return{l:g.l,bg:g.bg,c:g.c};}return{l:'F',bg:'#ef4444',c:'#fff'};}
+  function buildTable(rankings,teamAvg,days){
+    var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
+    var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
+    var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
+    pills.forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});
+    h+='</div>';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button>';
+    h+='</div>';
+    h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';
+    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){
+      h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
+    });
+    h+='</tr></thead><tbody>';
+    rankings.forEach(function(r,i){
+      var yld=parseFloat(r.avg_total_yield||0);
+      var avg=parseFloat(r.avg_lph||0);
+      var g=calcGrade(r);
+      var under=r.underperformer;
+      // No trend field in API â use underperformer flag for indicator
+      var trendIcon=under?'&#8681;':'&#8680;';
+      var trendCol=under?'#ef4444':'#f59e0b';
+      var nm=r.full_name||'';
+      var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
+      var rowBg=i%2===0?'#fff':'#f8fafc';
+      var borderLeft=under?'border-left:3px solid #ef4444':'';
+      h+='<tr style="border-top:1px solid #e2e8f0;background:'+rowBg+';'+borderLeft+'">';
+      h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:600;color:#1a3a6b">'+nm+'</td>';
+      h+='<td style="padding:5px 8px;text-align:center">'+(r.days_worked||'')+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:700;color:'+(avg>=teamAvg?'#059669':'#ef4444')+'">'+avg+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_8hr_lph||'')+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_fillet_pct!=null?r.avg_fillet_pct+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_nugget_pct!=null?r.avg_nugget_pct+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}
+    return h;
+  }
+  apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){
+    var rankings=data.rankings||[];
+    var teamAvg=parseFloat(data.shift_avg_lph||0);
+    el.innerHTML=buildTable(rankings,teamAvg,window._trimPeriod);
+    var pb=document.getElementById('tpb');
+    if(pb)pb.addEventListener('click',function(){window.print();});
+    document.querySelectorAll('#tp button').forEach(function(btn){
+      btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});
+    });
+    document.querySelectorAll('.ttb').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var sid=this.dataset.sid,nm=this.dataset.nm,yld=parseFloat(this.dataset.yld);
+        var avg=parseFloat(this.dataset.avg),gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var row=document.getElementById('bd-'+sid);
+        var box=row?row.querySelector('.tbb'):null;
+        if(!row||!box)return;
+        if(row.style.display!=='none'){row.style.display='none';return;}
+        row.style.display='';
+        box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
+        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" averages '+yld+'% total yield at '+avg+' lbs/hr (grade '+gl+'). Give 2-3 specific actionable improvement tips. Be concise and practical. Number them.';
+        apiCall('POST','/api/ai',{query:prompt})
+          .then(function(d){
+            var text=(d.response||d.text||d.content||'Unable to generate.');
+            box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
+              '<div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.65rem;color:#64748b;margin-top:2px">Grade</div></div>'+
+              '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' â AI Coaching</strong>'+
+              '<div style="font-size:.72rem;color:#374151;margin-bottom:5px">Yield: <strong>'+yld+'%</strong> | Avg: <strong>'+avg+' lbs/hr</strong></div>'+
+              '<div style="font-size:.75rem;line-height:1.55;color:#374151">'+text.replace(/\n/g,'<br>')+'</div></div>'+
+              '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div>'+
+              '</div>';
+          })
+          .catch(function(){box.innerHTML='<span style="color:#ef4444">Error.</span>';});
+      });
+    });
+  }).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});
+}
 async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
     const area = document.getElementById("trim-trend-area");
