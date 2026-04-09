@@ -614,8 +614,7 @@ function renderTrimmerGrades(records, period) {
       .then(function(d){
         var text=(d.content&&d.content[0]&&d.content[0].text)||'';
         var aiEl2=document.getElementById(safeId);
-        if(aiEl2&&text) aiEl2.innerHTML='<strong style="color:#1a3a6b">AI Suggestions:</strong><br>'+text.replace(/
-/g,'<br>');
+        if(aiEl2&&text) aiEl2.innerHTML='<strong style="color:#1a3a6b">AI Suggestions:</strong><br>'+text.replace(/\n/g,'<br>');
         else if(aiEl2) aiEl2.innerHTML='';
       }).catch(function(){ var aiEl2=document.getElementById(safeId); if(aiEl2) aiEl2.innerHTML=''; });
     });
