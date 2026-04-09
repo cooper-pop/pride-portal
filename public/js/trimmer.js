@@ -212,64 +212,51 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(lph,filletPct,nuggetPct,miscutPct,totalYield){
-    // Score each metric 0(F) through 5(A+)
+  function calcGrade(yld,lph,fillet,nugget,misccut){
+    // Multi-factor grade: each of 5 metrics scored 0-5, averaged to final grade
+    // Params: yld=avg_total_yield%, lph=avg_lph, fillet=avg_fillet_pct%,
+    //         nugget=avg_nugget_pct%, misccut=avg_misccut_pct%
     function scoreLph(v){
-      if(v>=150)return 5;
-      if(v>=125)return 4;
-      if(v>=115)return 3;
-      if(v>=110)return 2;
-      if(v>=100)return 1;
-      return 0;
+      if(v>=150)return 5;if(v>=125)return 4;if(v>=115)return 3;
+      if(v>=110)return 2;if(v>=100)return 1;return 0;
     }
     function scoreFillet(v){
-      if(v>=65)return 5;
-      if(v>=63)return 4;
-      if(v>=62)return 3;
-      if(v>=61)return 2;
-      if(v>=60)return 1;
-      return 0;
+      if(v>=65)return 5;if(v>=63)return 4;if(v>=62)return 3;
+      if(v>=61)return 2;if(v>=61)return 1;return 0;
     }
     function scoreNugget(v){
-      if(v>=20)return 5;
-      if(v>=19)return 4;
-      if(v>=18)return 3;
-      if(v>=17.5)return 2;
-      if(v>=17)return 1;
-      return 0;
+      if(v>=20)return 5;if(v>=19)return 4;if(v>=18)return 3;
+      if(v>=17.5)return 2;if(v>=17)return 1;return 0;
     }
-    function scoreMiscut(v){
-      // Lower miscut is better
-      if(v<5)return 5;
-      if(v<6)return 4;
-      if(v<6.5)return 3;
-      if(v<7)return 2;
-      if(v<7.5)return 1;
-      return 0;
+    function scoreMisccut(v){
+      // Lower is better — invert
+      if(v<5)return 5;if(v<6)return 4;if(v<6.5)return 3;
+      if(v<7)return 2;if(v<7.5)return 1;return 0;
     }
-    function scoreYield(v){
-      if(v>=90)return 5;
-      if(v>=88)return 4;
-      if(v>=85)return 3;
-      if(v>=82)return 2;
-      if(v>=78)return 1;
-      return 0;
+    function scoreOverall(v){
+      if(v>=90)return 5;if(v>=87)return 4;if(v>=84)return 3;
+      if(v>=80)return 2;if(v>=75)return 1;return 0;
     }
-    var s1=scoreLph(parseFloat(lph)||0);
-    var s2=scoreFillet(parseFloat(filletPct)||0);
-    var s3=scoreNugget(parseFloat(nuggetPct)||0);
-    var s4=scoreMiscut(parseFloat(miscutPct)||0);
-    var s5=scoreYield(parseFloat(totalYield)||0);
-    var avg=(s1+s2+s3+s4+s5)/5;
-    // Map avg score to grade
-    // Also enforce: if LPH score is 0 (under 100), cap at F regardless
-    if(s1===0)return{l:'F',bg:'#ef4444',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
-    if(avg>=4.5)return{l:'A+',bg:'#059669',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
-    if(avg>=3.5)return{l:'A', bg:'#10b981',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
-    if(avg>=2.5)return{l:'B', bg:'#3b82f6',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
-    if(avg>=1.5)return{l:'C', bg:'#f59e0b',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
-    if(avg>=0.5)return{l:'D', bg:'#f97316',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
-    return{l:'F',bg:'#ef4444',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    // Only score metrics that were provided (non-null/NaN)
+    var scores=[], weights=[];
+    if(lph!=null&&!isNaN(lph)){scores.push(scoreLph(lph));weights.push(1);}
+    if(fillet!=null&&!isNaN(fillet)){scores.push(scoreFillet(fillet));weights.push(1);}
+    if(nugget!=null&&!isNaN(nugget)){scores.push(scoreNugget(nugget));weights.push(1);}
+    if(misccut!=null&&!isNaN(misccut)){scores.push(scoreMisccut(misccut));weights.push(1);}
+    if(yld!=null&&!isNaN(yld)){scores.push(scoreOverall(yld));weights.push(1);}
+    if(!scores.length)return{l:'N/A',bg:'#94a3b8',c:'#fff'};
+    var total=scores.reduce(function(s,v){return s+v;},0);
+    var avg=total/scores.length;
+    var gradeMap=[
+      {min:4.5,l:'A+',bg:'#059669',c:'#fff'},
+      {min:3.5,l:'A', bg:'#10b981',c:'#fff'},
+      {min:2.5,l:'B', bg:'#3b82f6',c:'#fff'},
+      {min:1.5,l:'C', bg:'#f59e0b',c:'#fff'},
+      {min:0.5,l:'D', bg:'#f97316',c:'#fff'},
+      {min:0,  l:'F', bg:'#ef4444',c:'#fff'},
+    ];
+    for(var i=0;i<gradeMap.length;i++){if(avg>=gradeMap[i].min)return gradeMap[i];}
+    return{l:'F',bg:'#ef4444',c:'#fff'};
   }
   function buildTable(rankings,teamAvg,days){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
@@ -289,7 +276,10 @@ async function trimRenderAnalytics(){
     rankings.forEach(function(r,i){
       var yld=parseFloat(r.avg_total_yield||0);
       var avg=parseFloat(r.avg_lph||0);
-      var g=calcGrade(r.avg_lph,r.avg_fillet_pct,r.avg_nugget_pct,r.avg_misccut_pct,r.avg_total_yield);
+      var fillet=parseFloat(r.avg_fillet_pct||0);
+      var nugget=parseFloat(r.avg_nugget_pct||0);
+      var misccut=parseFloat(r.avg_misccut_pct||0);
+      var g=calcGrade(yld,avg,fillet,nugget,misccut);
       var under=r.underperformer;
       // No trend field in API — use underperformer flag for indicator
       var trendIcon=under?'&#8681;':'&#8680;';
@@ -309,7 +299,7 @@ async function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-flt="'+fillet+'" data-nug="'+nugget+'" data-msc="'+misccut+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
       h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
@@ -335,14 +325,15 @@ async function trimRenderAnalytics(){
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
         box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
-        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" metrics: '+avg+' lbs/hr, '+parseFloat(document.querySelector('[data-sid="'+sid+'"]')?.closest('tr')?.cells[5]?.innerText||0)+'% fillet yield, total yield '+yld+'%. Grade: '+gl+'. Give 2-3 specific actionable improvement tips targeting their weakest metrics. Be concise. Number them.';
+        var flt=parseFloat(this.dataset.flt||0),nug=parseFloat(this.dataset.nug||0),msc=parseFloat(this.dataset.msc||0);
+        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" has these metrics: '+avg+' lbs/hr, '+yld+'% total yield, '+flt+'% fillet, '+nug+'% nugget, '+msc+'% misccut (grade '+gl+'). Grade thresholds: A+>=150lbs/hr,65%fillet,20%nugget,<5%misccut,90%yield; A>=125,63%,19%,<6%; B>=115,62%,18%,<6.5%; C>=110,61%,17.5%,<7%; D>=100,61%,17%,<7.5%; F=below all. Give 2-3 specific improvement tips targeting their weakest metrics. Be concise. Number them.';
         apiCall('POST','/api/ai',{query:prompt})
           .then(function(d){
             var text=(d.response||d.text||d.content||'Unable to generate.');
             box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
               '<div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.65rem;color:#64748b;margin-top:2px">Grade</div></div>'+
               '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' — AI Coaching</strong>'+
-              '<div style="font-size:.72rem;color:#374151;margin-bottom:5px">Yield: <strong>'+yld+'%</strong> | Avg: <strong>'+avg+' lbs/hr</strong></div>'+
+              '<div style="font-size:.72rem;color:#374151;margin-bottom:5px">'+avg+' lbs/hr &nbsp;|&nbsp; Yield: '+yld+'% &nbsp;|&nbsp; Fillet: '+flt+'% &nbsp;|&nbsp; Nugget: '+nug+'% &nbsp;|&nbsp; Misccut: '+msc+'%</div>'+
               '<div style="font-size:.75rem;line-height:1.55;color:#374151">'+text.replace(/\n/g,'<br>')+'</div></div>'+
               '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div>'+
               '</div>';
