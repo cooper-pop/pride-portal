@@ -293,7 +293,7 @@ async function trimRenderAnalytics(){
       var fillet=parseFloat(r.avg_fillet_pct||0);
       var nugget=parseFloat(r.avg_nugget_pct||0);
       var misccut=parseFloat(r.avg_misccut_pct||0);
-      var g=calcGrade(avg,parseFloat(r.avg_fillet_pct||0),parseFloat(r.avg_nugget_pct||0),parseFloat(r.avg_misccut_pct||99),yld);
+      var g=calcGrade(r),parseFloat(r.avg_nugget_pct||0),parseFloat(r.avg_misccut_pct||99),yld);
       var under=r.underperformer;
       // No trend field in API — use underperformer flag for indicator
       var trendIcon=under?'&#8681;':'&#8680;';
@@ -559,7 +559,7 @@ function buildTrimmerGrades(period) {
       names.forEach(function(nm){
         var tr=trimmers[nm];
         var pct=tr.total>0?Math.round(tr.done/tr.total*100):0;
-        var g=calcGrade(pct);
+        var g=calcGrade(r);
         var pp=prevPcts[nm];
         var prevPct=pp&&pp.total>0?Math.round(pp.done/pp.total*100):null;
         var safeId=nm.replace(/[^a-z0-9]/gi,'_');
