@@ -212,14 +212,28 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(yld,lph,fillet,nugget,misccut){
-    // Multi-factor grade: each of 5 metrics scored 0-5, averaged to final grade
-    // Params: yld=avg_total_yield%, lph=avg_lph, fillet=avg_fillet_pct%,
-    //         nugget=avg_nugget_pct%, misccut=avg_misccut_pct%
-    function scoreLph(v){
-      if(v>=150)return 5;if(v>=125)return 4;if(v>=115)return 3;
-      if(v>=110)return 2;if(v>=100)return 1;return 0;
+  function calcGrade(r){
+    // Multi-factor grade: all 5 metrics must meet threshold
+    // Fields: avg_lph, avg_fillet_pct, avg_nugget_pct, avg_misccut_pct, avg_total_yield
+    var lph=parseFloat(r.avg_lph||0);
+    var fil=parseFloat(r.avg_fillet_pct||0);
+    var nug=parseFloat(r.avg_nugget_pct||0);
+    var mis=parseFloat(r.avg_misccut_pct||999);
+    var yld=parseFloat(r.avg_total_yield||0);
+    // Grade criteria: [lph_min, fil_min, nug_min, mis_max, yld_min]
+    var grades=[
+      {l:'A+',lph:150,fil:65,nug:20,mis:5, yld:90, bg:'#059669',c:'#fff'},
+      {l:'A', lph:125,fil:63,nug:19,mis:6, yld:85, bg:'#10b981',c:'#fff'},
+      {l:'B', lph:115,fil:62,nug:18,mis:6.5,yld:80,bg:'#3b82f6',c:'#fff'},
+      {l:'C', lph:110,fil:61,nug:17.5,mis:7,yld:75,bg:'#f59e0b',c:'#fff'},
+      {l:'D', lph:100,fil:61,nug:17,mis:7.5,yld:70,bg:'#f97316',c:'#fff'}
+    ];
+    for(var i=0;i<grades.length;i++){
+      var g=grades[i];
+      if(lph>=g.lph&&fil>=g.fil&&nug>=g.nug&&mis<=g.mis&&yld>=g.yld) return{l:g.l,bg:g.bg,c:g.c};
     }
+    return{l:'F',bg:'#ef4444',c:'#fff'};
+  }
     function scoreFillet(v){
       if(v>=65)return 5;if(v>=63)return 4;if(v>=62)return 3;
       if(v>=61)return 2;if(v>=61)return 1;return 0;
@@ -299,7 +313,7 @@ async function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-flt="'+fillet+'" data-nug="'+nugget+'" data-msc="'+misccut+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg='"'+(avg)+'"' data-fil='"'+r.avg_fillet_pct+'"' data-nug='"'+r.avg_nugget_pct+'"' data-mis='"'+r.avg_misccut_pct+'"' data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-flt="'+fillet+'" data-nug="'+nugget+'" data-msc="'+misccut+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
       h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
