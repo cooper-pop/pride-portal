@@ -102,6 +102,15 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({error:'Unknown type'});
     }
+    // Rename all entries for an employee
+    if (req.method==='PATCH' && action==='rename_employee') {
+      const body2=JSON.parse(req.body||'{}');
+      const empNum=body2.emp_number||req.body?.emp_number;
+      const newName=body2.new_name||req.body?.new_name;
+      if(!empNum||!newName) return res.status(400).json({error:'Missing emp_number or new_name'});
+      const upd=await sql`UPDATE trimmer_entries SET full_name=${newName}, trim_number=LEFT(${newName},8) WHERE emp_number=${empNum}`;
+      return res.json({updated:upd.count||0,emp_number:empNum,new_name:newName});
+    }
     if (req.method==='PATCH' && type==='trimmer') {
       if (!id) return res.status(400).json({error:'Missing id'});
       const { report_date } = req.body;
