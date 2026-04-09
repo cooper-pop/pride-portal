@@ -212,44 +212,7 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(r){
-  var lph=parseFloat(r.avg_lph||0);
-  var fil=parseFloat(r.avg_fillet_pct||0);
-  var nug=parseFloat(r.avg_nugget_pct||0);
-  var mis=parseFloat(r.avg_misccut_pct||999);
-  var yld=parseFloat(r.avg_total_yield||0);
-
-  // Grade scale in order A+ to F
-  var GRADES=[
-    {l:'A+',bg:'#059669',c:'#fff',lph:150,fil:65,nug:20,mis:5, yld:90},
-    {l:'A', bg:'#10b981',c:'#fff',lph:125,fil:63,nug:19,mis:6, yld:85},
-    {l:'B', bg:'#3b82f6',c:'#fff',lph:115,fil:62,nug:18,mis:6.5,yld:80},
-    {l:'C', bg:'#f59e0b',c:'#fff',lph:110,fil:61,nug:17.5,mis:7,yld:75},
-    {l:'D', bg:'#f97316',c:'#fff',lph:100,fil:61,nug:17,mis:7.5,yld:70},
-    {l:'F', bg:'#ef4444',c:'#fff',lph:0,  fil:0, nug:0,  mis:999,yld:0}
-  ];
-
-  // Step 1: find base grade from lbs/hr only
-  var baseIdx=5; // default F
-  for(var i=0;i<GRADES.length-1;i++){
-    if(lph>=GRADES[i].lph){baseIdx=i;break;}
-  }
-
-  // Step 2: at the base grade level, check each other metric
-  // Use the BASE grade thresholds to check other metrics
-  var penalties=[];
-  var thresh=GRADES[baseIdx];
-  if(fil<thresh.fil)  penalties.push('Fillet% '+fil.toFixed(1)+'% (needs '+thresh.fil+'%+)');
-  if(nug<thresh.nug)  penalties.push('Nugget% '+nug.toFixed(1)+'% (needs '+thresh.nug+'%+)');
-  if(mis>thresh.mis)  penalties.push('Miscut% '+mis.toFixed(1)+'% (needs <'+thresh.mis+'%)');
-  if(yld<thresh.yld)  penalties.push('Yield '+yld.toFixed(1)+'% (needs '+thresh.yld+'%+)');
-
-  // Step 3: drop one grade per penalty, floor at F
-  var finalIdx = Math.min(baseIdx + penalties.length, 5);
-  var g = GRADES[finalIdx];
-
-  return {l:g.l, bg:g.bg, c:g.c, penalties:penalties, baseGrade:GRADES[baseIdx].l, lph:lph, fil:fil, nug:nug, mis:mis, yld:yld};
-}
+  function calcGrade(r){var lph=parseFloat(r.avg_lph||0);var fil=parseFloat(r.avg_fillet_pct||0);var nug=parseFloat(r.avg_nugget_pct||0);var mis=parseFloat(r.avg_misccut_pct||999);var yld=parseFloat(r.avg_total_yield||0);var grades=[{l:'A+',lph:150,fil:65,nug:20,mis:5,yld:90,bg:'#059669',c:'#fff'},{l:'A',lph:125,fil:63,nug:19,mis:6,yld:85,bg:'#10b981',c:'#fff'},{l:'B',lph:115,fil:62,nug:18,mis:6.5,yld:80,bg:'#3b82f6',c:'#fff'},{l:'C',lph:110,fil:61,nug:17.5,mis:7,yld:75,bg:'#f59e0b',c:'#fff'},{l:'D',lph:100,fil:61,nug:17,mis:7.5,yld:70,bg:'#f97316',c:'#fff'}];for(var i=0;i<grades.length;i++){var g=grades[i];if(lph>=g.lph&&fil>=g.fil&&nug>=g.nug&&mis<=g.mis&&yld>=g.yld)return{l:g.l,bg:g.bg,c:g.c};}return{l:'F',bg:'#ef4444',c:'#fff'};}
   function buildTable(rankings,teamAvg,days){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
     var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
@@ -288,7 +251,7 @@ async function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-penalties="'+encodeURIComponent(JSON.stringify(g.penalties))+'" data-basegrade="'+g.baseGrade+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-penalties="'+encodeURIComponent(JSON.stringify(g.penalties||[]))+'" data-basegrade="'+g.baseGrade+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
       h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
@@ -314,7 +277,7 @@ async function trimRenderAnalytics(){
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
         box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
-        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" averages '+yld+'% total yield at '+avg+' lbs/hr (grade '+gl+'). Give 2-3 specific actionable improvement tips. Be concise and practical. Number them.';
+        var _pen=this.dataset.penalties?JSON.parse(decodeURIComponent(this.dataset.penalties)):[];var _bg=this.dataset.basegrade||gl;var _ps=_pen.length?'Grade dropped from '+_bg+' to '+gl+' because: '+_pen.join('; ')+'.':'All metrics meet the '+gl+' standard.';var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a final grade of '+gl+' (lbs/hr: '+avg+', fillet: '+this.dataset.fil+'%, nugget: '+this.dataset.nug+'%, miscut: '+this.dataset.mis+'%, yield: '+yld+'%). '+_ps+' Begin with exactly one sentence explaining why this grade was assigned and what specific metrics caused any drops. Then list 2-3 specific, numbered, actionable coaching tips targeting the weak areas.'
         apiCall('POST','/api/ai',{query:prompt})
           .then(function(d){
             var text=(d.response||d.text||d.content||'Unable to generate.');
