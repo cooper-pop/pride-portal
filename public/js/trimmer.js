@@ -386,10 +386,8 @@ async function trimShowTrend(encodedName, btn) {
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Fillet % trend</div>";
     html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% â "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Nugget % trend</div>";
-    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(nPct,"#ca8a04",220,70) + "</div>";
     html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% â "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">MiscCut % trend</div>";
-    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(mcPct,"#9333ea",220,70) + "</div>";
     html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% â "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
     html += "</div>";
     // Detail table
@@ -432,7 +430,6 @@ window.trimDeleteEntry = trimDeleteEntry;
 window.trimDeleteReport = trimDeleteReport;
 window.trimRenderHistory = trimRenderHistory;
 window.trimRenderAnalytics = trimRenderAnalytics;
-window.trimSparkline = trimSparkline;
 window.trimBarChart = trimBarChart;
 window.trimShowTrend = trimShowTrend;
 
@@ -459,7 +456,6 @@ window.trimDeleteEntry = trimDeleteEntry;
 window.trimDeleteReport = trimDeleteReport;
 window.trimRenderHistory = trimRenderHistory;
 window.trimRenderAnalytics = trimRenderAnalytics;
-window.trimSparkline = trimSparkline;
 window.trimBarChart = trimBarChart;
 window.trimShowTrend = trimShowTrend;
 window.trimSetPeriod = trimSetPeriod;
