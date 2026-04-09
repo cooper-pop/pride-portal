@@ -335,8 +335,7 @@ function trimRenderAnalytics(){
               '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' — Performance Report</strong>'+
               '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
               failsHtml+
-              '<div style="font-size:.75rem;line-height:1.6;color:#374151">'+text.replace(/
-/g,'<br>')+'</div>'+
+              '<div style="font-size:.75rem;line-height:1.6;color:#374151">'+text.replace(/\n/g,'<br>')+'</div>'+
             '</div>'+
             '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div>'+
           '</div>';
