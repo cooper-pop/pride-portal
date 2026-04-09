@@ -18,8 +18,8 @@ function trimRenderUpload() {
     '<div class="upload-drop-zone">'+
     '<div style="font-size:2rem;margin-bottom:8px">&#x1F4C4;</div>'+
     '<div style="display:flex;gap:10px;margin-top:4px">'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">ð Upload File</button>'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">ð· Take Photo</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">&#128193; Upload File</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">&#128247; Take Photo</button>'+
     '</div>'+
     '<div style="font-size:0.75rem;color:var(--sub);margin-top:6px">PDF, JPG, PNG supported</div></div>'+
     '<input type="file" id="trim-file-input" accept="image/*,application/pdf" style="display:none" onchange="trimHandleFile(this)"/>'+
@@ -162,7 +162,7 @@ async function trimRenderHistory() {
       html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
       html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' â '+(rpt.shift||'')+' Shift</div>';
       html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers Â· '+totalLbs.toFixed(1)+' total lbs</div></div>';
-      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">ð Delete Report</button>';
+      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">&#128465; Delete Report</button>';
       html += '</div>';
       if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">âï¸ Click any value to edit â saves automatically.</div>';
       html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
@@ -373,7 +373,7 @@ async function trimShowTrend(encodedName, btn) {
     const inLbs = trends.map(function(t){ return parseFloat(t.incoming_lbs||0); });
     // Build charts
     let html = "<div class=\"wcard\" style=\"margin-top:12px\">";
-    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">ð " + name + " â Last 90 Days (" + trends.length + " shifts)</h3>";
+    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">&#128201; " + name + " â Last 90 Days (" + trends.length + " shifts)</h3>";
     // Summary stats
     const avgLph = lph.reduce(function(a,b){return a+b;},0)/lph.length;
     const avgFillet = fPct.reduce(function(a,b){return a+b;},0)/fPct.length;
