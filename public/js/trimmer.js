@@ -212,7 +212,50 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(r){var lph=parseFloat(r.avg_lph||0);var fil=parseFloat(r.avg_fillet_pct||0);var nug=parseFloat(r.avg_nugget_pct||0);var mis=parseFloat(r.avg_misccut_pct||999);var yld=parseFloat(r.avg_total_yield||0);var grades=[{l:'A+',lph:150,fil:65,nug:20,mis:5,yld:90,bg:'#059669',c:'#fff'},{l:'A',lph:125,fil:63,nug:19,mis:6,yld:85,bg:'#10b981',c:'#fff'},{l:'B',lph:115,fil:62,nug:18,mis:6.5,yld:80,bg:'#3b82f6',c:'#fff'},{l:'C',lph:110,fil:61,nug:17.5,mis:7,yld:75,bg:'#f59e0b',c:'#fff'},{l:'D',lph:100,fil:61,nug:17,mis:7.5,yld:70,bg:'#f97316',c:'#fff'}];for(var i=0;i<grades.length;i++){var g=grades[i];if(lph>=g.lph&&fil>=g.fil&&nug>=g.nug&&mis<=g.mis&&yld>=g.yld)return{l:g.l,bg:g.bg,c:g.c};}return{l:'F',bg:'#ef4444',c:'#fff'};}
+  function calcGrade(r){
+  var lph=parseFloat(r.avg_lph||0);
+  var fil=parseFloat(r.avg_fillet_pct||0);
+  var nug=parseFloat(r.avg_nugget_pct||0);
+  var mis=parseFloat(r.avg_misccut_pct||999);
+  var yld=parseFloat(r.avg_total_yield||0);
+
+  // Grade scale index: 0=A+, 1=A, 2=B, 3=C, 4=D, 5=F
+  var GRADES=['A+','A','B','C','D','F'];
+  var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
+
+  // Thresholds per grade [A+, A, B, C, D]
+  var T={
+    lph: [150,125,115,110,100],
+    fil: [65, 63, 62, 61, 61],
+    nug: [20, 19, 18, 17.5,17],
+    mis: [5,  6,  6.5,7,  7.5],
+    yld: [90, 85, 80, 75, 70]
+  };
+
+  // Find base grade from lph
+  var base=5; // F
+  for(var i=0;i<5;i++){ if(lph>=T.lph[i]){base=i;break;} }
+
+  // Count penalties: each metric that fails at the BASE grade level drops 1 letter
+  var fails=[];
+  if(base<5){
+    if(fil<T.fil[base]) fails.push('Fillet% '+fil.toFixed(1)+'% (needs '+T.fil[base]+'%+)');
+    if(nug<T.nug[base]) fails.push('Nugget% '+nug.toFixed(1)+'% (needs '+T.nug[base]+'%+)');
+    if(mis>T.mis[base]) fails.push('Miscut% '+mis.toFixed(1)+'% (needs <'+T.mis[base]+'%)');
+    if(yld<T.yld[base]) fails.push('Yield '+yld.toFixed(1)+'% (needs '+T.yld[base]+'%+)');
+  }
+
+  // Apply penalties: each failed metric drops grade by 1 letter
+  var finalIdx=Math.min(base+fails.length, 5);
+  return{
+    l:GRADES[finalIdx],
+    bg:COLORS[finalIdx],
+    c:'#fff',
+    base:GRADES[base],
+    fails:fails,
+    lph:lph,fil:fil,nug:nug,mis:mis,yld:yld
+  };
+}
   function buildTable(rankings,teamAvg,days){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
     var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
@@ -251,7 +294,7 @@ async function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-penalties="'+encodeURIComponent(JSON.stringify(g.penalties||[]))+'" data-basegrade="'+g.baseGrade+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc='"'+g.c+'"' data-base='"'+g.base+'"' data-fails='"'+encodeURIComponent(JSON.stringify(g.fails))+'"' data-penalties="'+encodeURIComponent(JSON.stringify(g.penalties||[]))+'" data-basegrade="'+g.baseGrade+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
       h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
