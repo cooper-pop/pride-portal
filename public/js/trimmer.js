@@ -207,7 +207,102 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-async function trimRenderAnalytics(){var el=document.getElementById('widget-content');if(!el)return;if(!window._trimPeriod)window._trimPeriod=30;el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';function calcGrade(y){if(y===null||y===undefined||isNaN(y))return{l:'N/A',bg:'#94a3b8',c:'#fff'};y=parseFloat(y);if(y>=95)return{l:'A+',bg:'#059669',c:'#fff'};if(y>=90)return{l:'A',bg:'#10b981',c:'#fff'};if(y>=85)return{l:'B',bg:'#3b82f6',c:'#fff'};if(y>=75)return{l:'C',bg:'#f59e0b',c:'#fff'};if(y>=60)return{l:'D',bg:'#f97316',c:'#fff'};return{l:'F',bg:'#ef4444',c:'#fff'};}function buildTable(rankings,teamAvg,days){var pLabel=days===365?'YTD':days+'';var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';pills.forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});h+='</div>';h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3><button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Details'].forEach(function(col,i){h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';});h+='</tr></thead><tbody>';rankings.forEach(function(r,i){var yld=parseFloat(r.avg_total_yield||0);var g=calcGrade(yld);var isUnder=r.underperformer;var nm=r.full_name||'';var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;var rowStyle='border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+(isUnder?';border-left:3px solid #ef4444':'');h+='<tr style="'+rowStyle+'">';h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';h+='<td style="padding:5px 8px;font-weight:600;color:#1a3a6b">'+nm+(isUnder?'<span style="margin-left:4px;font-size:.65rem;color:#ef4444">&#9888;</span>':'')+'</td>';h+='<td style="padding:5px 8px;text-align:center">'+(r.days_worked||'')+'</td>';h+='<td style="padding:5px 8px;font-weight:700;color:'+(parseFloat(r.avg_lph||0)>=teamAvg?'#059669':'#ef4444')+'">'+(r.avg_lph||'')+'</td>';h+='<td style="padding:5px 8px">'+(r.avg_8hr_lph||'')+'</td>';h+='<td style="padding:5px 8px">'+(r.avg_fillet_pct!=null?r.avg_fillet_pct+'%':'')+'</td>';h+='<td style="padding:5px 8px">'+(r.avg_nugget_pct!=null?r.avg_nugget_pct+'%':'')+'</td>';h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld.toFixed(1)+'%':'')+'</td>';h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+(r.avg_lph||0)+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-reason="'+(r.underperformer_reason||'')+'" style="border:none;background:#f1f5f9;cursor:pointer;font-size:.7rem;color:#1a3a6b;font-weight:600;padding:3px 8px;border-radius:4px">&#x2728; View</button></td>';h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';});h+='</tbody></table></div>';if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}return h;}apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){var rankings=data.rankings||data||[];var ta=parseFloat(data.shift_avg_lph||0);el.innerHTML=buildTable(rankings,ta,window._trimPeriod);var pb=document.getElementById('tpb');if(pb)pb.addEventListener('click',function(){window.print();});document.querySelectorAll('#tp button').forEach(function(btn){btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});});document.querySelectorAll('.ttb').forEach(function(btn){btn.addEventListener('click',function(){var sid=this.dataset.sid,nm=this.dataset.nm,yld=parseFloat(this.dataset.yld),avg=parseFloat(this.dataset.avg),gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc,reason=this.dataset.reason;var row=document.getElementById('bd-'+sid);var box=row?row.querySelector('.tbb'):null;if(!row||!box)return;if(row.style.display!=='none'){row.style.display='none';return;}row.style.display='';box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';var extra=reason?'\nNote from system: '+reason:'';var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" has '+yld.toFixed(1)+'% total yield at '+avg+' lbs/hr (grade '+gl+').'+extra+' Give 2-3 specific actionable improvement tips. Be concise. Number them.';fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,messages:[{role:'user',content:prompt}]})}).then(function(r){return r.json();}).then(function(d){var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate.';box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start"><div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.65rem;color:#64748b;margin-top:2px">Grade</div></div><div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' — AI Coaching</strong><div style="font-size:.72rem;color:#374151;margin-bottom:5px">Yield: <strong>'+yld.toFixed(1)+'%</strong> | Avg: <strong>'+avg+' lbs/hr</strong></div><div style="font-size:.75rem;line-height:1.55;color:#374151">'+text.replace(/\n/g,'<br>')+'</div></div><div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div></div>';}).catch(function(){box.innerHTML='<span style="color:#ef4444">Error.</span>';});});});}).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});}
+async function trimRenderAnalytics(){
+  var el=document.getElementById('widget-content');
+  if(!el)return;
+  if(!window._trimPeriod)window._trimPeriod=30;
+  el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
+  function calcGrade(y){
+    if(!y||isNaN(y))return{l:'N/A',bg:'#94a3b8',c:'#fff'};
+    if(y>=95)return{l:'A+',bg:'#059669',c:'#fff'};
+    if(y>=90)return{l:'A',bg:'#10b981',c:'#fff'};
+    if(y>=85)return{l:'B',bg:'#3b82f6',c:'#fff'};
+    if(y>=75)return{l:'C',bg:'#f59e0b',c:'#fff'};
+    if(y>=60)return{l:'D',bg:'#f97316',c:'#fff'};
+    return{l:'F',bg:'#ef4444',c:'#fff'};
+  }
+  function buildTable(rankings,teamAvg,days){
+    var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
+    var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
+    var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
+    pills.forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});
+    h+='</div>';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button>';
+    h+='</div>';
+    h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';
+    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){
+      h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
+    });
+    h+='</tr></thead><tbody>';
+    rankings.forEach(function(r,i){
+      var yld=parseFloat(r.avg_total_yield||0);
+      var avg=parseFloat(r.avg_lph||0);
+      var g=calcGrade(yld);
+      var under=r.underperformer;
+      // No trend field in API — use underperformer flag for indicator
+      var trendIcon=under?'&#8681;':'&#8680;';
+      var trendCol=under?'#ef4444':'#f59e0b';
+      var nm=r.full_name||'';
+      var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
+      var rowBg=i%2===0?'#fff':'#f8fafc';
+      var borderLeft=under?'border-left:3px solid #ef4444':'';
+      h+='<tr style="border-top:1px solid #e2e8f0;background:'+rowBg+';'+borderLeft+'">';
+      h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:600;color:#1a3a6b">'+nm+'</td>';
+      h+='<td style="padding:5px 8px;text-align:center">'+(r.days_worked||'')+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:700;color:'+(avg>=teamAvg?'#059669':'#ef4444')+'">'+avg+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_8hr_lph||'')+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_fillet_pct!=null?r.avg_fillet_pct+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_nugget_pct!=null?r.avg_nugget_pct+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}
+    return h;
+  }
+  apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){
+    var rankings=data.rankings||[];
+    var teamAvg=parseFloat(data.shift_avg_lph||0);
+    el.innerHTML=buildTable(rankings,teamAvg,window._trimPeriod);
+    var pb=document.getElementById('tpb');
+    if(pb)pb.addEventListener('click',function(){window.print();});
+    document.querySelectorAll('#tp button').forEach(function(btn){
+      btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});
+    });
+    document.querySelectorAll('.ttb').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var sid=this.dataset.sid,nm=this.dataset.nm,yld=parseFloat(this.dataset.yld);
+        var avg=parseFloat(this.dataset.avg),gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var row=document.getElementById('bd-'+sid);
+        var box=row?row.querySelector('.tbb'):null;
+        if(!row||!box)return;
+        if(row.style.display!=='none'){row.style.display='none';return;}
+        row.style.display='';
+        box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
+        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" averages '+yld+'% total yield at '+avg+' lbs/hr (grade '+gl+'). Give 2-3 specific actionable improvement tips. Be concise and practical. Number them.';
+        fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,messages:[{role:'user',content:prompt}]})})
+          .then(function(r){return r.json();})
+          .then(function(d){
+            var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate.';
+            box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
+              '<div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.65rem;color:#64748b;margin-top:2px">Grade</div></div>'+
+              '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' — AI Coaching</strong>'+
+              '<div style="font-size:.72rem;color:#374151;margin-bottom:5px">Yield: <strong>'+yld+'%</strong> | Avg: <strong>'+avg+' lbs/hr</strong></div>'+
+              '<div style="font-size:.75rem;line-height:1.55;color:#374151">'+text.replace(/\n/g,'<br>')+'</div></div>'+
+              '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div>'+
+              '</div>';
+          })
+          .catch(function(){box.innerHTML='<span style="color:#ef4444">Error.</span>';});
+      });
+    });
+  }).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});
+}
 async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
     const area = document.getElementById("trim-trend-area");
