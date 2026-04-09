@@ -498,8 +498,7 @@ function buildTrimmerGrades() {
           fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:350,messages:[{role:'user',content:prompt}]})})
           .then(function(r){return r.json();}).then(function(d){
             var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate.';
-            res.innerHTML='<strong style="color:#1a3a6b;display:block;margin-bottom:6px">✨ AI Suggestions for '+nm+':</strong>'+text.replace(/
-/g,'<br>');
+            res.innerHTML='<strong style="color:#1a3a6b;display:block;margin-bottom:6px">✨ AI Suggestions for '+nm+':</strong>'+text.replace(/\n/g,'<br>');
             self.textContent='↻ Refresh suggestions';
             self.disabled=false;
           }).catch(function(){
