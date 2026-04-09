@@ -111,6 +111,14 @@ module.exports = async function handler(req, res) {
       const upd=await sql`UPDATE trimmer_entries SET full_name=${newName}, trim_number=LEFT(${newName},8) WHERE emp_number=${empNum}`;
       return res.json({updated:upd.count||0,emp_number:empNum,new_name:newName});
     }
+    // Rename employee across all entries
+    if (req.method==='PATCH' && action==='rename_employee') {
+      const body=req.body;
+      const {emp_number,new_name}=body;
+      if(!emp_number||!new_name) return res.status(400).json({error:'Missing fields'});
+      const upd=await sql`UPDATE trimmer_entries SET full_name=${new_name} WHERE emp_number=${emp_number}`;
+      return res.json({updated:upd.rowCount||0,emp_number,new_name});
+    }
     if (req.method==='PATCH' && type==='trimmer') {
       if (!id) return res.status(400).json({error:'Missing id'});
       const { report_date } = req.body;
