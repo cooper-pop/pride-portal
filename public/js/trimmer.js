@@ -212,7 +212,7 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(r){
+  function trimCalcGrade(r){
   var lph=parseFloat(r.avg_lph||0);
   var fil=parseFloat(r.avg_fillet_pct||0);
   var nug=parseFloat(r.avg_nugget_pct||0);
@@ -274,7 +274,7 @@ async function trimRenderAnalytics(){
     rankings.forEach(function(r,i){
       var yld=parseFloat(r.avg_total_yield||0);
       var avg=parseFloat(r.avg_lph||0);
-      var g=calcGrade(r);
+      var g=trimCalcGrade(r);
       var under=r.underperformer;
       // No trend field in API â use underperformer flag for indicator
       var trendIcon=under?'&#8681;':'&#8680;';
@@ -540,7 +540,7 @@ function buildTrimmerGrades(period) {
       names.forEach(function(nm){
         var tr=trimmers[nm];
         var pct=tr.total>0?Math.round(tr.done/tr.total*100):0;
-        var g=calcGrade(pct);
+        var g=trimCalcGrade(pct);
         var pp=prevPcts[nm];
         var prevPct=pp&&pp.total>0?Math.round(pp.done/pp.total*100):null;
         var safeId=nm.replace(/[^a-z0-9]/gi,'_');
