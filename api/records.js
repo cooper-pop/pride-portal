@@ -1,4 +1,17 @@
 
+  // Rename employee across all entries
+  if (action === 'rename_employee') {
+    const { emp_number, new_name } = body;
+    if (!emp_number || !new_name) return res.status(400).json({ error: 'Missing emp_number or new_name' });
+    const result = await sql`
+      UPDATE trimmer_entries
+      SET full_name = ${new_name}
+      WHERE emp_number = ${emp_number}
+    `;
+    return res.json({ updated: result.count, emp_number, new_name });
+  }
+
+
 // Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
   return rows.map(r => {
