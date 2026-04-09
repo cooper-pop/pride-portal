@@ -1,17 +1,4 @@
 
-  // Rename employee across all entries
-  if (action === 'rename_employee') {
-    const { emp_number, new_name } = body;
-    if (!emp_number || !new_name) return res.status(400).json({ error: 'Missing emp_number or new_name' });
-    const result = await sql`
-      UPDATE trimmer_entries
-      SET full_name = ${new_name}
-      WHERE emp_number = ${emp_number}
-    `;
-    return res.json({ updated: result.count, emp_number, new_name });
-  }
-
-
 // Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
   return rows.map(r => {
@@ -102,28 +89,12 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({error:'Unknown type'});
     }
-    // Rename all entries for an employee
-    if (req.method==='PATCH' && action==='rename_employee') {
-      const body2=JSON.parse(req.body||'{}');
-      const empNum=body2.emp_number||req.body?.emp_number;
-      const newName=body2.new_name||req.body?.new_name;
-      if(!empNum||!newName) return res.status(400).json({error:'Missing emp_number or new_name'});
-      const upd=await sql`UPDATE trimmer_entries SET full_name=${newName}, trim_number=LEFT(${newName},8) WHERE emp_number=${empNum}`;
-      return res.json({updated:upd.count||0,emp_number:empNum,new_name:newName});
-    }
-    // Rename employee across all entries
-    if (req.method==='PATCH' && action==='rename_employee') {
-      const body=req.body;
-      const {emp_number,new_name}=body;
-      if(!emp_number||!new_name) return res.status(400).json({error:'Missing fields'});
-      const upd=await sql`UPDATE trimmer_entries SET full_name=${new_name} WHERE emp_number=${emp_number}`;
-      return res.json({updated:upd.rowCount||0,emp_number,new_name});
-    }
-    if (req.method==='PATCH' && action==='rename_employee') {
-      const {emp_number,new_name}=req.body;
-      if(!emp_number||!new_name) return res.status(400).json({error:'Missing fields'});
-      const upd=await sql`UPDATE trimmer_entries SET full_name=${new_name} WHERE emp_number=${emp_number}`;
-      return res.json({updated:upd.rowCount||0,emp_number,new_name});
+    // Rename employee across all history entries
+    if (req.method === 'PATCH' && action === 'rename_employee') {
+      const { emp_number, new_name } = req.body;
+      if (!emp_number || !new_name) return res.status(400).json({ error: 'Missing fields' });
+      const upd = await sql`UPDATE trimmer_entries SET full_name = ${new_name} WHERE emp_number = ${emp_number}`;
+      return res.json({ updated: upd.rowCount || 0, emp_number, new_name });
     }
     if (req.method==='PATCH' && type==='trimmer') {
       if (!id) return res.status(400).json({error:'Missing id'});
