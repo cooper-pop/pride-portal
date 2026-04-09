@@ -313,7 +313,7 @@ async function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg='"'+(avg)+'"' data-fil='"'+r.avg_fillet_pct+'"' data-nug='"'+r.avg_nugget_pct+'"' data-mis='"'+r.avg_misccut_pct+'"' data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-flt="'+fillet+'" data-nug="'+nugget+'" data-msc="'+misccut+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown & AI coaching">'+trendIcon+'</button></td>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+yld+'" data-avg="'+avg+'" data-fil="'+r.avg_fillet_pct+'" data-nug="'+r.avg_nugget_pct+'" data-mis="'+r.avg_misccut_pct+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown">'+trendIcon+'</button></td>';
       h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
