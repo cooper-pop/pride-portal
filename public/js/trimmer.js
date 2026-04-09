@@ -418,101 +418,170 @@ function getTrimmerTrend(curr, prev) {
   return               {arrow:'→', color:'#64748b'};
 }
 
-function buildTrimmerGrades() {
+function buildTrimmerGrades(period) {
+  period = period || 'ytd';
   var el = document.getElementById('widget-content');
-  if (!el) return;
-  el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div> Loading grades...</div>';
-  apiCall('GET','/api/records?type=trimmer').then(function(records){
-    if(!records||!records.length){ el.innerHTML='<div class="log-empty">No trimmer records found.</div>'; return; }
-    var PERIODS=[{key:'7d',label:'7 Days',days:7},{key:'14d',label:'14 Days',days:14},{key:'30d',label:'30 Days',days:30},{key:'ytd',label:'YTD',days:null}];
-    var now=new Date(); now.setHours(0,0,0,0);
-    function recDate(r){ var p=String(r.record_date||r.created_at||'').substring(0,10).split('-'); return p.length===3?new Date(p[0],p[1]-1,p[2]):new Date(0); }
-    function filterP(recs,days){ if(!days){var j=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return recDate(r)>=j;});} var cut=new Date(now); cut.setDate(cut.getDate()-days); return recs.filter(function(r){return recDate(r)>=cut;}); }
-    function compPct(recs){ if(!recs.length) return null; var done=recs.filter(function(r){return r.fillet_weight_lbs>0||r.status==='completed';}).length; return Math.round(done/recs.length*100); }
-    var trimmers={};
-    records.forEach(function(r){ var n=r.trimmer_name||r.recorded_by||'Unknown'; if(!trimmers[n]) trimmers[n]=[]; trimmers[n].push(r); });
-    var names=Object.keys(trimmers).sort();
-    var activePeriod=window._tgPeriod||'30d';
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading grades...</div>';
 
-    function render(period){
-      window._tgPeriod=period;
-      var pConf=PERIODS.find(function(p){return p.key===period;})||PERIODS[2];
-      var btnS='border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;margin-right:4px';
-      var cardS='background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)';
-      var html='<div style="padding:4px 0 12px">';
-      html+='<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap" id="tg-pills">';
-      PERIODS.forEach(function(p){ var a=p.key===period; html+='<button data-period="'+p.key+'" style="'+btnS+';background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.label+'</button>'; });
-      html+='</div>';
+  // Grade scale: A+(100%) A(90+) B(80+) C(65+) D(50+) F(<50)
+  function calcGrade(pct) {
+    if(pct === null || pct === undefined) return {letter:'—',color:'#94a3b8',bg:'#f1f5f9'};
+    if(pct >= 100) return {letter:'A+',color:'#fff',bg:'#059669'};
+    if(pct >= 90)  return {letter:'A', color:'#fff',bg:'#10b981'};
+    if(pct >= 80)  return {letter:'B', color:'#fff',bg:'#3b82f6'};
+    if(pct >= 65)  return {letter:'C', color:'#fff',bg:'#f59e0b'};
+    if(pct >= 50)  return {letter:'D', color:'#fff',bg:'#f97316'};
+    return {letter:'F',color:'#fff',bg:'#ef4444'};
+  }
 
-      names.forEach(function(name){
-        var allR=trimmers[name];
-        var curr=filterP(allR,pConf.days);
-        var prev=filterP(allR,pConf.days?pConf.days*2:null).filter(function(r){return !curr.includes(r);});
-        var cPct=compPct(curr), pPct=compPct(prev);
-        var grade=getTrimmerGrade(cPct), trend=getTrimmerTrend(cPct,pPct);
-        var safeName=name.replace(/[^a-z0-9]/gi,'_');
+  function filterPeriod(recs, key) {
+    var now = new Date(); now.setHours(0,0,0,0);
+    if(key==='ytd') { var jan1=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return new Date(r.created_at||r.record_date||r.date)>=jan1;}); }
+    var days = key==='7d'?7:key==='14d'?14:30;
+    var cut = new Date(now); cut.setDate(cut.getDate()-days);
+    return recs.filter(function(r){return new Date(r.created_at||r.record_date||r.date)>=cut;});
+  }
 
-        html+='<div style="'+cardS+'">';
-        html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">';
-        html+='<div style="width:54px;height:54px;border-radius:10px;background:'+grade.bg+';display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:800;color:'+grade.color+'">'+grade.letter+'</div>';
-        html+='<div style="flex:1"><div style="font-weight:700;font-size:.95rem;color:#1a3a6b">'+name+'</div>';
-        html+='<div style="font-size:.78rem;color:#64748b;margin-top:2px">'+(cPct!==null?cPct+'% completion rate':'No data')+'</div></div>';
-        html+='<div style="text-align:center"><div style="font-size:1.6rem;color:'+trend.color+'">'+trend.arrow+'</div>';
-        html+='<div style="font-size:.65rem;color:#94a3b8">'+(pPct!==null?'prev '+pPct+'%':'')+'</div></div></div>';
+  function prevPeriod(key) {
+    if(key==='ytd') return 'ytd';
+    var days = key==='7d'?7:key==='14d'?14:30;
+    return days+'dprev';
+  }
 
-        // Mini period breakdown
-        html+='<div style="display:flex;gap:6px;margin-bottom:12px">';
-        PERIODS.forEach(function(pp){
-          var pR=filterP(allR,pp.days), pPct2=compPct(pR), pg=getTrimmerGrade(pPct2);
-          html+='<div style="flex:1;text-align:center;background:#f8fafc;border-radius:8px;padding:5px 2px">';
-          html+='<div style="font-size:.62rem;color:#64748b">'+pp.label+'</div>';
-          html+='<div style="font-size:.88rem;font-weight:700;color:'+pg.bg+'">'+pg.letter+'</div>';
-          html+='<div style="font-size:.62rem;color:#94a3b8">'+(pPct2!==null?pPct2+'%':'—')+'</div></div>';
-        });
-        html+='</div>';
+  function filterPrevPeriod(recs, key) {
+    var now = new Date(); now.setHours(0,0,0,0);
+    var days = key==='7d'?7:key==='14d'?14:30;
+    var cutEnd = new Date(now); cutEnd.setDate(cutEnd.getDate()-days);
+    var cutStart = new Date(cutEnd); cutStart.setDate(cutStart.getDate()-days);
+    return recs.filter(function(r){var d=new Date(r.created_at||r.record_date||r.date); return d>=cutStart&&d<cutEnd;});
+  }
 
-        // AI suggestion button
-        var avgW=0; var fw=curr.map(function(r){return parseFloat(r.fillet_weight_lbs)||0;}).filter(function(x){return x>0;});
-        if(fw.length) avgW=Math.round(fw.reduce(function(a,b){return a+b;},0)/fw.length*10)/10;
-        html+='<button data-name="'+name+'" data-pct="'+(cPct||0)+'" data-grade="'+grade.letter+'" data-wt="'+avgW+'" data-period="'+pConf.label+'" class="tg-ai-btn" style="width:100%;background:#f0f4ff;border:1px solid #c7d7fd;border-radius:8px;padding:8px;font-size:.78rem;color:#3730a3;cursor:pointer;text-align:left;font-weight:500">✨ Generate AI improvement suggestions for '+name+'</button>';
-        html+='<div id="tg-ai-'+safeName+'" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border-radius:8px;font-size:.78rem;color:#374151;line-height:1.6"></div>';
-        html+='</div>';
+  function trendArrow(curr, prev) {
+    if(prev===null||curr===null) return '<span style="color:#94a3b8">—</span>';
+    var diff = curr - prev;
+    if(diff > 2) return '<span style="color:#059669;font-size:1.1rem">&#8593;</span><span style="font-size:.7rem;color:#059669"> +'+Math.round(diff)+'%</span>';
+    if(diff < -2) return '<span style="color:#ef4444;font-size:1.1rem">&#8595;</span><span style="font-size:.7rem;color:#ef4444"> '+Math.round(diff)+'%</span>';
+    return '<span style="color:#64748b;font-size:1.1rem">&#8594;</span><span style="font-size:.7rem;color:#64748b"> stable</span>';
+  }
+
+  apiCall('GET','/api/records?type=trimmer').then(function(recs) {
+    var filtered = filterPeriod(recs, period);
+    var prevFiltered = period!=='ytd' ? filterPrevPeriod(recs, period) : [];
+
+    // Group by trimmer name
+    var trimmers = {};
+    filtered.forEach(function(r){
+      var nm = r.trimmer_name || r.name || 'Unknown';
+      if(!trimmers[nm]) trimmers[nm]={name:nm,done:0,total:0,records:[]};
+      trimmers[nm].total++;
+      if(r.completed||r.status==='completed'||r.grade) trimmers[nm].done++;
+      trimmers[nm].records.push(r);
+    });
+
+    // Compute prev period pcts
+    var prevPcts = {};
+    prevFiltered.forEach(function(r){
+      var nm = r.trimmer_name||r.name||'Unknown';
+      if(!prevPcts[nm]) prevPcts[nm]={done:0,total:0};
+      prevPcts[nm].total++;
+      if(r.completed||r.status==='completed'||r.grade) prevPcts[nm].done++;
+    });
+
+    var PERIODS = [{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
+    var btnStyle = 'border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;';
+
+    var html = '<div style="padding:4px 0 12px">';
+    // Period pills
+    html += '<div style="background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
+    html += '<div id="tg-pills" style="display:flex;gap:6px;flex-wrap:wrap">';
+    PERIODS.forEach(function(p){
+      var active=p.key===period;
+      html += '<button data-period="'+p.key+'" style="'+btnStyle+'background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+p.label+'</button>';
+    });
+    html += '</div></div>';
+
+    var names = Object.keys(trimmers);
+    if(names.length===0){
+      html += '<div style="text-align:center;color:#94a3b8;padding:30px;background:#fff;border-radius:12px">No trimmer records in this period</div>';
+    } else {
+      html += '<div style="display:grid;gap:12px">';
+      names.forEach(function(nm){
+        var tr = trimmers[nm];
+        var pct = tr.total>0 ? Math.round(tr.done/tr.total*100) : 0;
+        var g = calcGrade(pct);
+        var prevP = prevPcts[nm];
+        var prevPct = prevP&&prevP.total>0 ? Math.round(prevP.done/prevP.total*100) : null;
+        var safeId = nm.replace(/[^a-z0-9]/gi,'_');
+        var aiId = 'ai-'+safeId;
+        var aiBtnId = 'aibtn-'+safeId;
+
+        html += '<div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
+        // Header row: name + grade badge
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+        html += '<div style="font-size:.95rem;font-weight:700;color:#1a3a6b">'+nm+'</div>';
+        html += '<div style="display:flex;align-items:center;gap:10px">';
+        // Trend arrow
+        html += '<div>'+trendArrow(pct,prevPct)+'</div>';
+        // Grade badge
+        html += '<div style="background:'+g.bg+';color:'+g.color+';font-size:1.4rem;font-weight:800;width:52px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.15)">'+g.letter+'</div>';
+        html += '</div></div>';
+        // Progress bar
+        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">';
+        html += '<div style="flex:1;background:#f1f5f9;border-radius:99px;height:8px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+g.bg+';border-radius:99px;transition:width .4s"></div></div>';
+        html += '<div style="font-size:.8rem;font-weight:700;color:#374151;white-space:nowrap">'+pct+'% <span style="font-weight:400;color:#94a3b8">('+tr.done+'/'+tr.total+')</span></div>';
+        html += '</div>';
+        // AI suggestions button
+        html += '<div id="'+aiId+'" style="margin-top:6px">';
+        html += '<button id="'+aiBtnId+'" data-nm="'+nm+'" data-pct="'+pct+'" data-done="'+tr.done+'" data-total="'+tr.total+'" data-grade="'+g.letter+'" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:.75rem;cursor:pointer;color:#475569;width:100%;text-align:left">&#10024; Get AI Improvement Suggestions</button>';
+        html += '</div>';
+        html += '</div>';
       });
-      html+='</div>';
-      el.innerHTML=html;
-
-      // Wire pills
-      document.querySelectorAll('#tg-pills button').forEach(function(b){ b.addEventListener('click',function(){ render(this.dataset.period); }); });
-
-      // Wire AI buttons
-      document.querySelectorAll('.tg-ai-btn').forEach(function(btn){
-        btn.addEventListener('click',function(){
-          var nm=this.dataset.name, pct=this.dataset.pct, gr=this.dataset.grade, wt=this.dataset.wt, per=this.dataset.period;
-          var rid='tg-ai-'+nm.replace(/[^a-z0-9]/gi,'_');
-          var res=document.getElementById(rid); if(!res) return;
-          this.disabled=true; this.textContent='Generating...';
-          var self=this;
-          res.style.display='block';
-          res.innerHTML='<div class="spinner" style="display:inline-block;margin-right:6px"></div>Analyzing performance...';
-          var prompt='You are a catfish processing plant performance coach. Trimmer name: '+nm+'. Current grade: '+gr+' ('+pct+'% completion) over the last '+per+'. Average fillet weight: '+wt+' lbs. Provide exactly 3 numbered, specific, actionable improvement suggestions. Each suggestion should be 2 sentences. Be direct, practical and encouraging. Keep total response under 180 words.';
-          fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:350,messages:[{role:'user',content:prompt}]})})
-          .then(function(r){return r.json();}).then(function(d){
-            var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate.';
-            res.innerHTML='<strong style="color:#1a3a6b;display:block;margin-bottom:6px">✨ AI Suggestions for '+nm+':</strong>'+text.replace(/\n/g,'<br>');
-            self.textContent='↻ Refresh suggestions';
-            self.disabled=false;
-          }).catch(function(){
-            res.innerHTML='Error generating suggestions.';
-            self.textContent='✨ Generate AI improvement suggestions for '+nm;
-            self.disabled=false;
-          });
-        });
-      });
+      html += '</div>';
     }
-    render(activePeriod);
-  }).catch(function(e){ el.innerHTML='<div class="log-empty">'+e.message+'</div>'; });
-}
+    html += '</div>';
 
+    el.innerHTML = html;
+
+    // Wire period pills
+    document.querySelectorAll('#tg-pills button').forEach(function(btn){
+      btn.addEventListener('click',function(){ buildTrimmerGrades(this.dataset.period); });
+    });
+
+    // Wire AI buttons
+    document.querySelectorAll('[id^="aibtn-"]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var nm=this.dataset.nm, pct=this.dataset.pct, done=this.dataset.done, total=this.dataset.total, grade=this.dataset.grade;
+        var safeId=nm.replace(/[^a-z0-9]/gi,'_');
+        var aiDiv=document.getElementById('ai-'+safeId);
+        if(!aiDiv)return;
+        aiDiv.innerHTML='<div style="font-size:.75rem;color:#64748b;padding:6px">&#10024; Generating AI suggestions...</div>';
+        fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','x-api-key': window.ANTHROPIC_KEY||''},
+          body:JSON.stringify({
+            model:'claude-sonnet-4-20250514',max_tokens:400,
+            system:'You are a fish processing plant supervisor. Give concise, practical improvement suggestions for a trimmer based on their performance data. Be specific, actionable, and encouraging. Use 2-3 bullet points max.',
+            messages:[{role:'user',content:'Trimmer: '+nm+'. Grade: '+grade+'. Completion rate: '+pct+'% ('+done+' of '+total+' tasks completed). Give specific improvement suggestions for this trimmer in a catfish processing plant.'}]
+          })
+        }).then(function(r){return r.json();}).then(function(d){
+          var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate suggestions.';
+          aiDiv.innerHTML='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-top:4px;font-size:.78rem;color:#166534;line-height:1.5">'+
+            '<strong style="display:block;margin-bottom:4px">&#10024; AI Suggestions for '+nm+':</strong>'+
+            text.replace(/
+/g,'<br>')+
+            '</div>'+
+            '<button style="margin-top:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px 10px;font-size:.72rem;cursor:pointer;color:#64748b" onclick="buildTrimmerGrades(''+period+'')">&#8635; Refresh</button>';
+        }).catch(function(){
+          aiDiv.innerHTML='<div style="font-size:.75rem;color:#ef4444;padding:6px">Could not reach AI. Check your connection.</div>';
+        });
+      });
+    });
+
+  }).catch(function(e){
+    el.innerHTML='<div style="padding:20px;color:#ef4444">Error loading grades: '+e.message+'</div>';
+  });
+}
 function buildTrimmerGrades() {
   var el = document.getElementById('widget-content');
   if(!el) return;
