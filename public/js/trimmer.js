@@ -216,7 +216,6 @@ async function trimRenderAnalytics() {
     trimRenderGrades(records, 'ytd');
   }).catch(function(e){ el.innerHTML = '<div class="log-empty">' + e.message + '</div>'; });
 }
-
 function trimRenderGrades(reports, period) {
   var el = document.getElementById('widget-content');
   if(!el) return;
@@ -338,6 +337,58 @@ function trimRenderGrades(reports, period) {
       }).catch(function(){ aiEl.innerHTML='<span style="color:#ef4444">Error generating suggestions. Please try again.</span>'; });
     });
   });
+
+
+  // ── Reports & Rankings (original analytics) ──
+  var sepDiv = document.createElement('div');
+  sepDiv.style.cssText = 'margin:20px 4px 0';
+  sepDiv.innerHTML = '<hr style="border-color:#e2e8f0;margin-bottom:16px"><h3 style="font-size:.95rem;color:#1a3a6b;font-weight:700;margin:0 0 12px">Reports & Rankings</h3>';
+  el.appendChild(sepDiv);
+  trimRenderOldAnalytics();
+}
+
+async function trimRenderOldAnalytics() {
+
+    const wc = document.getElementById("widget-content");
+    wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analyticsâ¦</div></div></div>";
+    let data;
+    try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+(_trimPeriod||30)); }
+    catch(e) { wc.innerHTML = "<p style=\"color:#ef4444;padding:16px\">Analytics failed: " + e.message + "</p>"; return; }
+    const rankings = data.rankings || [];
+    const shiftAvg = parseFloat(data.shift_avg_lph) || 0;
+    let html = "<div style=\"padding:8px\">";
+    html += "<div class=\"wcard\" style=\"margin-bottom:12px\">";
+    html += "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:10px\">";
+      html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'+[7,30,60,0].map(function(d){var lbl=d===0?'YTD':d+' Day';var act=(_trimPeriod||30)===d;return '<button onclick="trimSetPeriod('+d+')" style="padding:6px 16px;border-radius:20px;border:2px solid #1a3a6b;cursor:pointer;font-size:.82rem;font-weight:'+(act?'700':'400')+';background:'+(act?'#1a3a6b':'#fff')+';color:'+(act?'#fff':'#1a3a6b')+'">'+lbl+'</button>';}).join('')+'</div>';
+html += "<h3 style=\"margin:0;font-size:1rem\">ð Trimmer Rankings â "+(_trimPeriod===0?"Year to Date":"Last "+(_trimPeriod||30)+" Days")+"</h3>";
+    html += "<span style=\"font-size:0.78rem;color:var(--sub)\">Team avg: " + shiftAvg.toFixed(1) + " lbs/hr</span></div>";
+    html += "<div style=\"overflow-x:auto\"><table class=\"trim-table\" style=\"width:100%;font-size:0.78rem\"><thead><tr>";
+    ["Rank","Name","Days","Avg Lbs/Hr","8Hr Lbs/Hr","Fillet%","Nugget%","MiscCut%","Tot Yield%",""].forEach(function(h){ html += "<th>" + h + "</th>"; });
+    html += "</tr></thead><tbody>";
+    rankings.forEach(function(r,i){
+      const under = r.underperformer;
+      const bg = under ? "#fef2f2" : (i<3 ? "#f0fdf4" : "");
+      html += "<tr style=\"background:" + bg + "\">";
+      html += "<td style=\"font-weight:700;text-align:center\">" + (i+1) + "</td>";
+      html += "<td style=\"font-weight:600\">" + (r.full_name || r.emp_number || "") + "</td>";
+      html += "<td style=\"text-align:center\">" + (r.days_worked||0) + "</td>";
+      html += "<td style=\"text-align:center;font-weight:700;color:" + (under?"#ef4444":"#16a34a") + "\">" + parseFloat(r.avg_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_8hr_lph||0).toFixed(1) + "</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_fillet_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_nugget_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_misccut_pct||0).toFixed(1) + "%</td>";
+      html += "<td style=\"text-align:center\">" + parseFloat(r.avg_total_yield||0).toFixed(1) + "%</td>";
+      const enc = encodeURIComponent(r.full_name||r.emp_number||"");
+      html += "<td><button onclick=\"trimShowTrend('" + enc + "',this)\" style=\"background:none;border:1px solid var(--blue);color:var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.72rem\">Trend â¾</button></td>";
+      html += "</tr>";
+      if(under) html += "<tr style=\"background:#fef2f2\"><td colspan=\"10\" style=\"font-size:0.72rem;color:#ef4444;padding:2px 8px\">â  " + r.underperformer_reason + "</td></tr>";
+    });
+    html += "</tbody></table></div></div>";
+    html += "<div id=\"trim-trend-area\"></div></div>";
+    wc.innerHTML = html;
+    // Print button
+    setTimeout(function(){ var wc2=document.getElementById('widget-content'); if(wc2&&!wc2.querySelector('.a-print-btn')){ var pb=document.createElement('div'); pb.className='a-print-btn'; pb.style.cssText='display:flex;justify-content:flex-end;padding:0 8px 4px'; var btn=document.createElement('button'); btn.setAttribute('data-print-analytics','1'); btn.style.cssText='font-size:0.75rem;padding:4px 10px;border:1px solid #1a3a6b;border-radius:4px;background:#fff;color:#1a3a6b;cursor:pointer'; btn.textContent='\uD83D\uDDA8\uFE0F Print / Save PDF'; btn.addEventListener('click',function(){printReport('Trimmer Analytics',document.getElementById('widget-content').innerHTML);}); pb.appendChild(btn); wc2.prepend(pb); } },50);
+  
 }
 function trimSparkline(values, color, w, h) {
     if(!values||!values.length) return "";
