@@ -349,7 +349,7 @@ function trimRenderGrades(reports, period) {
 
 async function trimRenderOldAnalytics() {
 
-    const wc = document.getElementById("widget-content");
+    const wc = document.getElementById('trim-reports-container');
     wc.innerHTML = "<div style=\"padding:8px\"><div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading analyticsâ¦</div></div></div>";
     let data;
     try { data = await apiCall("GET", "/api/analytics?type=rankings&days="+(_trimPeriod||30)); }
