@@ -212,14 +212,64 @@ async function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-  function calcGrade(y){
-    if(!y||isNaN(y))return{l:'N/A',bg:'#94a3b8',c:'#fff'};
-    if(y>=95)return{l:'A+',bg:'#059669',c:'#fff'};
-    if(y>=90)return{l:'A',bg:'#10b981',c:'#fff'};
-    if(y>=85)return{l:'B',bg:'#3b82f6',c:'#fff'};
-    if(y>=75)return{l:'C',bg:'#f59e0b',c:'#fff'};
-    if(y>=60)return{l:'D',bg:'#f97316',c:'#fff'};
-    return{l:'F',bg:'#ef4444',c:'#fff'};
+  function calcGrade(lph,filletPct,nuggetPct,miscutPct,totalYield){
+    // Score each metric 0(F) through 5(A+)
+    function scoreLph(v){
+      if(v>=150)return 5;
+      if(v>=125)return 4;
+      if(v>=115)return 3;
+      if(v>=110)return 2;
+      if(v>=100)return 1;
+      return 0;
+    }
+    function scoreFillet(v){
+      if(v>=65)return 5;
+      if(v>=63)return 4;
+      if(v>=62)return 3;
+      if(v>=61)return 2;
+      if(v>=60)return 1;
+      return 0;
+    }
+    function scoreNugget(v){
+      if(v>=20)return 5;
+      if(v>=19)return 4;
+      if(v>=18)return 3;
+      if(v>=17.5)return 2;
+      if(v>=17)return 1;
+      return 0;
+    }
+    function scoreMiscut(v){
+      // Lower miscut is better
+      if(v<5)return 5;
+      if(v<6)return 4;
+      if(v<6.5)return 3;
+      if(v<7)return 2;
+      if(v<7.5)return 1;
+      return 0;
+    }
+    function scoreYield(v){
+      if(v>=90)return 5;
+      if(v>=88)return 4;
+      if(v>=85)return 3;
+      if(v>=82)return 2;
+      if(v>=78)return 1;
+      return 0;
+    }
+    var s1=scoreLph(parseFloat(lph)||0);
+    var s2=scoreFillet(parseFloat(filletPct)||0);
+    var s3=scoreNugget(parseFloat(nuggetPct)||0);
+    var s4=scoreMiscut(parseFloat(miscutPct)||0);
+    var s5=scoreYield(parseFloat(totalYield)||0);
+    var avg=(s1+s2+s3+s4+s5)/5;
+    // Map avg score to grade
+    // Also enforce: if LPH score is 0 (under 100), cap at F regardless
+    if(s1===0)return{l:'F',bg:'#ef4444',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    if(avg>=4.5)return{l:'A+',bg:'#059669',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    if(avg>=3.5)return{l:'A', bg:'#10b981',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    if(avg>=2.5)return{l:'B', bg:'#3b82f6',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    if(avg>=1.5)return{l:'C', bg:'#f59e0b',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    if(avg>=0.5)return{l:'D', bg:'#f97316',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
+    return{l:'F',bg:'#ef4444',c:'#fff',avg:avg,scores:[s1,s2,s3,s4,s5]};
   }
   function buildTable(rankings,teamAvg,days){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
@@ -239,7 +289,7 @@ async function trimRenderAnalytics(){
     rankings.forEach(function(r,i){
       var yld=parseFloat(r.avg_total_yield||0);
       var avg=parseFloat(r.avg_lph||0);
-      var g=calcGrade(yld);
+      var g=calcGrade(r.avg_lph,r.avg_fillet_pct,r.avg_nugget_pct,r.avg_misccut_pct,r.avg_total_yield);
       var under=r.underperformer;
       // No trend field in API — use underperformer flag for indicator
       var trendIcon=under?'&#8681;':'&#8680;';
@@ -285,7 +335,7 @@ async function trimRenderAnalytics(){
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
         box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
-        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" averages '+yld+'% total yield at '+avg+' lbs/hr (grade '+gl+'). Give 2-3 specific actionable improvement tips. Be concise and practical. Number them.';
+        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" metrics: '+avg+' lbs/hr, '+parseFloat(document.querySelector('[data-sid="'+sid+'"]')?.closest('tr')?.cells[5]?.innerText||0)+'% fillet yield, total yield '+yld+'%. Grade: '+gl+'. Give 2-3 specific actionable improvement tips targeting their weakest metrics. Be concise. Number them.';
         apiCall('POST','/api/ai',{query:prompt})
           .then(function(d){
             var text=(d.response||d.text||d.content||'Unable to generate.');
