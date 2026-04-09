@@ -217,22 +217,22 @@ async function trimRenderAnalytics() {
   }).catch(function(e){ el.innerHTML = '<div class="log-empty">' + e.message + '</div>'; });
 }
 
-function trimRenderGrades(records, period) {
+function trimRenderGrades(reports, period) {
   var el = document.getElementById('widget-content');
   if(!el) return;
 
   var PERIODS = [{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
 
-  function recDate(r){ var p=String(r.report_date||r.record_date||'').split('T')[0].split('-'); return p.length===3?new Date(p[0],p[1]-1,p[2]):new Date(0); }
+  function repDate(r){ var p=String(r.report_date||'').split('T')[0].split('-'); return p.length===3?new Date(p[0],p[1]-1,p[2]):new Date(0); }
   function filterByPeriod(recs,key){
     var now=new Date(); now.setHours(0,0,0,0);
-    if(key==='ytd'){ var jan1=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return recDate(r)>=jan1;}); }
+    if(key==='ytd'){ var jan1=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return repDate(r)>=jan1;}); }
     var days=key==='7d'?7:key==='14d'?14:30;
     var cut=new Date(now); cut.setDate(cut.getDate()-days);
-    return recs.filter(function(r){return recDate(r)>=cut;});
+    return recs.filter(function(r){return repDate(r)>=cut;});
   }
+  function prevPeriodKey(k){ return k==='7d'?'14d':k==='14d'?'30d':'ytd'; }
 
-  // Grade scale
   function calcGrade(pct){
     if(pct===null||isNaN(pct)) return {letter:'N/A',color:'#94a3b8',bg:'#f1f5f9'};
     if(pct>=100) return {letter:'A+',color:'#fff',bg:'#059669'};
@@ -243,68 +243,69 @@ function trimRenderGrades(records, period) {
     return {letter:'F',color:'#fff',bg:'#ef4444'};
   }
 
-  // Get trimmer stats for a period
-  function trimmerStats(recs, pkey) {
-    var sub = filterByPeriod(recs, pkey);
-    // Group by trimmer name
-    var byTrimmer = {};
-    sub.forEach(function(r){
-      var nm = r.trimmer_name || r.name || 'Unknown';
-      if(!byTrimmer[nm]) byTrimmer[nm] = {total:0, completed:0, lbs:[]};
-      byTrimmer[nm].total++;
-      if(r.status==='done'||r.completed||r.status==='complete') byTrimmer[nm].completed++;
-      var lb = parseFloat(r.trim_weight_lbs||r.lbs||0);
-      if(lb>0) byTrimmer[nm].lbs.push(lb);
+  // Extract per-trimmer stats from nested reports
+  function buildTrimmerStats(recs) {
+    var byName = {};
+    recs.forEach(function(report){
+      var entries = report.entries||[];
+      entries.forEach(function(e){
+        var nm = e.full_name||e.name||('Emp #'+(e.emp_number||'?'));
+        if(!byName[nm]) byName[nm] = {sessions:0, totalYield:0, yieldCount:0, lbsPerHr:[], flagged:0};
+        byName[nm].sessions++;
+        var yld = parseFloat(e.total_yield_pct||0);
+        if(yld>0){ byName[nm].totalYield+=yld; byName[nm].yieldCount++; }
+        var lph = parseFloat(e.lbs_per_hour||e.eighthour_lbs_per_hour||0);
+        if(lph>0) byName[nm].lbsPerHr.push(lph);
+        if(e.flagged) byName[nm].flagged++;
+      });
     });
-    return byTrimmer;
+    return byName;
   }
 
-  // Get prev period for trend
-  function prevPeriodKey(key){ return key==='7d'?'14d':key==='14d'?'30d':'ytd'; }
-
-  var filtered = filterByPeriod(records, period);
-  var stats = trimmerStats(records, period);
-  var prevStats = trimmerStats(records, prevPeriodKey(period));
-  var names = Object.keys(stats);
+  var filteredReports = filterByPeriod(reports, period);
+  var prevReports = filterByPeriod(reports, prevPeriodKey(period));
+  var stats = buildTrimmerStats(filteredReports);
+  var prevStats = buildTrimmerStats(prevReports);
+  var names = Object.keys(stats).sort();
 
   // Pill bar
   var btnStyle = 'border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;margin-right:6px;margin-bottom:8px';
-  var pillBar = '<div id="tgrade-pills" style="margin-bottom:14px">';
+  var html = '<div style="padding:4px 0 12px"><div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
+  html += '<div id="tgrade-pills" style="margin-bottom:10px">';
   PERIODS.forEach(function(p){
     var active=p.key===period;
-    pillBar += '<button data-period="'+p.key+'" style="'+btnStyle+';background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+p.label+'</button>';
+    html += '<button data-period="'+p.key+'" style="'+btnStyle+';background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+p.label+'</button>';
   });
-  pillBar += '</div>';
+  html += '</div><p style="margin:0;font-size:.78rem;color:#64748b">Grades based on avg yield %. Click <b>&#x2728; AI Suggestions</b> for personalized coaching.</p></div>';
 
-  var cardStyle = 'background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)';
-
-  var html = '<div style="padding:4px 0 12px">';
-  html += '<div style="'+cardStyle+'">'+pillBar;
-  html += '<p style="margin:0;font-size:.8rem;color:#64748b">Trimmer performance grades based on completion rate. Click a trimmer card for AI improvement suggestions.</p></div>';
-
-  if(names.length === 0){
-    html += '<div style="'+cardStyle+';text-align:center;color:#94a3b8;padding:30px">No trimmer records found for this period</div>';
+  if(names.length===0){
+    html += '<div style="background:#fff;border-radius:12px;padding:30px;text-align:center;color:#94a3b8;box-shadow:0 1px 4px rgba(0,0,0,.08)">No trimmer records in this period</div>';
   } else {
     names.forEach(function(nm){
-      var s = stats[nm];
-      var pct = s.total>0 ? Math.round(s.completed/s.total*100) : null;
-      var grade = calcGrade(pct);
-      var prev = prevStats[nm];
-      var prevPct = prev&&prev.total>0 ? Math.round(prev.completed/prev.total*100) : null;
-      var trend = prevPct===null ? '' : pct>=prevPct+5?'<span style="color:#059669;font-weight:700">&#8679; Improving</span>':pct<=prevPct-5?'<span style="color:#ef4444;font-weight:700">&#8681; Declining</span>':'<span style="color:#f59e0b;font-weight:700">&#8680; Stable</span>';
-      var avgLbs = s.lbs.length ? Math.round(s.lbs.reduce(function(a,b){return a+b;},0)/s.lbs.length*10)/10 : null;
+      var s=stats[nm];
+      var avgYield = s.yieldCount>0 ? Math.round(s.totalYield/s.yieldCount*10)/10 : null;
+      var grade = calcGrade(avgYield);
+      var prev=prevStats[nm];
+      var prevAvg = prev&&prev.yieldCount>0 ? Math.round(prev.totalYield/prev.yieldCount*10)/10 : null;
+      var trend = prevAvg===null ? '' :
+        avgYield>=prevAvg+3 ? '<span style="color:#059669;font-weight:700">&#8679; Improving</span>' :
+        avgYield<=prevAvg-3 ? '<span style="color:#ef4444;font-weight:700">&#8681; Declining</span>' :
+        '<span style="color:#f59e0b;font-weight:700">&#8680; Stable</span>';
+      var avgLph = s.lbsPerHr.length ? Math.round(s.lbsPerHr.reduce(function(a,b){return a+b;},0)/s.lbsPerHr.length) : null;
       var safeId = nm.replace(/[^a-zA-Z0-9]/g,'_');
-      html += '<div style="'+cardStyle+'" id="tcard-'+safeId+'">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+      html += '<div style="background:#fff;border-radius:12px;padding:16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between">';
       html += '<div style="display:flex;align-items:center;gap:12px">';
-      html += '<div style="width:54px;height:54px;border-radius:50%;background:'+grade.bg+';display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:800;color:'+grade.color+'">'+grade.letter+'</div>';
-      html += '<div><div style="font-weight:700;font-size:1rem;color:#1a3a6b">'+nm+'</div>';
-      html += '<div style="font-size:.8rem;color:#64748b">'+s.completed+'/'+s.total+' completed &middot; '+(pct!==null?pct+'%':'—')+'</div>';
-      if(avgLbs!==null) html += '<div style="font-size:.75rem;color:#94a3b8">Avg '+avgLbs+' lbs/session</div>';
+      html += '<div style="width:56px;height:56px;border-radius:50%;background:'+grade.bg+';display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:800;color:'+grade.color+';flex-shrink:0">'+grade.letter+'</div>';
+      html += '<div><div style="font-weight:700;font-size:.95rem;color:#1a3a6b">'+nm+'</div>';
+      html += '<div style="font-size:.78rem;color:#475569">'+s.sessions+' session'+(s.sessions!==1?'s':'')+' &middot; Avg yield: '+(avgYield!==null?avgYield+'%':'—')+'</div>';
+      if(avgLph!==null) html += '<div style="font-size:.75rem;color:#64748b">'+avgLph+' lbs/hr avg</div>';
+      if(s.flagged>0) html += '<div style="font-size:.72rem;color:#ef4444">&#9888; '+s.flagged+' flagged session'+(s.flagged!==1?'s':'')+'</div>';
       html += '</div></div>';
-      html += '<div style="text-align:right">'+trend+'<div style="margin-top:4px"><button data-nm="'+nm+'" class="tgrade-ai-btn" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#x2728; AI Suggestions</button></div></div>';
-      html += '</div>';
-      html += '<div id="tai-'+safeId+'" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border-radius:8px;font-size:.8rem;color:#374151"></div>';
+      html += '<div style="text-align:right;min-width:110px">'+trend;
+      html += '<div style="margin-top:6px"><button data-nm="'+nm+'" data-yield="'+(avgYield||0)+'" data-sessions="'+s.sessions+'" data-lph="'+(avgLph||0)+'" class="tgrade-ai-btn" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:.72rem;cursor:pointer;white-space:nowrap">&#x2728; AI Suggestions</button></div>';
+      html += '</div></div>';
+      html += '<div id="tai-'+safeId+'" style="display:none;margin-top:10px;padding:10px;background:#f8fafc;border-left:3px solid #1a3a6b;border-radius:0 8px 8px 0;font-size:.8rem;color:#374151"></div>';
       html += '</div>';
     });
   }
@@ -312,32 +313,29 @@ function trimRenderGrades(records, period) {
   el.innerHTML = html;
 
   // Wire pills
-  document.querySelectorAll('#tgrade-pills button').forEach(function(btn){
+  el.querySelectorAll('#tgrade-pills button').forEach(function(btn){
     btn.addEventListener('click',function(){ trimRenderGrades(window._trimAnalyticsRecords||[], this.dataset.period); });
   });
 
   // Wire AI buttons
-  document.querySelectorAll('.tgrade-ai-btn').forEach(function(btn){
+  el.querySelectorAll('.tgrade-ai-btn').forEach(function(btn){
     btn.addEventListener('click',function(){
-      var nm = this.dataset.nm;
-      var safeId = nm.replace(/[^a-zA-Z0-9]/g,'_');
-      var aiEl = document.getElementById('tai-'+safeId);
+      var nm=this.dataset.nm, yld=this.dataset.yield, sess=this.dataset.sessions, lph=this.dataset.lph;
+      var safeId=nm.replace(/[^a-zA-Z0-9]/g,'_');
+      var aiEl=document.getElementById('tai-'+safeId);
       if(!aiEl) return;
-      if(aiEl.style.display!=='none'){ aiEl.style.display='none'; return; }
+      if(aiEl.style.display!=='none'){aiEl.style.display='none';return;}
       aiEl.style.display='block';
-      aiEl.innerHTML = '<span style="color:#94a3b8">&#x2728; Generating AI suggestions...</span>';
-      var s = (window._trimAnalyticsRecords||[]).filter(function(r){ return (r.trimmer_name||r.name||'Unknown')===nm; });
-      var total=s.length, completed=s.filter(function(r){return r.status==='done'||r.completed||r.status==='complete';}).length;
-      var pct=total>0?Math.round(completed/total*100):0;
-      var prompt = 'You are a catfish processing plant performance coach. Trimmer "'+nm+'" has a '+pct+'% task completion rate ('+completed+' of '+total+' tasks completed) in the selected period. Give 2-3 specific, actionable improvement suggestions for this trimmer. Be concise, direct, and practical. Focus on things like speed, consistency, attention to detail, and meeting targets. Format as a numbered list.';
+      aiEl.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching suggestions...</span>';
+      var prompt='You are a catfish processing plant performance coach. Trimmer name: "'+nm+'". Stats for the selected period: average yield '+yld+'%, '+sess+' sessions, avg '+lph+' lbs/hr. Grade: '+calcGrade(parseFloat(yld)).letter+'. Give 2-3 specific, practical improvement suggestions to help this trimmer improve their yield % and lbs/hr output. Be direct, encouraging, and actionable. Format as a short numbered list (no more than 2 sentences each). Do not repeat the stats back.';
       fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:[{role:'user',content:prompt}]})
       }).then(function(r){return r.json();}).then(function(d){
         var text=(d.content&&d.content[0]&&d.content[0].text)||'Unable to generate suggestions.';
-        aiEl.innerHTML='<strong style="color:#1a3a6b;display:block;margin-bottom:6px">&#x2728; AI Suggestions for '+nm+':</strong>'+text.replace(/\n/g,'<br>');
-      }).catch(function(){ aiEl.innerHTML='<span style="color:#ef4444">Error generating suggestions. Try again.</span>'; });
+        aiEl.innerHTML='<strong style="color:#1a3a6b;display:block;margin-bottom:6px">&#x2728; Coaching Notes for '+nm+':</strong>'+text.replace(/\n/g,'<br>');
+      }).catch(function(){ aiEl.innerHTML='<span style="color:#ef4444">Error generating suggestions. Please try again.</span>'; });
     });
   });
 }
