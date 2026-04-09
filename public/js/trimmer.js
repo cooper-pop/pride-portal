@@ -207,10 +207,7 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-async 
-
-
-function trimCalcGrade(r){
+async function trimCalcGrade(r){
   var lph=parseFloat(r.avg_lph||0);
   var fil=parseFloat(r.avg_fillet_pct||0);
   var nug=parseFloat(r.avg_nugget_pct||0);
@@ -229,7 +226,7 @@ function trimCalcGrade(r){
     if(yld<T.yld[base])fails.push('Yield '+yld.toFixed(1)+'% (needs '+T.yld[base]+'%+)');
   }
   var finalIdx=Math.min(base+fails.length,5);
-  return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails,lph:lph,fil:fil,nug:nug,mis:mis,yld:yld};
+  return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
 }
 
 function trimRenderAnalytics(){
@@ -237,41 +234,31 @@ function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
-
-  function tGrade(r){
-    var lph=parseFloat(r.avg_lph||0),fil=parseFloat(r.avg_fillet_pct||0),nug=parseFloat(r.avg_nugget_pct||0),mis=parseFloat(r.avg_misccut_pct||999),yld=parseFloat(r.avg_total_yield||0);
-    var G=['A+','A','B','C','D','F'],C=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-    var T={lph:[150,125,115,110,100],fil:[65,63,62,61,61],nug:[20,19,18,17.5,17],mis:[5,6,6.5,7,7.5],yld:[90,85,80,75,70]};
-    var base=5;for(var i=0;i<5;i++){if(lph>=T.lph[i]){base=i;break;}}
-    var fails=[];
-    if(base<5){
-      if(fil<T.fil[base])fails.push('Fillet '+fil.toFixed(1)+'% (needs '+T.fil[base]+'%+)');
-      if(nug<T.nug[base])fails.push('Nugget '+nug.toFixed(1)+'% (needs '+T.nug[base]+'%+)');
-      if(mis>T.mis[base])fails.push('Miscut '+mis.toFixed(1)+'% (needs <'+T.mis[base]+'%)');
-      if(yld<T.yld[base])fails.push('Yield '+yld.toFixed(1)+'% (needs '+T.yld[base]+'%+)');
-    }
-    var final=Math.min(base+fails.length,5);
-    return{l:G[final],bg:C[final],c:'#fff',base:G[base],fails:fails,lph:lph,fil:fil,nug:nug,mis:mis,yld:yld};
-  }
-
   function buildTable(rankings,teamAvg,days){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
     var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
     var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
-    pills.forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});
-    h+='</div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3><button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';
+    pills.forEach(function(p){
+      var a=p.d===days;
+      h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';
+    });
+    h+='</div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';
     h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';
-    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';});
+    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){
+      h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
+    });
     h+='</tr></thead><tbody>';
     rankings.forEach(function(r,i){
-      var g=tGrade(r);
+      var g=trimCalcGrade(r);
+      var avg=parseFloat(r.avg_lph||0);
+      var yld=parseFloat(r.avg_total_yield||0);
       var nm=r.full_name||'';
       var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
-      var avg=parseFloat(r.avg_lph||0);
-      var trendCol=r.underperformer?'#ef4444':'#f59e0b';
-      var trendIcon=r.underperformer?'&#8681;':'&#8680;';
-      // Encode fails as safe base64
-      var failsEnc=btoa(unescape(encodeURIComponent(JSON.stringify(g.fails))));
+      var under=r.underperformer;
+      var trendIcon=under?'&#8681;':'&#8680;';
+      var trendCol=under?'#ef4444':'#f59e0b';
       h+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'">';
       h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600;color:#1a3a6b">'+nm+'</td>';
@@ -281,16 +268,35 @@ function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_fillet_pct!=null?r.avg_fillet_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px">'+(r.avg_nugget_pct!=null?r.avg_nugget_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
-      h+='<td style="padding:5px 8px;font-weight:600">'+(g.yld?g.yld+'%':'')+'</td>';
+      h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-yld="'+g.yld+'" data-avg="'+avg+'" data-fil="'+g.fil+'" data-nug="'+g.nug+'" data-mis="'+g.mis+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-base="'+g.base+'" data-fails="'+failsEnc+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown">'+trendIcon+'</button></td>';
-      h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+      h+='<td style="padding:5px 8px">';
+      h+='<button class="ttb"';
+      h+=' data-sid="'+sid+'"';
+      h+=' data-nm="'+nm+'"';
+      h+=' data-gl="'+g.l+'"';
+      h+=' data-gbg="'+g.bg+'"';
+      h+=' data-gc="'+g.c+'"';
+      h+=' data-base="'+g.base+'"';
+      h+=' data-fails="'+encodeURIComponent(JSON.stringify(g.fails))+'"';
+      h+=' data-avg="'+avg+'"';
+      h+=' data-yld="'+yld+'"';
+      h+=' data-fil="'+(r.avg_fillet_pct||0)+'"';
+      h+=' data-nug="'+(r.avg_nugget_pct||0)+'"';
+      h+=' data-mis="'+(r.avg_misccut_pct||0)+'"';
+      h+=' style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px"';
+      h+=' title="View breakdown">'+trendIcon+'</button></td>';
+      h+='</tr>';
+      h+='<tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
-    if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}
+    if(!document.getElementById('tps')){
+      var s=document.createElement('style');s.id='tps';
+      s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';
+      document.head.appendChild(s);
+    }
     return h;
   }
-
   apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){
     var rankings=data.rankings||[];
     var teamAvg=parseFloat(data.shift_avg_lph||0);
@@ -303,33 +309,400 @@ function trimRenderAnalytics(){
     document.querySelectorAll('.ttb').forEach(function(btn){
       btn.addEventListener('click',function(){
         var sid=this.dataset.sid,nm=this.dataset.nm;
-        var yld=parseFloat(this.dataset.yld),avg=parseFloat(this.dataset.avg);
+        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var base=this.dataset.base;
+        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
         var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
-        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc,base=this.dataset.base;
-        var fails=[];try{fails=JSON.parse(decodeURIComponent(escape(atob(this.dataset.fails||'W10='))));}catch(e){}
+        var fails=[];
+        try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
         var row=document.getElementById('bd-'+sid);
         var box=row?row.querySelector('.tbb'):null;
         if(!row||!box)return;
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
-        box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating AI coaching...</span>';
-        var failTxt=fails.length?'These metrics caused grade deductions from the base grade of '+base+': '+fails.join('; ')+'.':'All metrics met the '+gl+' threshold — no deductions.';
-        var prompt='You are a catfish processing plant coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr), then received '+fails.length+' penalty deduction(s) resulting in a final grade of '+gl+'. '+failTxt+' Full stats: Fillet: '+fil+'%, Nugget: '+nug+'%, Miscut: '+mis+'%, Yield: '+yld+'%. In 1-2 sentences explain exactly what dropped the grade. Then give 2-3 specific numbered coaching tips to fix those issues.';
+        box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating coaching report...</span>';
+        var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics met the '+base+' threshold.';
+        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr) but received a final grade of '+gl+' after penalties. '+failTxt+' Full stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Total Yield: '+yld+'%. In 1-2 sentences explain exactly why the grade dropped (name the failing metrics and targets). Then give 2-3 specific practical coaching tips. Be direct.';
         apiCall('POST','/api/ai',{query:prompt}).then(function(d){
           var text=d.response||d.text||d.content||'Unable to generate.';
-          var penaltyHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">&#9660; Deductions: '+fails.join(' &nbsp;|&nbsp; ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:4px">&#10003; All metrics on target</div>';
+          var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">&#9660; Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:4px">&#10003; All metrics on target</div>';
           box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
-            '<div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
-            '<div style="font-size:.65rem;color:#64748b;margin-top:2px">from '+base+'</div></div>'+
-            '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.8rem">'+nm+' — Grade Report</strong>'+
-            '<div style="font-size:.72rem;color:#374151;margin-bottom:4px">'+avg+' lbs/hr &nbsp;|&nbsp; Fillet: '+fil+'% &nbsp;|&nbsp; Nugget: '+nug+'% &nbsp;|&nbsp; Miscut: '+mis+'% &nbsp;|&nbsp; Yield: '+yld+'%</div>'+
-            penaltyHtml+
-            '<div style="font-size:.75rem;line-height:1.55;color:#374151">'+text.replace(/
-/g,'<br>')+'</div></div>'+
+            '<div style="text-align:center;flex:0 0 auto">'+
+              '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
+              '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
+            '</div>'+
+            '<div style="flex:1;min-width:180px">'+
+              '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' — Performance Report</strong>'+
+              '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
+              failsHtml+
+              '<div style="font-size:.75rem;line-height:1.6;color:#374151">'+text.replace(/
+/g,'<br>')+'</div>'+
+            '</div>'+
             '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div>'+
-            '</div>';
+          '</div>';
         }).catch(function(){box.innerHTML='<span style="color:#ef4444">Error generating report.</span>';});
       });
     });
   }).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});
+}
+async function trimShowTrend(encodedName, btn) {
+    const name = decodeURIComponent(encodedName);
+    const area = document.getElementById("trim-trend-area");
+    if(!area) return;
+    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trendâ¦</div></div>";
+    btn.disabled = true;
+    let data;
+    try { data = await apiCall("GET", "/api/analytics?type=trimmer_trends&days=90&trimmer_name="+encodedName); }
+    catch(e) { area.innerHTML = "<p style=\"color:#ef4444\">Trend failed: " + e.message + "</p>"; btn.disabled=false; return; }
+    const trends = data.trends || [];
+    if(!trends.length){ area.innerHTML = "<p style=\"text-align:center;padding:16px;color:var(--sub)\">No data for "+name+"</p>"; btn.disabled=false; return; }
+    // Extract series
+    const dates = trends.map(function(t){ return (t.report_date||"").slice(5,10); });
+    const lph = trends.map(function(t){ return parseFloat(t.realtime_lbs_per_hour||0); });
+    const fPct = trends.map(function(t){ return parseFloat(t.fillet_yield_pct||0); });
+    const nPct = trends.map(function(t){ return parseFloat(t.nugget_yield_pct||0); });
+    const mcPct = trends.map(function(t){ return parseFloat(t.misccut_yield_pct||0); });
+    const totPct = trends.map(function(t){ return parseFloat(t.total_yield_pct||0); });
+    const inLbs = trends.map(function(t){ return parseFloat(t.incoming_lbs||0); });
+    // Build charts
+    let html = "<div class=\"wcard\" style=\"margin-top:12px\">";
+    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">ð " + name + " â Last 90 Days (" + trends.length + " shifts)</h3>";
+    // Summary stats
+    const avgLph = lph.reduce(function(a,b){return a+b;},0)/lph.length;
+    const avgFillet = fPct.reduce(function(a,b){return a+b;},0)/fPct.length;
+    const avgNugget = nPct.reduce(function(a,b){return a+b;},0)/nPct.length;
+    const avgMisc = mcPct.reduce(function(a,b){return a+b;},0)/mcPct.length;
+    const avgTot = totPct.reduce(function(a,b){return a+b;},0)/totPct.length;
+    html += "<div style=\"display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px\">";
+    html += "<div style=\"background:#f0fdf4;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#16a34a\">"+avgLph.toFixed(1)+"</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Lbs/Hr</div></div>";
+    html += "<div style=\"background:#eff6ff;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#2563eb\">"+avgFillet.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Fillet</div></div>";
+    html += "<div style=\"background:#fefce8;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#ca8a04\">"+avgNugget.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Nugget</div></div>";
+    html += "<div style=\"background:#fdf4ff;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#9333ea\">"+avgMisc.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg MiscCut</div></div>";
+    html += "<div style=\"background:#f0fdf4;border-radius:8px;padding:8px 14px;text-align:center\"><div style=\"font-size:1.1rem;font-weight:700;color:#16a34a\">"+avgTot.toFixed(1)+"%</div><div style=\"font-size:0.7rem;color:#64748b\">Avg Tot Yield</div></div>";
+    html += "</div>";
+    // Charts row
+    html += "<div style=\"display:flex;flex-wrap:wrap;gap:16px;overflow-x:auto\">";
+    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Lbs/Hr per shift</div>";
+    html += trimBarChart(dates, lph, "#16a34a", "")+"</div>";
+    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Fillet % trend</div>";
+    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(fPct,"#2563eb",220,70) + "</div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% â "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Nugget % trend</div>";
+    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(nPct,"#ca8a04",220,70) + "</div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% â "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">MiscCut % trend</div>";
+    html += "<div style=\"border:1px solid #e2e8f0;border-radius:6px;padding:4px\">" + trimSparkline(mcPct,"#9333ea",220,70) + "</div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% â "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
+    html += "</div>";
+    // Detail table
+    html += "<details style=\"margin-top:12px\"><summary style=\"font-size:0.8rem;color:var(--blue);cursor:pointer\">Show raw data (" + trends.length + " shifts)</summary>";
+    html += "<div style=\"overflow-x:auto;margin-top:6px\"><table class=\"trim-table\" style=\"width:100%;font-size:0.74rem\"><thead><tr>";
+    ["Date","Shift","In Lbs","Fillet%","Nugget%","MiscCut%","Tot%","Lbs/Hr"].forEach(function(h){ html += "<th>"+h+"</th>"; });
+    html += "</tr></thead><tbody>";
+    trends.forEach(function(t){
+      html += "<tr>";
+      html += "<td>"+(t.report_date||"").slice(0,10)+"</td>";
+      html += "<td>"+(t.shift||"")+"</td>";
+      html += "<td>"+parseFloat(t.incoming_lbs||0).toFixed(0)+"</td>";
+      html += "<td>"+parseFloat(t.fillet_yield_pct||0).toFixed(1)+"%</td>";
+      html += "<td>"+parseFloat(t.nugget_yield_pct||0).toFixed(1)+"%</td>";
+      html += "<td>"+parseFloat(t.misccut_yield_pct||0).toFixed(1)+"%</td>";
+      html += "<td>"+parseFloat(t.total_yield_pct||0).toFixed(1)+"%</td>";
+      html += "<td style=\"font-weight:700\">"+parseFloat(t.realtime_lbs_per_hour||0).toFixed(1)+"</td>";
+      html += "</tr>";
+    });
+    html += "</tbody></table></div></details>";
+    html += "</div>";
+    area.innerHTML = html;
+    area.scrollIntoView({behavior:"smooth",block:"start"});
+    btn.disabled = false;
+  }
+// Expose functions globally for inline onclick handlers
+window.buildTrimmerWidget = buildTrimmerWidget;
+window.trimShowTab = trimShowTab;
+window.trimRenderUpload = trimRenderUpload;
+window.trimHandleFile = trimHandleFile;
+window.trimEmptyRow = trimEmptyRow;
+window.trimRenderForm = trimRenderForm;
+window.trimUpdate = trimUpdate;
+window.trimAddRow = trimAddRow;
+window.trimDeleteRow = trimDeleteRow;
+window.trimReset = trimReset;
+window.trimSave = trimSave;
+window.trimSaveEntry = trimSaveEntry;
+window.trimDeleteEntry = trimDeleteEntry;
+window.trimDeleteReport = trimDeleteReport;
+window.trimRenderHistory = trimRenderHistory;
+window.trimRenderAnalytics = trimRenderAnalytics;
+window.trimSparkline = trimSparkline;
+window.trimBarChart = trimBarChart;
+window.trimShowTrend = trimShowTrend;
+
+var _trimPeriod = 30;
+function trimSetPeriod(days) {
+  _trimPeriod = days;
+  trimRenderAnalytics();
+}
+
+// Expose to global scope for inline onclick handlers
+window.buildTrimmerWidget = buildTrimmerWidget;
+window.trimShowTab = trimShowTab;
+window.trimRenderUpload = trimRenderUpload;
+window.trimHandleFile = trimHandleFile;
+window.trimEmptyRow = trimEmptyRow;
+window.trimRenderForm = trimRenderForm;
+window.trimUpdate = trimUpdate;
+window.trimAddRow = trimAddRow;
+window.trimDeleteRow = trimDeleteRow;
+window.trimReset = trimReset;
+window.trimSave = trimSave;
+window.trimSaveEntry = trimSaveEntry;
+window.trimDeleteEntry = trimDeleteEntry;
+window.trimDeleteReport = trimDeleteReport;
+window.trimRenderHistory = trimRenderHistory;
+window.trimRenderAnalytics = trimRenderAnalytics;
+window.trimSparkline = trimSparkline;
+window.trimBarChart = trimBarChart;
+window.trimShowTrend = trimShowTrend;
+window.trimSetPeriod = trimSetPeriod;
+
+
+// ââ TRIMMER GRADING SYSTEM ââ
+function getTrimmerGrade(pct) {
+  if (pct === null || pct === undefined || isNaN(pct)) return {letter:'N/A', color:'#94a3b8', bg:'#f8fafc'};
+  if (pct >= 100) return {letter:'A+', color:'#fff', bg:'#059669'};
+  if (pct >= 90)  return {letter:'A',  color:'#fff', bg:'#10b981'};
+  if (pct >= 80)  return {letter:'B',  color:'#fff', bg:'#3b82f6'};
+  if (pct >= 65)  return {letter:'C',  color:'#fff', bg:'#f59e0b'};
+  if (pct >= 50)  return {letter:'D',  color:'#fff', bg:'#f97316'};
+  return           {letter:'F',  color:'#fff', bg:'#dc2626'};
+}
+
+function getTrimmerTrend(curr, prev) {
+  if (curr===null||prev===null) return {arrow:'â', color:'#94a3b8'};
+  if (curr > prev+2)  return {arrow:'â', color:'#059669'};
+  if (curr < prev-2)  return {arrow:'â', color:'#dc2626'};
+  return               {arrow:'â', color:'#64748b'};
+}
+
+function buildTrimmerGrades(period) {
+  period = period || 'ytd';
+  var el = document.getElementById('widget-content');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading grades...</div>';
+  
+  function filterPeriod(recs,key) {
+    var now=new Date(); now.setHours(0,0,0,0);
+    if(key==='ytd'){var jan1=new Date(now.getFullYear(),0,1); return recs.filter(function(r){return new Date(r.created_at||r.date||Date.now())>=jan1;});}
+    var days=key==='7d'?7:key==='14d'?14:30;
+    var cut=new Date(now); cut.setDate(cut.getDate()-days);
+    return recs.filter(function(r){return new Date(r.created_at||r.date||Date.now())>=cut;});
+  }
+  function filterPrevPeriod(recs,key) {
+    if(key==='ytd') return [];
+    var now=new Date(); now.setHours(0,0,0,0);
+    var days=key==='7d'?7:key==='14d'?14:30;
+    var cutEnd=new Date(now); cutEnd.setDate(cutEnd.getDate()-days);
+    var cutStart=new Date(cutEnd); cutStart.setDate(cutStart.getDate()-days);
+    return recs.filter(function(r){var d=new Date(r.created_at||r.date||Date.now()); return d>=cutStart&&d<cutEnd;});
+  }
+  function trendArrow(curr,prev) {
+    if(prev===null||curr===null) return '<span style="color:#94a3b8">&mdash;</span>';
+    var diff=curr-prev;
+    if(diff>2) return '<span style="color:#059669">&uarr;</span> <span style="font-size:.7rem;color:#059669">+'+Math.round(diff)+'%</span>';
+    if(diff<-2) return '<span style="color:#ef4444">&darr;</span> <span style="font-size:.7rem;color:#ef4444">'+Math.round(diff)+'%</span>';
+    return '<span style="color:#64748b">&rarr;</span> <span style="font-size:.7rem;color:#64748b">stable</span>';
+  }
+  apiCall('GET','/api/records?type=trimmer').then(function(recs) {
+    var filtered=filterPeriod(recs,period);
+    var prevF=filterPrevPeriod(recs,period);
+    var trimmers={};
+    filtered.forEach(function(r){
+      var nm=r.trimmer_name||r.name||'Unknown';
+      if(!trimmers[nm]) trimmers[nm]={name:nm,done:0,total:0};
+      trimmers[nm].total++;
+      if(r.completed||r.status==='completed') trimmers[nm].done++;
+    });
+    var prevPcts={};
+    prevF.forEach(function(r){
+      var nm=r.trimmer_name||r.name||'Unknown';
+      if(!prevPcts[nm]) prevPcts[nm]={done:0,total:0};
+      prevPcts[nm].total++;
+      if(r.completed||r.status==='completed') prevPcts[nm].done++;
+    });
+    var PERIODS=[{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
+    var bs='border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;';
+    var html='<div style="padding:4px 0 12px">';
+    html+='<div style="background:#fff;border-radius:12px;padding:12px 16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
+    html+='<div id="tg-pills" style="display:flex;gap:6px;flex-wrap:wrap">';
+    PERIODS.forEach(function(p){
+      var active=p.key===period;
+      html+='<button data-period="'+p.key+'" style="'+bs+'background:'+(active?'#1a3a6b':'#f1f5f9')+';color:'+(active?'#fff':'#475569')+'">'+ p.label+'</button>';
+    });
+    html+='</div></div>';
+    var names=Object.keys(trimmers);
+    if(names.length===0){
+      html+='<div style="text-align:center;color:#94a3b8;padding:30px;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">No trimmer records found for this period</div>';
+    } else {
+      html+='<div style="display:grid;gap:12px">';
+      names.forEach(function(nm){
+        var tr=trimmers[nm];
+        var pct=tr.total>0?Math.round(tr.done/tr.total*100):0;
+        var g=calcGrade(pct);
+        var pp=prevPcts[nm];
+        var prevPct=pp&&pp.total>0?Math.round(pp.done/pp.total*100):null;
+        var safeId=nm.replace(/[^a-z0-9]/gi,'_');
+        var aiId='ai-'+safeId;
+        var aiBtnId='aibtn-'+safeId;
+        html+='<div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.08)">';
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+        html+='<div style="font-size:.95rem;font-weight:700;color:#1a3a6b">'+nm+'</div>';
+        html+='<div style="display:flex;align-items:center;gap:12px">';
+        html+='<div style="font-size:.85rem">'+trendArrow(pct,prevPct)+'</div>';
+        html+='<div style="background:'+g.bg+';color:'+g.color+';font-size:1.4rem;font-weight:800;width:52px;height:52px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.15)">'+g.letter+'</div>';
+        html+='</div></div>';
+        html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
+        html+='<div style="flex:1;background:#f1f5f9;border-radius:99px;height:8px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+g.bg+';border-radius:99px"></div></div>';
+        html+='<div style="font-size:.8rem;font-weight:700;color:#374151;white-space:nowrap">'+pct+'% <span style="font-weight:400;color:#94a3b8">('+tr.done+'/'+tr.total+')</span></div>';
+        html+='</div>';
+        html+='<div id="'+aiId+'"><button id="'+aiBtnId+'" data-nm="'+nm+'" data-pct="'+pct+'" data-done="'+tr.done+'" data-total="'+tr.total+'" data-grade="'+g.letter+'" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:.75rem;cursor:pointer;color:#475569;width:100%;text-align:left">&starf; Get AI Improvement Suggestions</button></div>';
+        html+='</div>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+    document.querySelectorAll('#tg-pills button').forEach(function(btn){
+      btn.addEventListener('click',function(){ buildTrimmerGrades(this.dataset.period); });
+    });
+    document.querySelectorAll('[id^="aibtn-"]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var nm=this.dataset.nm,pct=this.dataset.pct,done=this.dataset.done,total=this.dataset.total,grade=this.dataset.grade;
+        var safeId=nm.replace(/[^a-z0-9]/gi,'_');
+        var aiDiv=document.getElementById('ai-'+safeId);
+        if(!aiDiv) return;
+        aiDiv.innerHTML='<div style="font-size:.75rem;color:#64748b;padding:6px">&starf; Generating AI suggestions...</div>';
+        apiCall('POST','/api/ai',{
+          prompt:'Trimmer name: '+nm+'. Grade: '+grade+'. Completion rate: '+pct+'% ('+done+' of '+total+' tasks done). Give 2-3 specific, practical, encouraging improvement suggestions for this catfish trimmer. Be concise and actionable.',
+          context:'trimmer_grading'
+        }).then(function(d){
+          var text=(d&&d.reply)||'Unable to generate suggestions.';
+          var lines=text.split('\n').filter(function(l){return l.trim();});
+          var formatted=lines.map(function(l){return '<div style="margin-bottom:4px">'+l+'</div>';}).join('');
+          aiDiv.innerHTML='<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-top:4px;font-size:.78rem;color:#166534;line-height:1.5"><strong style="display:block;margin-bottom:6px">&starf; AI Suggestions for '+nm+':</strong>'+formatted+'</div>';
+        }).catch(function(e){
+          aiDiv.innerHTML='<div style="font-size:.75rem;color:#ef4444;padding:6px">Could not generate suggestions: '+e.message+'</div>';
+        });
+      });
+    });
+  }).catch(function(e){
+    el.innerHTML='<div style="padding:20px;color:#ef4444">Error loading grades: '+e.message+'</div>';
+  });
+}
+function buildTrimmerGrades() {
+  var el = document.getElementById('widget-content');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading grades...</div>';
+  apiCall('GET','/api/records?type=trimmer').then(function(recs){
+    window._tgRecs = recs;
+    renderTrimmerGrades(recs,'30d');
+  }).catch(function(e){ el.innerHTML='<div class="log-empty">'+e.message+'</div>'; });
+}
+
+function renderTrimmerGrades(records, period) {
+  var el = document.getElementById('widget-content');
+  if(!el) return;
+  window._tgRecs = window._tgRecs||records;
+  var PERIODS=[{key:'7d',label:'7 Days'},{key:'14d',label:'14 Days'},{key:'30d',label:'30 Days'},{key:'ytd',label:'YTD'}];
+  function recDate(r){ var p=String(r.report_date||r.record_date||'').split('-'); return new Date(p[0],p[1]-1,p[2]); }
+  function filterPeriod(recs,key){
+    var now=new Date(); now.setHours(0,0,0,0);
+    var cut = key==='ytd' ? new Date(now.getFullYear(),0,1) : (function(){ var d=new Date(now); d.setDate(d.getDate()-(key==='7d'?7:key==='14d'?14:30)); return d; })();
+    return recs.filter(function(r){ return recDate(r)>=cut; });
+  }
+  function calcCompletion(recs, name) {
+    var mine=recs.filter(function(r){ return (r.trimmer_name||r.recorded_by||r.name||'')===name; });
+    if(!mine.length) return null;
+    var done=mine.filter(function(r){ return r.status==='complete'||r.completed||r.grade; }).length;
+    return Math.round(done/mine.length*100);
+  }
+  function letterGrade(pct) {
+    if(pct===null) return {g:'N/A',c:'#94a3b8',bg:'#f8fafc'};
+    if(pct>=100) return {g:'A+',c:'#fff',bg:'#059669'};
+    if(pct>=90)  return {g:'A', c:'#fff',bg:'#10b981'};
+    if(pct>=80)  return {g:'B', c:'#fff',bg:'#3b82f6'};
+    if(pct>=65)  return {g:'C', c:'#fff',bg:'#f59e0b'};
+    if(pct>=50)  return {g:'D', c:'#fff',bg:'#f97316'};
+    return         {g:'F', c:'#fff',bg:'#dc2626'};
+  }
+  var allRecs=window._tgRecs||[];
+  var nameSet={};
+  allRecs.forEach(function(r){ var n=r.trimmer_name||r.recorded_by||r.name; if(n) nameSet[n]=true; });
+  var names=Object.keys(nameSet).sort();
+  var filtered=filterPeriod(allRecs,period);
+  var prevKey=period==='7d'?'14d':period==='14d'?'30d':period==='30d'?'ytd':'ytd';
+  var prevFiltered=filterPeriod(allRecs,prevKey);
+  var cs='background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);';
+  var btnSt='border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;';
+  var html='<div style="padding:4px 0 12px">';
+  html+='<div id="tg-pills" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+  PERIODS.forEach(function(p){
+    var act=p.key===period;
+    html+='<button data-period="'+p.key+'" style="'+btnSt+'background:'+(act?'#1a3a6b':'#f1f5f9')+';color:'+(act?'#fff':'#475569')+'">'+p.label+'</button>';
+  });
+  html+='</div>';
+  if(!names.length){
+    html+='<div style="'+cs+'text-align:center;color:#94a3b8;padding:24px">No trimmer records found. Add records in the Trimmer Log first.</div>';
+  } else {
+    names.forEach(function(name){
+      var pct=calcCompletion(filtered,name);
+      var prevPct=calcCompletion(prevFiltered,name);
+      var gr=letterGrade(pct);
+      var trend='';
+      if(pct!==null&&prevPct!==null){
+        if(pct>prevPct+2) trend=' <span style="color:#059669" title="Improving vs previous period">&#8593; Improving</span>';
+        else if(pct<prevPct-2) trend=' <span style="color:#dc2626" title="Regressing vs previous period">&#8595; Regressing</span>';
+        else trend=' <span style="color:#64748b" title="Stable">&#8594; Stable</span>';
+      }
+      var safeId='ai-'+name.replace(/[^a-zA-Z0-9]/g,'_');
+      html+='<div style="'+cs+'">';
+      html+='<div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">';
+      html+='<div style="width:54px;height:54px;border-radius:10px;background:'+gr.bg+';display:flex;align-items:center;justify-content:center;color:'+gr.c+';font-size:1.35rem;font-weight:800;flex-shrink:0">'+gr.g+'</div>';
+      html+='<div><div style="font-weight:700;color:#1a3a6b;font-size:.95rem">'+name+'</div>';
+      html+='<div style="font-size:.8rem;color:#64748b;margin-top:1px">'+(pct!==null?pct+'% completion rate':'No data for this period')+trend+'</div></div></div>';
+      html+='<div id="'+safeId+'" style="font-size:.78rem;color:#475569;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:8px"><em style="color:#94a3b8">&#129302; Loading AI suggestions...</em></div>';
+      html+='</div>';
+    });
+  }
+  html+='</div>';
+  el.innerHTML=html;
+  document.querySelectorAll('#tg-pills button').forEach(function(btn){
+    btn.addEventListener('click',function(){ renderTrimmerGrades(window._tgRecs,this.getAttribute('data-period')); });
+  });
+  if(names.length){
+    names.forEach(function(name){
+      var pct=calcCompletion(filtered,name);
+      if(pct===null) return;
+      var gr=letterGrade(pct);
+      var safeId='ai-'+name.replace(/[^a-zA-Z0-9]/g,'_');
+      var aiEl=document.getElementById(safeId);
+      if(!aiEl) return;
+      var periodLabel=period==='7d'?'7 days':period==='14d'?'14 days':period==='30d'?'30 days':'year to date';
+      fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:1000,
+          messages:[{role:'user',content:'You are a catfish processing plant supervisor reviewing trimmer performance. Trimmer "'+name+'" earned a grade of '+gr.g+' ('+pct+'% task completion) over the past '+periodLabel+'. Give exactly 2 specific, actionable improvement suggestions. Each suggestion should be 1 sentence. Use a bullet point (\u2022) before each. Be direct and practical. No intro text, just the 2 bullets.'}]
+        })
+      }).then(function(r){return r.json();})
+      .then(function(d){
+        var text=(d.content&&d.content[0]&&d.content[0].text)||'';
+        var aiEl2=document.getElementById(safeId);
+        if(aiEl2&&text) aiEl2.innerHTML='<strong style="color:#1a3a6b">AI Suggestions:</strong><br>'+text.replace(/\n/g,'<br>');
+        else if(aiEl2) aiEl2.innerHTML='';
+      }).catch(function(){ var aiEl2=document.getElementById(safeId); if(aiEl2) aiEl2.innerHTML=''; });
+    });
+  }
 }
