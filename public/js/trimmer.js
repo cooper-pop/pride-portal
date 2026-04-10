@@ -207,32 +207,22 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-function trimCalcGrade(r){
-  var lph=parseFloat(r.avg_lph||0);
-  var fil=parseFloat(r.avg_fillet_pct||0);
-  var nug=parseFloat(r.avg_nugget_pct||0);
-  var mis=parseFloat(r.avg_misccut_pct||999);
-  var yld=parseFloat(r.avg_total_yield||0);
 
-  // Base grade determined by lbs/hr
+
+function trimCalcGrade(r){
+  var lph=parseFloat(r.avg_lph||0),fil=parseFloat(r.avg_fillet_pct||0);
+  var nug=parseFloat(r.avg_nugget_pct||0),mis=parseFloat(r.avg_misccut_pct||999);
+  var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-  var base=5; // F
-  if(lph>=150)base=0;
-  else if(lph>=125)base=1;
-  else if(lph>=115)base=2;
-  else if(lph>=110)base=3;
-  else if(lph>=100)base=4;
-
-  // Penalties: each metric in F territory (absolute thresholds) = -1
+  var base=5;
+  if(lph>=150)base=0;else if(lph>=125)base=1;else if(lph>=115)base=2;else if(lph>=110)base=3;else if(lph>=100)base=4;
   var fails=[];
-  if(lph<100)   fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below 100 min)');
-  if(fil<61)    fails.push('Fillet '+fil.toFixed(1)+'% (below 61% min)');
-  if(nug<17)    fails.push('Nugget '+nug.toFixed(1)+'% (below 17% min)');
-  if(mis>7.5)   fails.push('Miscut '+mis.toFixed(1)+'% (above 7.5% max)');
-  if(yld<70)    fails.push('Yield '+yld.toFixed(1)+'% (below 70% min)');
-
-  // Apply penalties: each failing metric drops grade by 1 letter
+  if(lph<100)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below 100 min)');
+  if(fil<61)fails.push('Fillet '+fil.toFixed(1)+'% (below 61% min)');
+  if(nug<17)fails.push('Nugget '+nug.toFixed(1)+'% (below 17% min)');
+  if(mis>7.5)fails.push('Miscut '+mis.toFixed(1)+'% (above 7.5% max)');
+  if(yld<70)fails.push('Yield '+yld.toFixed(1)+'% (below 70% min)');
   var finalIdx=Math.min(base+fails.length,5);
   return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
 }
@@ -246,26 +236,18 @@ function trimRenderAnalytics(){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
     var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
     var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
-    pills.forEach(function(p){
-      var a=p.d===days;
-      h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';
-    });
+    pills.forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});
     h+='</div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
-    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';
+    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">Rankings - Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Print</button></div>';
     h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';
-    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){
-      h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
-    });
+    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';});
     h+='</tr></thead><tbody>';
     rankings.forEach(function(r,i){
       var g=trimCalcGrade(r);
-      var avg=parseFloat(r.avg_lph||0);
-      var yld=parseFloat(r.avg_total_yield||0);
-      var nm=r.full_name||'';
-      var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
-      var under=r.underperformer;
-      var trendIcon=under?'&#8681;':'&#8680;';
+      var avg=parseFloat(r.avg_lph||0),yld=parseFloat(r.avg_total_yield||0);
+      var nm=r.full_name||'',sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
+      var under=r.underperformer,trendIcon=under?'v':'>';
       var trendCol=under?'#ef4444':'#f59e0b';
       h+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'">';
       h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
@@ -278,31 +260,11 @@ function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px">';
-      h+='<button class="ttb"';
-      h+=' data-sid="'+sid+'"';
-      h+=' data-nm="'+nm+'"';
-      h+=' data-gl="'+g.l+'"';
-      h+=' data-gbg="'+g.bg+'"';
-      h+=' data-gc="'+g.c+'"';
-      h+=' data-base="'+g.base+'"';
-      h+=' data-fails="'+encodeURIComponent(JSON.stringify(g.fails))+'"';
-      h+=' data-avg="'+avg+'"';
-      h+=' data-yld="'+yld+'"';
-      h+=' data-fil="'+(r.avg_fillet_pct||0)+'"';
-      h+=' data-nug="'+(r.avg_nugget_pct||0)+'"';
-      h+=' data-mis="'+(r.avg_misccut_pct||0)+'"';
-      h+=' style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px"';
-      h+=' title="View breakdown">'+trendIcon+'</button></td>';
-      h+='</tr>';
-      h+='<tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-base="'+g.base+'" data-fails="'+encodeURIComponent(JSON.stringify(g.fails))+'" data-avg="'+avg+'" data-yld="'+yld+'" data-fil="'+(r.avg_fillet_pct||0)+'" data-nug="'+(r.avg_nugget_pct||0)+'" data-mis="'+(r.avg_misccut_pct||0)+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown">'+trendIcon+'</button></td>';
+      h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
-    if(!document.getElementById('tps')){
-      var s=document.createElement('style');s.id='tps';
-      s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';
-      document.head.appendChild(s);
-    }
+    if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}
     return h;
   }
   apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){
@@ -311,12 +273,11 @@ function trimRenderAnalytics(){
     el.innerHTML=buildTable(rankings,teamAvg,window._trimPeriod);
     var pb=document.getElementById('tpb');
     if(pb)pb.addEventListener('click',function(){window.print();});
-    document.querySelectorAll('#tp button').forEach(function(btn){
+    document.querySelectorAll('#tp button').forEach(function(btn){btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});});
+    document.querySelectorAll('.ttb').forEach(function(btn){
       btn.addEventListener('click',function(){
-        var sid=this.dataset.sid,nm=this.dataset.nm;
-        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
-        var base=this.dataset.base;
-        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
+        var sid=this.dataset.sid,nm=this.dataset.nm,gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var base=this.dataset.base,avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
         var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
         var fails=[];try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
         var row=document.getElementById('bd-'+sid);
@@ -326,102 +287,28 @@ function trimRenderAnalytics(){
         row.style.display='';
         var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:4px">All metrics above F threshold</div>';
         var aiId='ai-'+sid;
-        box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
-          '<div style="text-align:center;flex:0 0 auto">'+
-          '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
-          '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div></div>'+
-          '<div style="flex:1;min-width:180px">'+
-          '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' - Performance Report</strong>'+
-          '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
-          failsHtml+
-          '<div id="'+aiId+'" style="font-size:.75rem;line-height:1.6;color:#374151;margin-bottom:8px">Generating coaching report...</div>'+
-          '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-          '<button class="es-btn" data-aiid="'+aiId+'" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Traducir al Espanol</button>'+
-          '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Print</button>'+
-          '</div></div></div>';
+        box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start"><div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div></div><div style="flex:1;min-width:180px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' - Performance Report</strong><div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+failsHtml+'<div id="'+aiId+'" style="font-size:.75rem;line-height:1.6;color:#374151;margin-bottom:8px">Generating coaching report...</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="es-btn" data-aiid="'+aiId+'" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Traducir al Espanol</button><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Print</button></div></div></div>';
         var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics above the F threshold.';
         var prompt='You are a catfish processing plant coach. Trimmer "'+nm+'" earned base grade '+base+' ('+avg+' lbs/hr) and final grade '+gl+'. '+failTxt+' Stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%. In 1-2 sentences explain the grade. Then give 2-3 specific practical tips. Be direct.';
         var aiEl=document.getElementById(aiId);
         apiCall('POST','/api/ai',{query:prompt}).then(function(d){
           var text=d.response||d.text||d.content||'Unable to generate.';
           window['_ai_'+sid]=text;
-          if(aiEl){aiEl.innerHTML=text.replace(/\n/g,'<br>');}
+          if(aiEl)aiEl.innerHTML=text.replace(/
+/g,'<br>');
           var esBtn=box.querySelector('.es-btn');
           if(esBtn)esBtn.addEventListener('click',function(){
             var b=this;b.disabled=true;b.textContent='Traduciendo...';
-            apiCall('POST','/api/ai',{query:'Translate to Spanish:\n\n'+text}).then(function(d2){
+            apiCall('POST','/api/ai',{query:'Translate to Spanish, keep same format:
+
+'+text}).then(function(d2){
               var es=d2.response||d2.text||d2.content||text;
-              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/\n/g,'<br>');
+              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/
+/g,'<br>');
               b.textContent='Traducir al Espanol';b.disabled=false;
             }).catch(function(){b.disabled=false;b.textContent='Error';});
           });
         }).catch(function(){if(aiEl)aiEl.innerHTML='Error generating report.';});
-      });
-            sparkDiv.appendChild(can);
-          }
-
-          // Generate AI coaching
-          var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics above the F threshold.';
-          var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr) and received a final grade of '+gl+'. '+failTxt+' Full stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Total Yield: '+yld+'%. In 1-2 sentences explain exactly why the grade is what it is. Then give 2-3 specific practical coaching tips. Be direct and concise.';
-          var aiEl=document.getElementById(aiId);
-          var esEl=document.getElementById(esId);
-
-          apiCall('POST','/api/ai',{query:prompt}).then(function(d){
-            var text=d.response||d.text||d.content||'Unable to generate.';
-            window['_aiText_'+sid]=text;
-            if(aiEl) aiEl.innerHTML=text.replace(/\n/g,'<br>');
-            // Wire Spanish button
-            if(esEl) esEl.addEventListener('click',function(){
-              var btn=this;
-              btn.disabled=true; btn.textContent='Traduciendo...';
-              apiCall('POST','/api/ai',{query:'Translate the following coaching report to Spanish. Keep the same format and tone:
-
-'+text})
-                .then(function(d2){
-                  var es=d2.response||d2.text||d2.content||text;
-                  if(aiEl) aiEl.innerHTML='<strong style="color:#059669">&#127466;&#127480; Espa&ntilde;ol:</strong><br>'+es.replace(/\n/g,'<br>');
-                  btn.textContent='&#127466;&#127480; Traducir al Espa\u00f1ol';
-                  btn.disabled=false;
-                }).catch(function(){btn.disabled=false;btn.textContent='Error';});
-            });
-          }).catch(function(){if(aiEl) aiEl.innerHTML='<span style="color:#ef4444">Error generating report.</span>';});
-        });
-      });
-    });
-    document.querySelectorAll('.ttb').forEach(function(btn){
-      btn.addEventListener('click',function(){
-        var sid=this.dataset.sid,nm=this.dataset.nm;
-        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
-        var base=this.dataset.base;
-        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
-        var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
-        var fails=[];
-        try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
-        var row=document.getElementById('bd-'+sid);
-        var box=row?row.querySelector('.tbb'):null;
-        if(!row||!box)return;
-        if(row.style.display!=='none'){row.style.display='none';return;}
-        row.style.display='';
-        box.innerHTML='<span style="color:#94a3b8">&#x2728; Generating coaching report...</span>';
-        var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics met the '+base+' threshold.';
-        var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr) but received a final grade of '+gl+' after penalties. '+failTxt+' Full stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Total Yield: '+yld+'%. In 1-2 sentences explain exactly why the grade dropped (name the failing metrics and targets). Then give 2-3 specific practical coaching tips. Be direct.';
-        apiCall('POST','/api/ai',{query:prompt}).then(function(d){
-          var text=d.response||d.text||d.content||'Unable to generate.';
-          var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">&#9660; Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:4px">&#10003; All metrics on target</div>';
-          box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
-            '<div style="text-align:center;flex:0 0 auto">'+
-              '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
-              '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
-            '</div>'+
-            '<div style="flex:1;min-width:180px">'+
-              '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+'  Performance Report</strong>'+
-              '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
-              failsHtml+
-              '<div style="font-size:.75rem;line-height:1.6;color:#374151">'+text.replace(/\n/g,'<br>')+'</div>'+
-            '</div>'+
-            '<div style="flex:0 0 auto"><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button></div>'+
-          '</div>';
-        }).catch(function(){box.innerHTML='<span style="color:#ef4444">Error generating report.</span>';});
       });
     });
   }).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});
