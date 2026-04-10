@@ -89,7 +89,6 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({error:'Unknown type'});
     }
-    // Rename employee across all history entries
     if (req.method === 'PATCH' && action === 'rename_employee') {
       const { emp_number, new_name } = req.body;
       if (!emp_number || !new_name) return res.status(400).json({ error: 'Missing fields' });
