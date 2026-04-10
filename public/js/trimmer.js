@@ -113,7 +113,7 @@ document.querySelectorAll('.ttb').forEach(function(btn){
                 '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
               '</div>'+
               '<div style="flex:1;min-width:180px">'+
-                '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' — Performance Report</strong>'+
+                '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' \u2014 Performance Report</strong>'+
                 '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
                 failsHtml+
                 '<div id="ai-text-'+sid+'" style="font-size:.75rem;line-height:1.6;color:#374151"><span style="color:#94a3b8">Loading AI coaching...</span></div>'+
@@ -130,7 +130,7 @@ document.querySelectorAll('.ttb').forEach(function(btn){
           apiCall('POST','/api/ai',{query:prompt}).then(function(d){
             var text=d.response||d.text||d.content||'Unable to generate.';
             var aiEl=document.getElementById('ai-text-'+sid);
-            if(aiEl) aiEl.innerHTML=text.split('\n').join('<br>');
+            if(aiEl) aiEl.innerHTML=text.replace(/\n/g,'<br>');
             window['_aiText_'+sid]=text;
 
             // Wire Spanish button
@@ -139,7 +139,7 @@ document.querySelectorAll('.ttb').forEach(function(btn){
               var aiEl2=document.getElementById('ai-text-'+sid);
               var curText=window['_aiText_'+sid]||'';
               if(this.dataset.lang==='es'){
-                if(aiEl2) aiEl2.innerHTML=curText.split('\n').join('<br>');
+                if(aiEl2) aiEl2.innerHTML=curText.replace(/\n/g,'<br>');
                 this.textContent='En Espanol'; this.dataset.lang='';
               } else {
                 if(aiEl2) aiEl2.innerHTML='<span style="color:#94a3b8">Traduciendo...</span>';
@@ -149,8 +149,8 @@ document.querySelectorAll('.ttb').forEach(function(btn){
 '+curText}).then(function(d2){
                   var esText=d2.response||d2.text||d2.content||curText;
                   window['_aiTextEs_'+sid]=esText;
-                  if(aiEl2) aiEl2.innerHTML=esText.split('\n').join('<br>');
-                }).catch(function(){if(aiEl2) aiEl2.innerHTML=curText.split('\n').join('<br>');});
+                  if(aiEl2) aiEl2.innerHTML=esText.replace(/\n/g,'<br>');
+                }).catch(function(){if(aiEl2) aiEl2.innerHTML=curText.replace(/\n/g,'<br>');});
               }
             });
           }).catch(function(){
@@ -175,8 +175,8 @@ function trimRenderUpload() {
     '<div class="upload-drop-zone">'+
     '<div style="font-size:2rem;margin-bottom:8px">&#x1F4C4;</div>'+
     '<div style="display:flex;gap:10px;margin-top:4px">'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">📁 Upload File</button>'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">📷 Take Photo</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">\ud83d\udcc1 Upload File</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">\ud83d\udcf7 Take Photo</button>'+
     '</div>'+
     '<div style="font-size:0.75rem;color:var(--sub);margin-top:6px">PDF, JPG, PNG supported</div></div>'+
     '<input type="file" id="trim-file-input" accept="image/*,application/pdf" style="display:none" onchange="trimHandleFile(this)"/>'+
@@ -271,9 +271,9 @@ async function trimSaveEntry(entryId, reportId) {
   data.realtime_lbs_per_hour = data.minutes_worked>0?(data.total_lbs/(data.minutes_worked/60)):0;
   try {
     await apiCall('PATCH', '/api/records', { type:'entry', ...data });
-    toast('✅ Saved');
+    toast('\u2705 Saved');
     trimRenderHistory();
-  } catch(e) { toast('❌ Save failed: '+e.message); }
+  } catch(e) { toast('\u274c Save failed: '+e.message); }
 }
 
 async function trimDeleteEntry(entryId, btn) {
@@ -286,7 +286,7 @@ async function trimDeleteEntry(entryId, btn) {
     if (row) { row.style.opacity='0.3'; row.style.transition='opacity 0.2s'; setTimeout(()=>row.remove(),200); }
     else trimRenderHistory();
     toast('Entry deleted');
-  } catch(e) { toast('❌ '+e.message); }
+  } catch(e) { toast('\u274c '+e.message); }
 }
 
 async function trimDeleteReport(reportId) {
@@ -295,13 +295,13 @@ async function trimDeleteReport(reportId) {
     await apiCall('DELETE', '/api/records?type=trimmer&id='+reportId);
     toast('Report deleted');
     trimRenderHistory();
-  } catch(e) { toast('❌ '+e.message); }
+  } catch(e) { toast('\u274c '+e.message); }
 }
 
 async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
+    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history\u2026</div></div></div></div>';
     let reports = [];
     try {
       const data = await apiCall('GET', '/api/records?type=trimmer');
@@ -317,11 +317,11 @@ async function trimRenderHistory() {
       const totalLbs = entries.reduce((s,e) => s+(parseFloat(e.total_lbs)||0),0);
       html += '<div class="wcard" style="margin-bottom:16px">';
       html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-      html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' — '+(rpt.shift||'')+' Shift</div>';
-      html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers · '+totalLbs.toFixed(1)+' total lbs</div></div>';
-      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">🗑 Delete Report</button>';
+      html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' \u2014 '+(rpt.shift||'')+' Shift</div>';
+      html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers \u00b7 '+totalLbs.toFixed(1)+' total lbs</div></div>';
+      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">\ud83d\uddd1 Delete Report</button>';
       html += '</div>';
-      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">✏️ Click any value to edit — saves automatically.</div>';
+      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">\u270f\ufe0f Click any value to edit \u2014 saves automatically.</div>';
       html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
       ['Emp#','Name','Code','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>'+h+'</th>'; });
       html += '</tr></thead><tbody>';
@@ -343,7 +343,7 @@ async function trimRenderHistory() {
           html += '<td>'+(parseFloat(e.total_lbs)||0).toFixed(1)+'</td>';
           html += '<td>'+(parseFloat(e.total_yield_pct)||0).toFixed(1)+'%</td>';
           html += '<td>'+(parseFloat(e.realtime_lbs_per_hour)||0).toFixed(1)+'</td>';
-          html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">✕</button></td>';
+          html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">\u2715</button></td>';
         } else {
           html += '<td>'+(e.emp_number||'')+'</td><td>'+(e.full_name||'')+'</td><td>'+(e.trim_number||'')+'</td>';
           html += '<td>'+(e.minutes_worked||0)+'</td><td>'+(e.incoming_lbs||0)+'</td>';
@@ -451,7 +451,7 @@ function trimRenderAnalytics(){
         apiCall('POST','/api/ai',{query:prompt}).then(function(d){
           var text=d.response||d.text||d.content||'Unable to generate.';
           window['_ai_'+sid]=text;
-          if(aiEl)aiEl.innerHTML=text.split('\n').join('<br>');
+          if(aiEl)aiEl.innerHTML=text.replace(/\n/g,'<br>');
           var esBtn=box.querySelector('.es-btn');
           if(esBtn)esBtn.addEventListener('click',function(){
             var b=this;b.disabled=true;b.textContent='Traduciendo...';
@@ -459,7 +459,7 @@ function trimRenderAnalytics(){
 
 '+text}).then(function(d2){
               var es=d2.response||d2.text||d2.content||text;
-              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.split('\n').join('<br>');
+              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/\n/g,'<br>');
               b.textContent='Traducir al Espanol';b.disabled=false;
             }).catch(function(){b.disabled=false;b.textContent='Error';});
           });
@@ -472,7 +472,7 @@ async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
     const area = document.getElementById("trim-trend-area");
     if(!area) return;
-    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trend…</div></div>";
+    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trend\u2026</div></div>";
     btn.disabled = true;
     let data;
     try { data = await apiCall("GET", "/api/analytics?type=trimmer_trends&days=90&trimmer_name="+encodedName); }
@@ -489,7 +489,7 @@ async function trimShowTrend(encodedName, btn) {
     const inLbs = trends.map(function(t){ return parseFloat(t.incoming_lbs||0); });
     // Build charts
     let html = "<div class=\"wcard\" style=\"margin-top:12px\">";
-    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">📉 " + name + " — Last 90 Days (" + trends.length + " shifts)</h3>";
+    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">\ud83d\udcc9 " + name + " \u2014 Last 90 Days (" + trends.length + " shifts)</h3>";
     // Summary stats
     const avgLph = lph.reduce(function(a,b){return a+b;},0)/lph.length;
     const avgFillet = fPct.reduce(function(a,b){return a+b;},0)/fPct.length;
@@ -508,11 +508,11 @@ async function trimShowTrend(encodedName, btn) {
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Lbs/Hr per shift</div>";
     html += trimBarChart(dates, lph, "#16a34a", "")+"</div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Fillet % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% → "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% \u2192 "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Nugget % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% → "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% \u2192 "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">MiscCut % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% → "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% \u2192 "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
     html += "</div>";
     // Detail table
     html += "<details style=\"margin-top:12px\"><summary style=\"font-size:0.8rem;color:var(--blue);cursor:pointer\">Show raw data (" + trends.length + " shifts)</summary>";
@@ -585,7 +585,7 @@ window.trimShowTrend = trimShowTrend;
 window.trimSetPeriod = trimSetPeriod;
 
 
-// ── TRIMMER GRADING SYSTEM ──
+// \u2500\u2500 TRIMMER GRADING SYSTEM \u2500\u2500
 function getTrimmerGrade(pct) {
   if (pct === null || pct === undefined || isNaN(pct)) return {letter:'N/A', color:'#94a3b8', bg:'#f8fafc'};
   if (pct >= 100) return {letter:'A+', color:'#fff', bg:'#059669'};
@@ -597,10 +597,10 @@ function getTrimmerGrade(pct) {
 }
 
 function getTrimmerTrend(curr, prev) {
-  if (curr===null||prev===null) return {arrow:'—', color:'#94a3b8'};
-  if (curr > prev+2)  return {arrow:'↑', color:'#059669'};
-  if (curr < prev-2)  return {arrow:'↓', color:'#dc2626'};
-  return               {arrow:'→', color:'#64748b'};
+  if (curr===null||prev===null) return {arrow:'\u2014', color:'#94a3b8'};
+  if (curr > prev+2)  return {arrow:'\u2191', color:'#059669'};
+  if (curr < prev-2)  return {arrow:'\u2193', color:'#dc2626'};
+  return               {arrow:'\u2192', color:'#64748b'};
 }
 
 function buildTrimmerGrades(period) {
@@ -818,7 +818,7 @@ function renderTrimmerGrades(records, period) {
       .then(function(d){
         var text=(d.content&&d.content[0]&&d.content[0].text)||'';
         var aiEl2=document.getElementById(safeId);
-        if(aiEl2&&text) aiEl2.innerHTML='<strong style="color:#1a3a6b">AI Suggestions:</strong><br>'+text.split('\n').join('<br>');
+        if(aiEl2&&text) aiEl2.innerHTML='<strong style="color:#1a3a6b">AI Suggestions:</strong><br>'+text.replace(/\n/g,'<br>');
         else if(aiEl2) aiEl2.innerHTML='';
       }).catch(function(){ var aiEl2=document.getElementById(safeId); if(aiEl2) aiEl2.innerHTML=''; });
     });
