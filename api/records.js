@@ -39,7 +39,7 @@ module.exports = async function handler(req, res) {
   let user;
   try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' }); }
 
-  const { type, action, action, id } = req.query;
+  const { type, action, id } = req.query;
   const sql = neon(process.env.DATABASE_URL);
 
   try {
