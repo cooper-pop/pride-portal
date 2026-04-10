@@ -313,7 +313,8 @@ function trimRenderAnalytics(){
     if(pb)pb.addEventListener('click',function(){window.print();});
     document.querySelectorAll('#tp button').forEach(function(btn){
       btn.addEventListener('click',function(){
-        var sid=this.dataset.sid,nm=this.dataset.nm,gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var sid=this.dataset.sid,nm=this.dataset.nm;
+        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
         var base=this.dataset.base;
         var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
         var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
@@ -323,77 +324,39 @@ function trimRenderAnalytics(){
         if(!row||!box)return;
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
-        box.innerHTML='<span style="color:#94a3b8">Loading breakdown...</span>';
-
-        // Fetch daily history for this employee
-        var empNum=this.dataset.sid.replace(/_\d+$/,'').replace(/_/g,' ');
-        apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(rankData){
-          var empRow=(rankData.rankings||[]).find(function(r){return r.full_name===nm;})||{};
-          var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:6px">&#9660; Grade deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:6px">&#10003; All metrics above F threshold</div>';
-
-          // Grade badge + stats
-          var headerHtml='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">'+
-            '<div style="text-align:center;flex:0 0 auto">'+
-              '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
-              '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
-            '</div>'+
-            '<div style="flex:1;min-width:200px">'+
-              '<strong style="color:#1a3a6b;font-size:.85rem">'+nm+'</strong><br>'+
-              '<span style="font-size:.72rem;color:#374151">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</span><br>'+
-              failsHtml+
-            '</div>'+
-          '</div>';
-
-          // Sparkline canvas chart
-          var metrics=[
-            {label:'Lbs/Hr',key:'avg_lph',color:'#1a3a6b'},
-            {label:'Fillet%',key:'avg_fillet_pct',color:'#10b981'},
-            {label:'Nugget%',key:'avg_nugget_pct',color:'#f59e0b'},
-            {label:'Miscut%',key:'avg_misccut_pct',color:'#ef4444'},
-            {label:'Yield%',key:'avg_total_yield',color:'#3b82f6'}
-          ];
-
-          // Build AI section placeholder
-          var aiId='ai-'+sid;
-          var esId='es-'+sid;
-          var printId='pr-'+sid;
-
-          box.innerHTML='<div class="tpa" style="padding:4px">'+
-            headerHtml+
-            '<div id="spark-'+sid+'" style="overflow-x:auto;margin-bottom:10px"></div>'+
-            '<div id="'+aiId+'" style="font-size:.78rem;line-height:1.6;color:#374151;margin-bottom:8px"><span style="color:#94a3b8">&#x2728; Generating AI coaching...</span></div>'+
-            '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-              '<button id="'+esId+'" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#127466;&#127480; Traducir al Espa&ntilde;ol</button>'+
-              '<button id="'+printId+'" onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button>'+
-            '</div>'+
-          '</div>';
-
-          // Draw sparklines using canvas
-          var sparkDiv=document.getElementById('spark-'+sid);
-          if(sparkDiv){
-            var cw=Math.min(sparkDiv.parentElement.offsetWidth-32,600),ch=80;
-            var can=document.createElement('canvas');
-            can.width=cw; can.height=ch;
-            can.style.width='100%';
-            var ctx2=can.getContext('2d');
-            // Draw simple bar sparklines with the 5 metric values
-            var vals=[avg,parseFloat(fil),parseFloat(nug),parseFloat(mis),parseFloat(yld)];
-            var maxVals=[200,100,40,15,100];
-            var bw=cw/5-4;
-            metrics.forEach(function(m,i){
-              var pct=Math.min(vals[i]/maxVals[i],1);
-              var x=i*(bw+4)+2;
-              var barH=Math.max(4,pct*(ch-18));
-              ctx2.fillStyle=m.color+'33';
-              ctx2.fillRect(x,2,bw,ch-18);
-              ctx2.fillStyle=m.color;
-              ctx2.fillRect(x,ch-18-barH+2,bw,barH);
-              ctx2.fillStyle='#374151';
-              ctx2.font='9px sans-serif';
-              ctx2.textAlign='center';
-              ctx2.fillText(m.label,x+bw/2,ch-2);
-              ctx2.fillText(vals[i].toFixed(1),x+bw/2,ch-18-barH);
-            });
+        var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:4px">All metrics above F threshold</div>';
+        var aiId='ai-'+sid;
+        box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">'+
+          '<div style="text-align:center;flex:0 0 auto">'+
+          '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
+          '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div></div>'+
+          '<div style="flex:1;min-width:180px">'+
+          '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' - Performance Report</strong>'+
+          '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
+          failsHtml+
+          '<div id="'+aiId+'" style="font-size:.75rem;line-height:1.6;color:#374151;margin-bottom:8px">Generating coaching report...</div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+          '<button class="es-btn" data-aiid="'+aiId+'" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Traducir al Espanol</button>'+
+          '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Print</button>'+
+          '</div></div></div>';
+        var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics above the F threshold.';
+        var prompt='You are a catfish processing plant coach. Trimmer "'+nm+'" earned base grade '+base+' ('+avg+' lbs/hr) and final grade '+gl+'. '+failTxt+' Stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%. In 1-2 sentences explain the grade. Then give 2-3 specific practical tips. Be direct.';
+        var aiEl=document.getElementById(aiId);
+        apiCall('POST','/api/ai',{query:prompt}).then(function(d){
+          var text=d.response||d.text||d.content||'Unable to generate.';
+          window['_ai_'+sid]=text;
+          if(aiEl){aiEl.innerHTML=text.replace(/\n/g,'<br>');}
+          var esBtn=box.querySelector('.es-btn');
+          if(esBtn)esBtn.addEventListener('click',function(){
+            var b=this;b.disabled=true;b.textContent='Traduciendo...';
+            apiCall('POST','/api/ai',{query:'Translate to Spanish:\n\n'+text}).then(function(d2){
+              var es=d2.response||d2.text||d2.content||text;
+              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/\n/g,'<br>');
+              b.textContent='Traducir al Espanol';b.disabled=false;
+            }).catch(function(){b.disabled=false;b.textContent='Error';});
+          });
+        }).catch(function(){if(aiEl)aiEl.innerHTML='Error generating report.';});
+      });
             sparkDiv.appendChild(can);
           }
 
