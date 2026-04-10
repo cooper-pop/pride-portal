@@ -234,20 +234,45 @@ function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
+
+  function sparkline(vals,color,label){
+    if(!vals||vals.length<2)return '';
+    var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng=mx-mn||1;
+    var W=130,H=36,P=3;
+    var pts=vals.map(function(v,i){
+      var x=P+(i/(vals.length-1))*(W-P*2);
+      var y=H-P-(v-mn)/rng*(H-P*2);
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    var lv=vals[vals.length-1];
+    var lx=(P+1*(W-P*2)).toFixed(1);
+    var ly=(H-P-(lv-mn)/rng*(H-P*2)).toFixed(1);
+    return '<div style="display:inline-block;margin:0 6px 4px 0;text-align:center">'
+      +'<div style="font-size:.58rem;color:#64748b;margin-bottom:1px">'+label+'</div>'
+      +'<svg width="'+W+'" height="'+H+'" style="background:#f8fafc;border-radius:3px">'
+      +'<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.5"/>'
+      +'<circle cx="'+lx+'" cy="'+ly+'" r="2.5" fill="'+color+'"/>'
+      +'</svg>'
+      +'<div style="font-size:.61rem;font-weight:700;color:'+color+'">'+parseFloat(lv).toFixed(1)+'</div>'
+      +'</div>';
+  }
+
   function buildTable(rankings,teamAvg,days){
-    var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
+    var pLabel=days===365?'YTD':days+'';
     var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
-    var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
+    var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">';
     pills.forEach(function(p){
       var a=p.d===days;
-      h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';
+      h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 11px;font-size:.73rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';
     });
-    h+='</div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
-    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';
-    h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';
+    h+='</div>';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    h+='<h3 style="margin:0;font-size:.86rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.73rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">&#128438; Print</button>';
+    h+='</div>';
+    h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.73rem"><thead><tr style="background:#1a3a6b;color:#fff">';
     ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){
-      h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
+      h+='<th style="padding:5px 7px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
     });
     h+='</tr></thead><tbody>';
     rankings.forEach(function(r,i){
@@ -255,131 +280,183 @@ function trimRenderAnalytics(){
       var avg=parseFloat(r.avg_lph||0);
       var yld=parseFloat(r.avg_total_yield||0);
       var nm=r.full_name||'';
-      var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
+      var sid='tr'+i;
       var under=r.underperformer;
       var trendIcon=under?'&#8681;':'&#8680;';
       var trendCol=under?'#ef4444':'#f59e0b';
+      var fil=r.avg_fillet_pct||'';
+      var nug=r.avg_nugget_pct||'';
+      var mis=r.avg_misccut_pct||'';
       h+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'">';
-      h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
-      h+='<td style="padding:5px 8px;font-weight:600;color:#1a3a6b">'+nm+'</td>';
-      h+='<td style="padding:5px 8px;text-align:center">'+(r.days_worked||'')+'</td>';
-      h+='<td style="padding:5px 8px;font-weight:700;color:'+(avg>=teamAvg?'#059669':'#ef4444')+'">'+avg+'</td>';
-      h+='<td style="padding:5px 8px">'+(r.avg_8hr_lph||'')+'</td>';
-      h+='<td style="padding:5px 8px">'+(r.avg_fillet_pct!=null?r.avg_fillet_pct+'%':'')+'</td>';
-      h+='<td style="padding:5px 8px">'+(r.avg_nugget_pct!=null?r.avg_nugget_pct+'%':'')+'</td>';
-      h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
-      h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
-      h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px">';
-      h+='<button class="ttb"';
-      h+=' data-sid="'+sid+'"';
-      h+=' data-nm="'+nm+'"';
-      h+=' data-gl="'+g.l+'"';
-      h+=' data-gbg="'+g.bg+'"';
-      h+=' data-gc="'+g.c+'"';
-      h+=' data-base="'+g.base+'"';
-      h+=' data-fails="'+encodeURIComponent(JSON.stringify(g.fails))+'"';
-      h+=' data-avg="'+avg+'"';
-      h+=' data-yld="'+yld+'"';
-      h+=' data-fil="'+(r.avg_fillet_pct||0)+'"';
-      h+=' data-nug="'+(r.avg_nugget_pct||0)+'"';
-      h+=' data-mis="'+(r.avg_misccut_pct||0)+'"';
-      h+=' style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px"';
-      h+=' title="View breakdown">'+trendIcon+'</button></td>';
+      h+='<td style="padding:4px 7px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
+      h+='<td style="padding:4px 7px;font-weight:600;color:#1a3a6b">'+nm+'</td>';
+      h+='<td style="padding:4px 7px;text-align:center">'+(r.days_worked||'')+'</td>';
+      h+='<td style="padding:4px 7px;font-weight:700;color:'+(avg>=teamAvg?'#059669':'#ef4444')+'">'+avg+'</td>';
+      h+='<td style="padding:4px 7px">'+(r.avg_8hr_lph||'')+'</td>';
+      h+='<td style="padding:4px 7px">'+(fil?fil+'%':'')+'</td>';
+      h+='<td style="padding:4px 7px">'+(nug?nug+'%':'')+'</td>';
+      h+='<td style="padding:4px 7px">'+(mis?mis+'%':'')+'</td>';
+      h+='<td style="padding:4px 7px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
+      h+='<td style="padding:4px 7px"><span style="display:inline-block;min-width:28px;text-align:center;padding:2px 5px;border-radius:18px;font-weight:800;font-size:.72rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
+      h+='<td style="padding:4px 7px">'
+        +'<button class="ttb" data-sid="'+sid+'" data-nm="'+nm
+        +'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-base="'+g.base
+        +'" data-fails="'+encodeURIComponent(JSON.stringify(g.fails||[]))+'" data-avg="'+avg
+        +'" data-yld="'+yld+'" data-fil="'+fil+'" data-nug="'+nug+'" data-mis="'+mis
+        +'" style="border:none;background:none;cursor:pointer;font-size:.95rem;color:'+trendCol+';font-weight:700;padding:1px 4px;border-radius:3px">'+trendIcon+'</button>'
+        +'</td>';
       h+='</tr>';
-      h+='<tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+      h+='<tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0">'
+        +'<div class="tbb" style="padding:10px 12px;background:#eff6ff;border-left:4px solid #1a3a6b"></div>'
+        +'</td></tr>';
     });
     h+='</tbody></table></div>';
-    if(!document.getElementById('tps')){
-      var s=document.createElement('style');s.id='tps';
-      s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';
-      document.head.appendChild(s);
-    }
     return h;
   }
+
   apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){
     var rankings=data.rankings||[];
     var teamAvg=parseFloat(data.shift_avg_lph||0);
     el.innerHTML=buildTable(rankings,teamAvg,window._trimPeriod);
-    var pb=document.getElementById('tpb');
-    if(pb)pb.addEventListener('click',function(){window.print();});
+    document.getElementById('tpb')?.addEventListener('click',function(){window.print();});
     document.querySelectorAll('#tp button').forEach(function(btn){
-      btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});
+      btn.addEventListener('click',function(){
+        window._trimPeriod=parseInt(this.dataset.d);
+        trimRenderAnalytics();
+      });
     });
     document.querySelectorAll('.ttb').forEach(function(btn){
       btn.addEventListener('click',function(){
         var sid=this.dataset.sid,nm=this.dataset.nm;
-        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
-        var base=this.dataset.base;
-        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
-        var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
-        var fails=[];try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
+        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc,base=this.dataset.base;
+        var avg=this.dataset.avg,yld=this.dataset.yld,fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
+        var fails=[];
+        try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(ex){}
         var row=document.getElementById('bd-'+sid);
         var box=row?row.querySelector('.tbb'):null;
         if(!row||!box)return;
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
-        box.innerHTML='<span style="color:#94a3b8">Loading report...</span>';
+        box.innerHTML='<span style="color:#94a3b8">Loading breakdown...</span>';
         apiCall('GET','/api/records?type=trimmer').then(function(records){
           var days=[];
           (records||[]).forEach(function(report){
             (report.entries||[]).forEach(function(e){
               if((e.full_name||'').toLowerCase()===nm.toLowerCase()){
-                days.push({date:(report.report_date||report.record_date||'').split('T')[0],shift:report.shift||'',lph:parseFloat(e.lbs_per_hour||e.realtime_lbs_per_hour||0).toFixed(1),fil:parseFloat(e.fillet_yield_pct||0).toFixed(1),nug:parseFloat(e.nugget_yield_pct||0).toFixed(1),mis:parseFloat(e.misccut_yield_pct||0).toFixed(1),yld:parseFloat(e.total_yield_pct||0).toFixed(1),hrs:parseFloat(e.hours_worked||0).toFixed(1)});
+                days.push({
+                  date:(report.report_date||report.record_date||'').split('T')[0],
+                  shift:report.shift||'',
+                  lph:parseFloat(e.lbs_per_hour||e.realtime_lbs_per_hour||0).toFixed(1),
+                  fil:parseFloat(e.fillet_yield_pct||0).toFixed(1),
+                  nug:parseFloat(e.nugget_yield_pct||0).toFixed(1),
+                  mis:parseFloat(e.misccut_yield_pct||0).toFixed(1),
+                  yld:parseFloat(e.total_yield_pct||0).toFixed(1),
+                  hrs:parseFloat(e.hours_worked||0).toFixed(1)
+                });
               }
             });
           });
-          days.sort(function(a,b){return a.date<b.date?1:-1;});
-          function spark(vals,col,lbl){
-            if(vals.length<2)return '';
-            var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng=mx-mn||1,w=140,h=36,pd=3;
-            var pts=vals.map(function(v,i){return (pd+(i/(vals.length-1))*(w-pd*2)).toFixed(1)+','+(h-pd-(v-mn)/rng*(h-pd*2)).toFixed(1);}).join(' ');
-            return '<div style="display:inline-block;margin-right:10px;text-align:center"><div style="font-size:.6rem;color:#64748b">'+lbl+'</div><svg width="'+w+'" height="'+h+'" style="background:#f8fafc;border-radius:3px"><polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="1.5"/></svg><div style="font-size:.62rem;font-weight:700;color:'+col+'">'+vals[vals.length-1].toFixed(1)+'</div></div>';
-          }
-          var tableHtml='';
+          days.sort(function(a,b){return a.date>b.date?1:-1;});
+          var tbl='';
           if(days.length){
-            tableHtml='<div style="margin:10px 0 6px;font-size:.78rem;font-weight:700;color:#1a3a6b">Daily Log</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.68rem"><thead><tr style="background:#1a3a6b;color:#fff"><th style="padding:3px 5px;text-align:left">Date</th><th style="padding:3px 5px">Shift</th><th style="padding:3px 5px">Lbs/Hr</th><th style="padding:3px 5px">Fil%</th><th style="padding:3px 5px">Nug%</th><th style="padding:3px 5px">Mis%</th><th style="padding:3px 5px">Yield%</th><th style="padding:3px 5px">Hrs</th></tr></thead><tbody>';
-            days.forEach(function(d,i){tableHtml+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'"><td style="padding:2px 5px">'+d.date+'</td><td style="padding:2px 5px;text-align:center">'+d.shift+'</td><td style="padding:2px 5px;text-align:center;color:'+(parseFloat(d.lph)>=100?'#059669':'#ef4444')+'">'+d.lph+'</td><td style="padding:2px 5px;text-align:center">'+d.fil+'%</td><td style="padding:2px 5px;text-align:center">'+d.nug+'%</td><td style="padding:2px 5px;text-align:center">'+d.mis+'%</td><td style="padding:2px 5px;text-align:center">'+d.yld+'%</td><td style="padding:2px 5px;text-align:center">'+d.hrs+'</td></tr>';});
-            tableHtml+='</tbody></table></div>';
+            tbl='<div style="margin-bottom:10px">'
+              +'<strong style="font-size:.75rem;color:#1a3a6b">Daily Log</strong>'
+              +'<div style="overflow-x:auto;margin-top:4px">'
+              +'<table style="width:100%;border-collapse:collapse;font-size:.66rem">'
+              +'<thead><tr style="background:#1a3a6b;color:#fff">';
+            ['Date','Shift','Lbs/Hr','Fillet%','Nugget%','Miscut%','Yield%','Hrs'].forEach(function(h){
+              tbl+='<th style="padding:3px 4px;white-space:nowrap">'+h+'</th>';
+            });
+            tbl+='</tr></thead><tbody>';
+            days.forEach(function(d,i){
+              tbl+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'">'
+                +'<td style="padding:2px 4px">'+d.date+'</td>'
+                +'<td style="padding:2px 4px;text-align:center">'+d.shift+'</td>'
+                +'<td style="padding:2px 4px;text-align:center;font-weight:600;color:'+(parseFloat(d.lph)>=100?'#059669':'#ef4444')+'">'+d.lph+'</td>'
+                +'<td style="padding:2px 4px;text-align:center">'+d.fil+'%</td>'
+                +'<td style="padding:2px 4px;text-align:center">'+d.nug+'%</td>'
+                +'<td style="padding:2px 4px;text-align:center">'+d.mis+'%</td>'
+                +'<td style="padding:2px 4px;text-align:center">'+d.yld+'%</td>'
+                +'<td style="padding:2px 4px;text-align:center">'+d.hrs+'</td>'
+                +'</tr>';
+            });
+            tbl+='</tbody></table></div></div>';
             var lphV=days.map(function(d){return parseFloat(d.lph);});
             var filV=days.map(function(d){return parseFloat(d.fil);});
             var nugV=days.map(function(d){return parseFloat(d.nug);});
             var misV=days.map(function(d){return parseFloat(d.mis);});
             var yldV=days.map(function(d){return parseFloat(d.yld);});
-            if(lphV.length>1)tableHtml+='<div style="margin:10px 0 6px;font-size:.78rem;font-weight:700;color:#1a3a6b">Trends</div><div style="overflow-x:auto;white-space:nowrap">'+spark(lphV,'#1a3a6b','Lbs/Hr')+spark(filV,'#10b981','Fillet%')+spark(nugV,'#f59e0b','Nugget%')+spark(misV,'#ef4444','Miscut%')+spark(yldV,'#3b82f6','Yield%')+'</div>';
+            if(lphV.length>1){
+              tbl+='<div style="margin-bottom:10px;overflow-x:auto;white-space:nowrap">'
+                +'<strong style="font-size:.75rem;color:#1a3a6b;display:block;margin-bottom:3px">Trends</strong>'
+                +sparkline(lphV,'#1a3a6b','Lbs/Hr')
+                +sparkline(filV,'#10b981','Fillet%')
+                +sparkline(nugV,'#f59e0b','Nugget%')
+                +sparkline(misV,'#ef4444','Miscut%')
+                +sparkline(yldV,'#3b82f6','Yield%')
+                +'</div>';
+            }
           }
-          var failsHtml=fails.length?'<div style="font-size:.7rem;color:#ef4444;font-weight:600;margin-bottom:3px">Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.7rem;color:#059669;margin-bottom:3px">All metrics on target</div>';
+          var failsHtml=fails.length
+            ?'<div style="font-size:.68rem;color:#ef4444;font-weight:600;margin-bottom:3px">Deductions: '+fails.join(' | ')+'</div>'
+            :'<div style="font-size:.68rem;color:#059669;margin-bottom:3px">All metrics on target</div>';
           var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics met the '+base+' threshold.';
-          var prompt='Catfish processing performance coach. Trimmer "'+nm+'" base grade '+base+' ('+avg+' lbs/hr), final grade '+gl+' after penalties. '+failTxt+' Stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%. In 1-2 sentences explain grade drop. Then 2-3 specific coaching tips. Be direct.';
-          box.innerHTML='<div class="tpa" style="padding:4px">'+
-            '<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px">'+
-              '<div style="text-align:center;flex:0 0 auto"><div style="width:52px;height:52px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.6rem;color:#64748b;margin-top:2px">Base: '+base+'</div></div>'+
-              '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;font-size:.8rem">'+nm+' &mdash; Performance Report</strong><div style="font-size:.7rem;color:#374151;margin:2px 0">'+avg+' lbs/hr | Fil: '+fil+'% | Nug: '+nug+'% | Mis: '+mis+'% | Yield: '+yld+'%</div>'+failsHtml+'<div id="ait-'+sid+'" style="font-size:.73rem;line-height:1.55;color:#374151">Loading AI coaching...</div></div>'+
-              '<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:5px">'+
-                '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:.68rem;cursor:pointer">Print</button>'+
-                '<button id="esb-'+sid+'" data-en="" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:.68rem;cursor:pointer">En Espanol</button>'+
-              '</div>'+
-            '</div>'+tableHtml+
-          '</div>';
+          var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned base grade '+base+' ('+avg+' lbs/hr) but final grade '+gl+' after penalties. '+failTxt+' Stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%. In 1-2 sentences explain why the grade dropped. Then give 2-3 specific practical tips. Be direct.';
+          box.innerHTML='<div class="tpa" style="padding:4px">'
+            +'<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">'
+              +'<div style="text-align:center;flex:0 0 auto">'
+                +'<div style="width:50px;height:50px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:900;color:'+gc+'">'+gl+'</div>'
+                +'<div style="font-size:.58rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'
+              +'</div>'
+              +'<div style="flex:1;min-width:150px">'
+                +'<strong style="color:#1a3a6b;font-size:.78rem;display:block;margin-bottom:2px">'+nm+' \u2014 Performance Report</strong>'
+                +'<div style="font-size:.68rem;color:#374151;margin-bottom:2px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'
+                +failsHtml
+                +'<div id="ait-'+sid+'" style="font-size:.71rem;line-height:1.55;color:#374151"><span style="color:#94a3b8">Generating coaching report...</span></div>'
+              +'</div>'
+              +'<div style="display:flex;flex-direction:column;gap:4px;flex:0 0 auto">'
+                +'<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:.66rem;cursor:pointer">Print</button>'
+                +'<button id="esb-'+sid+'" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:.66rem;cursor:pointer">En Espa\u00f1ol</button>'
+              +'</div>'
+            +'</div>'
+            +tbl
+            +'</div>';
           apiCall('POST','/api/ai',{query:prompt}).then(function(d){
-            var txt=d.response||d.text||d.content||'Unable to generate.';
-            var el=document.getElementById('ait-'+sid);
-            if(el)el.innerHTML=txt.split('\n').join('<br>');
+            var txt=d.response||d.text||d.content||'';
+            var aiEl=document.getElementById('ait-'+sid);
+            if(aiEl)aiEl.innerHTML=txt.split('\n').join('<br>');
             window['_ait_'+sid]=txt;
             var esb=document.getElementById('esb-'+sid);
             if(esb)esb.addEventListener('click',function(){
-              var el2=document.getElementById('ait-'+sid);
+              var aiEl2=document.getElementById('ait-'+sid);
               var cur=window['_ait_'+sid]||'';
-              if(this.dataset.en==='es'){window['_ait_'+sid]=cur;if(el2)el2.innerHTML=(window['_ait0_'+sid]||cur).split('\n').join('<br>');this.textContent='En Espanol';this.dataset.en='';}
-              else{window['_ait0_'+sid]=cur;if(el2)el2.innerHTML='Traduciendo...';this.dataset.en='es';this.textContent='In English';
-                apiCall('POST','/api/ai',{query:'Translate to Spanish:\n'+cur}).then(function(d2){var es=d2.response||d2.text||d2.content||cur;window['_ait_'+sid]=es;if(el2)el2.innerHTML=es.split('\n').join('<br>');}).catch(function(){if(el2)el2.innerHTML=cur.split('\n').join('<br>');});
+              if(this.dataset.lang==='es'){
+                if(aiEl2)aiEl2.innerHTML=cur.split('\n').join('<br>');
+                this.textContent='En Espa\u00f1ol';
+                this.dataset.lang='';
+              }else{
+                this.textContent='In English';
+                this.dataset.lang='es';
+                if(aiEl2)aiEl2.innerHTML='<span style="color:#94a3b8">Traduciendo...</span>';
+                apiCall('POST','/api/ai',{query:'Translate to Spanish:\n'+cur}).then(function(d2){
+                  var es=d2.response||d2.text||d2.content||cur;
+                  window['_ait_es_'+sid]=es;
+                  if(aiEl2)aiEl2.innerHTML=es.split('\n').join('<br>');
+                }).catch(function(){if(aiEl2)aiEl2.innerHTML=cur.split('\n').join('<br>');});
               }
             });
-          }).catch(function(){var el=document.getElementById('ait-'+sid);if(el)el.innerHTML='Error.';});
-        }).catch(function(){box.innerHTML='<span style="color:#ef4444">Error.</span>';});
+          }).catch(function(){
+            var aiEl=document.getElementById('ait-'+sid);
+            if(aiEl)aiEl.innerHTML='<span style="color:#ef4444">Error generating report.</span>';
+          });
+        }).catch(function(){
+          box.innerHTML='<span style="color:#ef4444">Error loading records.</span>';
+        });
       });
-    }););
-  }).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});
+    });
+  }).catch(function(e){
+    el.innerHTML='<div class="log-empty">'+e.message+'</div>';
+  });
 }
 async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
