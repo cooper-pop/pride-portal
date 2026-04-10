@@ -207,7 +207,7 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-async function trimCalcGrade(r){
+function trimCalcGrade(r){
   var lph=parseFloat(r.avg_lph||0);
   var fil=parseFloat(r.avg_fillet_pct||0);
   var nug=parseFloat(r.avg_nugget_pct||0);
