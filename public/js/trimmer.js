@@ -406,8 +406,7 @@ function trimRenderAnalytics(){
           apiCall('POST','/api/ai',{query:prompt}).then(function(d){
             var text=d.response||d.text||d.content||'Unable to generate.';
             window['_aiText_'+sid]=text;
-            if(aiEl) aiEl.innerHTML=text.replace(/
-/g,'<br>');
+            if(aiEl) aiEl.innerHTML=text.replace(/\n/g,'<br>');
             // Wire Spanish button
             if(esEl) esEl.addEventListener('click',function(){
               var btn=this;
@@ -417,8 +416,7 @@ function trimRenderAnalytics(){
 '+text})
                 .then(function(d2){
                   var es=d2.response||d2.text||d2.content||text;
-                  if(aiEl) aiEl.innerHTML='<strong style="color:#059669">&#127466;&#127480; Espa&ntilde;ol:</strong><br>'+es.replace(/
-/g,'<br>');
+                  if(aiEl) aiEl.innerHTML='<strong style="color:#059669">&#127466;&#127480; Espa&ntilde;ol:</strong><br>'+es.replace(/\n/g,'<br>');
                   btn.textContent='&#127466;&#127480; Traducir al Español';
                   btn.disabled=false;
                 }).catch(function(){btn.disabled=false;btn.textContent='Error';});
