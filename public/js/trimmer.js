@@ -1,10 +1,171 @@
-// trimmer.js - Trimmer Log and Analytics
+document.querySelectorAll('.ttb').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var sid=this.dataset.sid,nm=this.dataset.nm;
+        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var base=this.dataset.base;
+        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
+        var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
+        var empNum=this.dataset.empnum||'';
+        var fails=[];try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
+        var row=document.getElementById('bd-'+sid);
+        var box=row?row.querySelector('.tbb'):null;
+        if(!row||!box)return;
+        if(row.style.display!=='none'){row.style.display='none';return;}
+        row.style.display='';
+        box.innerHTML='<span style="color:#94a3b8">Loading report...</span>';
 
-function buildTrimmerWidget() {
-  var tabs = ["&#x1F4F7; Upload C.A.T.2","&#x2702;&#xFE0F; Manual Entry","&#x1F4CB; History","&#x1F4CA; Analytics"];
-  document.getElementById("widget-tabs").innerHTML = tabs.map(function(t,i){ return '<div class="widget-tab'+(i===0?" active":"")+'" onclick="trimShowTab('+i+')">'+t+'</div>'; }).join("");
-  trimRows=[trimEmptyRow()]; trimShowTab(0);
-}
+        // Fetch all trimmer records to build daily log for this trimmer
+        apiCall('GET','/api/records?type=trimmer').then(function(records){
+          // Extract entries for this trimmer across all reports
+          var days=[];
+          (records||[]).forEach(function(report){
+            var entries=report.entries||[];
+            entries.forEach(function(e){
+              if((e.full_name||'').toLowerCase()===nm.toLowerCase()||(e.emp_number&&e.emp_number===empNum)){
+                days.push({
+                  date:report.report_date?report.report_date.split('T')[0]:report.record_date,
+                  shift:report.shift||'',
+                  lph:parseFloat(e.lbs_per_hour||e.realtime_lbs_per_hour||0).toFixed(1),
+                  fil:parseFloat(e.fillet_yield_pct||0).toFixed(1),
+                  nug:parseFloat(e.nugget_yield_pct||0).toFixed(1),
+                  mis:parseFloat(e.misccut_yield_pct||0).toFixed(1),
+                  yld:parseFloat(e.total_yield_pct||0).toFixed(1),
+                  hrs:parseFloat(e.hours_worked||0).toFixed(1),
+                  lbs:parseFloat(e.incoming_lbs||0).toFixed(0)
+                });
+              }
+            });
+          });
+          // Sort by date desc
+          days.sort(function(a,b){return b.date>a.date?1:-1;});
+
+          // Build sparkline SVG for a series of values
+          function sparkline(vals,color,label){
+            if(!vals.length) return '';
+            var min=Math.min.apply(null,vals),max=Math.max.apply(null,vals);
+            var range=max-min||1;
+            var w=160,h=40,pad=4;
+            var pts=vals.map(function(v,i){
+              var x=pad+(i/(vals.length-1||1))*(w-pad*2);
+              var y=h-pad-(v-min)/range*(h-pad*2);
+              return x.toFixed(1)+','+y.toFixed(1);
+            }).join(' ');
+            var lastVal=vals[vals.length-1];
+            return '<div style="display:inline-block;margin-right:12px;text-align:center">'+
+              '<div style="font-size:.62rem;color:#64748b;margin-bottom:2px">'+label+'</div>'+
+              '<svg width="'+w+'" height="'+h+'" style="border-radius:4px;background:#f8fafc">'+
+              '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.5"/>'+
+              '<circle cx="'+(pad+(vals.length-1)/(vals.length-1||1)*(w-pad*2))+'" cy="'+(h-pad-(lastVal-min)/range*(h-pad*2))+'" r="2.5" fill="'+color+'"/>'+
+              '</svg>'+
+              '<div style="font-size:.65rem;font-weight:700;color:'+color+'">'+lastVal.toFixed(1)+'</div>'+
+              '</div>';
+          }
+
+          // Build daily log table
+          var tableHtml='';
+          if(days.length){
+            tableHtml='<div style="margin-bottom:12px"><div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:6px">Daily Log</div>';
+            tableHtml+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.7rem"><thead>';
+            tableHtml+='<tr style="background:#1a3a6b;color:#fff"><th style="padding:4px 6px;text-align:left">Date</th><th style="padding:4px 6px">Shift</th><th style="padding:4px 6px">Lbs/Hr</th><th style="padding:4px 6px">Fillet%</th><th style="padding:4px 6px">Nugget%</th><th style="padding:4px 6px">Miscut%</th><th style="padding:4px 6px">Yield%</th><th style="padding:4px 6px">Hrs</th></tr></thead><tbody>';
+            days.forEach(function(d,i){
+              var bg=i%2===0?'#fff':'#f8fafc';
+              tableHtml+='<tr style="border-top:1px solid #e2e8f0;background:'+bg+'">';
+              tableHtml+='<td style="padding:3px 6px">'+d.date+'</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.shift+'</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center;font-weight:600;color:'+(parseFloat(d.lph)>=100?'#059669':'#ef4444')+'">'+d.lph+'</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.fil+'%</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.nug+'%</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.mis+'%</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.yld+'%</td>';
+              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.hrs+'</td>';
+              tableHtml+='</tr>';
+            });
+            tableHtml+='</tbody></table></div></div>';
+
+            // Build sparklines
+            var lphVals=days.map(function(d){return parseFloat(d.lph);});
+            var filVals=days.map(function(d){return parseFloat(d.fil);});
+            var nugVals=days.map(function(d){return parseFloat(d.nug);});
+            var misVals=days.map(function(d){return parseFloat(d.mis);});
+            var yldVals=days.map(function(d){return parseFloat(d.yld);});
+            if(lphVals.length>1){
+              tableHtml+='<div style="margin-bottom:12px;overflow-x:auto;white-space:nowrap"><div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:6px">Trends</div>'+
+                sparkline(lphVals,'#1a3a6b','Lbs/Hr')+
+                sparkline(filVals,'#10b981','Fillet%')+
+                sparkline(nugVals,'#f59e0b','Nugget%')+
+                sparkline(misVals,'#ef4444','Miscut%')+
+                sparkline(yldVals,'#3b82f6','Yield%')+
+                '</div>';
+            }
+          }
+
+          // Build AI coaching section
+          var failsHtml=fails.length?
+            '<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">Deductions: '+fails.join(' | ')+'</div>':
+            '<div style="font-size:.72rem;color:#059669;margin-bottom:4px">All metrics on target</div>';
+          var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics met the '+base+' threshold.';
+          var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr) but received a final grade of '+gl+' after penalties. '+failTxt+' Full stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Total Yield: '+yld+'%. In 1-2 sentences explain exactly why the grade dropped (name the failing metrics and targets). Then give 2-3 specific practical coaching tips. Be direct.';
+
+          box.innerHTML='<div class="tpa" style="padding:4px">'+
+            '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap">'+
+              '<div style="text-align:center;flex:0 0 auto">'+
+                '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
+                '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
+              '</div>'+
+              '<div style="flex:1;min-width:180px">'+
+                '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' — Performance Report</strong>'+
+                '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
+                failsHtml+
+                '<div id="ai-text-'+sid+'" style="font-size:.75rem;line-height:1.6;color:#374151"><span style="color:#94a3b8">Loading AI coaching...</span></div>'+
+              '</div>'+
+              '<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px">'+
+                '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">Print</button>'+
+                '<button id="es-btn-'+sid+'" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">En Español</button>'+
+              '</div>'+
+            '</div>'+
+            tableHtml+
+          '</div>';
+
+          // Load AI coaching
+          apiCall('POST','/api/ai',{query:prompt}).then(function(d){
+            var text=d.response||d.text||d.content||'Unable to generate.';
+            var aiEl=document.getElementById('ai-text-'+sid);
+            if(aiEl) aiEl.innerHTML=text.replace(/
+/g,'<br>');
+            window['_aiText_'+sid]=text;
+
+            // Wire Spanish button
+            var esBtn=document.getElementById('es-btn-'+sid);
+            if(esBtn) esBtn.addEventListener('click',function(){
+              var aiEl2=document.getElementById('ai-text-'+sid);
+              var curText=window['_aiText_'+sid]||'';
+              if(this.dataset.lang==='es'){
+                if(aiEl2) aiEl2.innerHTML=curText.replace(/
+/g,'<br>');
+                this.textContent='En Español'; this.dataset.lang='';
+              } else {
+                if(aiEl2) aiEl2.innerHTML='<span style="color:#94a3b8">Traduciendo...</span>';
+                this.dataset.lang='es'; this.textContent='In English';
+                apiCall('POST','/api/ai',{query:'Translate the following to Spanish:
+
+'+curText}).then(function(d2){
+                  var esText=d2.response||d2.text||d2.content||curText;
+                  window['_aiTextEs_'+sid]=esText;
+                  if(aiEl2) aiEl2.innerHTML=esText.replace(/
+/g,'<br>');
+                }).catch(function(){if(aiEl2) aiEl2.innerHTML=curText.replace(/
+/g,'<br>');});
+              }
+            });
+          }).catch(function(){
+            var aiEl=document.getElementById('ai-text-'+sid);
+            if(aiEl) aiEl.innerHTML='<span style="color:#ef4444">Error generating report.</span>';
+          });
+        }).catch(function(){
+          box.innerHTML='<span style="color:#ef4444">Error loading records.</span>';
+        });
+      });
+    });
 
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
