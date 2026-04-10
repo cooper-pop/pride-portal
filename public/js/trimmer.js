@@ -1,5 +1,25 @@
 // trimmer.js - Trimmer Log and Analytics
 
+function fmtAI(txt){
+  if(!txt)return '';
+  var lines=txt.split('\n');
+  var out=[];
+  lines.forEach(function(line){
+    line=line.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    line=line.replace(/__(.+?)__/g,'<strong>$1</strong>');
+    if(/^\d+\.\s/.test(line)){
+      out.push('<div style="margin:5px 0 5px 10px;line-height:1.55">'+line+'</div>');
+    } else if(/^[\-\*]\s/.test(line)){
+      out.push('<div style="margin:4px 0 4px 14px;line-height:1.55">&bull; '+line.substring(2)+'</div>');
+    } else if(line.trim()===''){
+      out.push('<div style="margin:4px 0"></div>');
+    } else {
+      out.push(line);
+    }
+  });
+  return out.join('<br>');
+}
+
 function buildTrimmerWidget() {
   var tabs = ["&#x1F4F7; Upload C.A.T.2","&#x2702;&#xFE0F; Manual Entry","&#x1F4CB; History","&#x1F4CA; Analytics"];
   document.getElementById("widget-tabs").innerHTML = tabs.map(function(t,i){ return '<div class="widget-tab'+(i===0?" active":"")+'" onclick="trimShowTab('+i+')">'+t+'</div>'; }).join("");
@@ -424,14 +444,14 @@ function trimRenderAnalytics(){
           apiCall('POST','/api/ai',{query:prompt}).then(function(d){
             var txt=d.response||d.text||d.content||'';
             var aiEl=document.getElementById('ait-'+sid);
-            if(aiEl)aiEl.innerHTML=txt.split('\n').join('<br>');
+            if(aiEl)aiEl.innerHTML=fmtAI(txt);
             window['_ait_'+sid]=txt;
             var esb=document.getElementById('esb-'+sid);
             if(esb)esb.addEventListener('click',function(){
               var aiEl2=document.getElementById('ait-'+sid);
               var cur=window['_ait_'+sid]||'';
               if(this.dataset.lang==='es'){
-                if(aiEl2)aiEl2.innerHTML=cur.split('\n').join('<br>');
+                if(aiEl2)aiEl2.innerHTML=fmtAI(cur);
                 this.textContent='En Espa\u00f1ol';
                 this.dataset.lang='';
               }else{
@@ -441,7 +461,7 @@ function trimRenderAnalytics(){
                 apiCall('POST','/api/ai',{query:'Translate to Spanish:\n'+cur}).then(function(d2){
                   var es=d2.response||d2.text||d2.content||cur;
                   window['_ait_es_'+sid]=es;
-                  if(aiEl2)aiEl2.innerHTML=es.split('\n').join('<br>');
+                  if(aiEl2)aiEl2.innerHTML=fmtAI(es);
                 }).catch(function(){if(aiEl2)aiEl2.innerHTML=cur.split('\n').join('<br>');});
               }
             });
