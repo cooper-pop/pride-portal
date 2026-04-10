@@ -417,7 +417,7 @@ function trimRenderAnalytics(){
                 .then(function(d2){
                   var es=d2.response||d2.text||d2.content||text;
                   if(aiEl) aiEl.innerHTML='<strong style="color:#059669">&#127466;&#127480; Espa&ntilde;ol:</strong><br>'+es.replace(/\n/g,'<br>');
-                  btn.textContent='&#127466;&#127480; Traducir al Español';
+                  btn.textContent='&#127466;&#127480; Traducir al Espa\u00f1ol';
                   btn.disabled=false;
                 }).catch(function(){btn.disabled=false;btn.textContent='Error';});
             });
