@@ -312,7 +312,120 @@ function trimRenderAnalytics(){
     var pb=document.getElementById('tpb');
     if(pb)pb.addEventListener('click',function(){window.print();});
     document.querySelectorAll('#tp button').forEach(function(btn){
-      btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});
+      btn.addEventListener('click',function(){
+        var sid=this.dataset.sid,nm=this.dataset.nm,gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var base=this.dataset.base;
+        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
+        var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
+        var fails=[];try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
+        var row=document.getElementById('bd-'+sid);
+        var box=row?row.querySelector('.tbb'):null;
+        if(!row||!box)return;
+        if(row.style.display!=='none'){row.style.display='none';return;}
+        row.style.display='';
+        box.innerHTML='<span style="color:#94a3b8">Loading breakdown...</span>';
+
+        // Fetch daily history for this employee
+        var empNum=this.dataset.sid.replace(/_\d+$/,'').replace(/_/g,' ');
+        apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(rankData){
+          var empRow=(rankData.rankings||[]).find(function(r){return r.full_name===nm;})||{};
+          var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:6px">&#9660; Grade deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:6px">&#10003; All metrics above F threshold</div>';
+
+          // Grade badge + stats
+          var headerHtml='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">'+
+            '<div style="text-align:center;flex:0 0 auto">'+
+              '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
+              '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
+            '</div>'+
+            '<div style="flex:1;min-width:200px">'+
+              '<strong style="color:#1a3a6b;font-size:.85rem">'+nm+'</strong><br>'+
+              '<span style="font-size:.72rem;color:#374151">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</span><br>'+
+              failsHtml+
+            '</div>'+
+          '</div>';
+
+          // Sparkline canvas chart
+          var metrics=[
+            {label:'Lbs/Hr',key:'avg_lph',color:'#1a3a6b'},
+            {label:'Fillet%',key:'avg_fillet_pct',color:'#10b981'},
+            {label:'Nugget%',key:'avg_nugget_pct',color:'#f59e0b'},
+            {label:'Miscut%',key:'avg_misccut_pct',color:'#ef4444'},
+            {label:'Yield%',key:'avg_total_yield',color:'#3b82f6'}
+          ];
+
+          // Build AI section placeholder
+          var aiId='ai-'+sid;
+          var esId='es-'+sid;
+          var printId='pr-'+sid;
+
+          box.innerHTML='<div class="tpa" style="padding:4px">'+
+            headerHtml+
+            '<div id="spark-'+sid+'" style="overflow-x:auto;margin-bottom:10px"></div>'+
+            '<div id="'+aiId+'" style="font-size:.78rem;line-height:1.6;color:#374151;margin-bottom:8px"><span style="color:#94a3b8">&#x2728; Generating AI coaching...</span></div>'+
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+              '<button id="'+esId+'" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#127466;&#127480; Traducir al Espa&ntilde;ol</button>'+
+              '<button id="'+printId+'" onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button>'+
+            '</div>'+
+          '</div>';
+
+          // Draw sparklines using canvas
+          var sparkDiv=document.getElementById('spark-'+sid);
+          if(sparkDiv){
+            var cw=Math.min(sparkDiv.parentElement.offsetWidth-32,600),ch=80;
+            var can=document.createElement('canvas');
+            can.width=cw; can.height=ch;
+            can.style.width='100%';
+            var ctx2=can.getContext('2d');
+            // Draw simple bar sparklines with the 5 metric values
+            var vals=[avg,parseFloat(fil),parseFloat(nug),parseFloat(mis),parseFloat(yld)];
+            var maxVals=[200,100,40,15,100];
+            var bw=cw/5-4;
+            metrics.forEach(function(m,i){
+              var pct=Math.min(vals[i]/maxVals[i],1);
+              var x=i*(bw+4)+2;
+              var barH=Math.max(4,pct*(ch-18));
+              ctx2.fillStyle=m.color+'33';
+              ctx2.fillRect(x,2,bw,ch-18);
+              ctx2.fillStyle=m.color;
+              ctx2.fillRect(x,ch-18-barH+2,bw,barH);
+              ctx2.fillStyle='#374151';
+              ctx2.font='9px sans-serif';
+              ctx2.textAlign='center';
+              ctx2.fillText(m.label,x+bw/2,ch-2);
+              ctx2.fillText(vals[i].toFixed(1),x+bw/2,ch-18-barH);
+            });
+            sparkDiv.appendChild(can);
+          }
+
+          // Generate AI coaching
+          var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics above the F threshold.';
+          var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr) and received a final grade of '+gl+'. '+failTxt+' Full stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Total Yield: '+yld+'%. In 1-2 sentences explain exactly why the grade is what it is. Then give 2-3 specific practical coaching tips. Be direct and concise.';
+          var aiEl=document.getElementById(aiId);
+          var esEl=document.getElementById(esId);
+
+          apiCall('POST','/api/ai',{query:prompt}).then(function(d){
+            var text=d.response||d.text||d.content||'Unable to generate.';
+            window['_aiText_'+sid]=text;
+            if(aiEl) aiEl.innerHTML=text.replace(/
+/g,'<br>');
+            // Wire Spanish button
+            if(esEl) esEl.addEventListener('click',function(){
+              var btn=this;
+              btn.disabled=true; btn.textContent='Traduciendo...';
+              apiCall('POST','/api/ai',{query:'Translate the following coaching report to Spanish. Keep the same format and tone:
+
+'+text})
+                .then(function(d2){
+                  var es=d2.response||d2.text||d2.content||text;
+                  if(aiEl) aiEl.innerHTML='<strong style="color:#059669">&#127466;&#127480; Espa&ntilde;ol:</strong><br>'+es.replace(/
+/g,'<br>');
+                  btn.textContent='&#127466;&#127480; Traducir al Español';
+                  btn.disabled=false;
+                }).catch(function(){btn.disabled=false;btn.textContent='Error';});
+            });
+          }).catch(function(){if(aiEl) aiEl.innerHTML='<span style="color:#ef4444">Error generating report.</span>';});
+        });
+      });
     });
     document.querySelectorAll('.ttb').forEach(function(btn){
       btn.addEventListener('click',function(){
