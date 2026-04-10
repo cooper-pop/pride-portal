@@ -1,167 +1,10 @@
-document.querySelectorAll('.ttb').forEach(function(btn){
-      btn.addEventListener('click',function(){
-        var sid=this.dataset.sid,nm=this.dataset.nm;
-        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
-        var base=this.dataset.base;
-        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
-        var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
-        var empNum=this.dataset.empnum||'';
-        var fails=[];try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
-        var row=document.getElementById('bd-'+sid);
-        var box=row?row.querySelector('.tbb'):null;
-        if(!row||!box)return;
-        if(row.style.display!=='none'){row.style.display='none';return;}
-        row.style.display='';
-        box.innerHTML='<span style="color:#94a3b8">Loading report...</span>';
+// trimmer.js - Trimmer Log and Analytics
 
-        // Fetch all trimmer records to build daily log for this trimmer
-        apiCall('GET','/api/records?type=trimmer').then(function(records){
-          // Extract entries for this trimmer across all reports
-          var days=[];
-          (records||[]).forEach(function(report){
-            var entries=report.entries||[];
-            entries.forEach(function(e){
-              if((e.full_name||'').toLowerCase()===nm.toLowerCase()||(e.emp_number&&e.emp_number===empNum)){
-                days.push({
-                  date:report.report_date?report.report_date.split('T')[0]:report.record_date,
-                  shift:report.shift||'',
-                  lph:parseFloat(e.lbs_per_hour||e.realtime_lbs_per_hour||0).toFixed(1),
-                  fil:parseFloat(e.fillet_yield_pct||0).toFixed(1),
-                  nug:parseFloat(e.nugget_yield_pct||0).toFixed(1),
-                  mis:parseFloat(e.misccut_yield_pct||0).toFixed(1),
-                  yld:parseFloat(e.total_yield_pct||0).toFixed(1),
-                  hrs:parseFloat(e.hours_worked||0).toFixed(1),
-                  lbs:parseFloat(e.incoming_lbs||0).toFixed(0)
-                });
-              }
-            });
-          });
-          // Sort by date desc
-          days.sort(function(a,b){return b.date>a.date?1:-1;});
-
-          // Build sparkline SVG for a series of values
-          function sparkline(vals,color,label){
-            if(!vals.length) return '';
-            var min=Math.min.apply(null,vals),max=Math.max.apply(null,vals);
-            var range=max-min||1;
-            var w=160,h=40,pad=4;
-            var pts=vals.map(function(v,i){
-              var x=pad+(i/(vals.length-1||1))*(w-pad*2);
-              var y=h-pad-(v-min)/range*(h-pad*2);
-              return x.toFixed(1)+','+y.toFixed(1);
-            }).join(' ');
-            var lastVal=vals[vals.length-1];
-            return '<div style="display:inline-block;margin-right:12px;text-align:center">'+
-              '<div style="font-size:.62rem;color:#64748b;margin-bottom:2px">'+label+'</div>'+
-              '<svg width="'+w+'" height="'+h+'" style="border-radius:4px;background:#f8fafc">'+
-              '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.5"/>'+
-              '<circle cx="'+(pad+(vals.length-1)/(vals.length-1||1)*(w-pad*2))+'" cy="'+(h-pad-(lastVal-min)/range*(h-pad*2))+'" r="2.5" fill="'+color+'"/>'+
-              '</svg>'+
-              '<div style="font-size:.65rem;font-weight:700;color:'+color+'">'+lastVal.toFixed(1)+'</div>'+
-              '</div>';
-          }
-
-          // Build daily log table
-          var tableHtml='';
-          if(days.length){
-            tableHtml='<div style="margin-bottom:12px"><div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:6px">Daily Log</div>';
-            tableHtml+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.7rem"><thead>';
-            tableHtml+='<tr style="background:#1a3a6b;color:#fff"><th style="padding:4px 6px;text-align:left">Date</th><th style="padding:4px 6px">Shift</th><th style="padding:4px 6px">Lbs/Hr</th><th style="padding:4px 6px">Fillet%</th><th style="padding:4px 6px">Nugget%</th><th style="padding:4px 6px">Miscut%</th><th style="padding:4px 6px">Yield%</th><th style="padding:4px 6px">Hrs</th></tr></thead><tbody>';
-            days.forEach(function(d,i){
-              var bg=i%2===0?'#fff':'#f8fafc';
-              tableHtml+='<tr style="border-top:1px solid #e2e8f0;background:'+bg+'">';
-              tableHtml+='<td style="padding:3px 6px">'+d.date+'</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.shift+'</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center;font-weight:600;color:'+(parseFloat(d.lph)>=100?'#059669':'#ef4444')+'">'+d.lph+'</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.fil+'%</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.nug+'%</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.mis+'%</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.yld+'%</td>';
-              tableHtml+='<td style="padding:3px 6px;text-align:center">'+d.hrs+'</td>';
-              tableHtml+='</tr>';
-            });
-            tableHtml+='</tbody></table></div></div>';
-
-            // Build sparklines
-            var lphVals=days.map(function(d){return parseFloat(d.lph);});
-            var filVals=days.map(function(d){return parseFloat(d.fil);});
-            var nugVals=days.map(function(d){return parseFloat(d.nug);});
-            var misVals=days.map(function(d){return parseFloat(d.mis);});
-            var yldVals=days.map(function(d){return parseFloat(d.yld);});
-            if(lphVals.length>1){
-              tableHtml+='<div style="margin-bottom:12px;overflow-x:auto;white-space:nowrap"><div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:6px">Trends</div>'+
-                sparkline(lphVals,'#1a3a6b','Lbs/Hr')+
-                sparkline(filVals,'#10b981','Fillet%')+
-                sparkline(nugVals,'#f59e0b','Nugget%')+
-                sparkline(misVals,'#ef4444','Miscut%')+
-                sparkline(yldVals,'#3b82f6','Yield%')+
-                '</div>';
-            }
-          }
-
-          // Build AI coaching section
-          var failsHtml=fails.length?
-            '<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">Deductions: '+fails.join(' | ')+'</div>':
-            '<div style="font-size:.72rem;color:#059669;margin-bottom:4px">All metrics on target</div>';
-          var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics met the '+base+' threshold.';
-          var prompt='You are a catfish processing plant performance coach. Trimmer "'+nm+'" earned a base grade of '+base+' from speed ('+avg+' lbs/hr) but received a final grade of '+gl+' after penalties. '+failTxt+' Full stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Total Yield: '+yld+'%. In 1-2 sentences explain exactly why the grade dropped (name the failing metrics and targets). Then give 2-3 specific practical coaching tips. Be direct.';
-
-          box.innerHTML='<div class="tpa" style="padding:4px">'+
-            '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap">'+
-              '<div style="text-align:center;flex:0 0 auto">'+
-                '<div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div>'+
-                '<div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div>'+
-              '</div>'+
-              '<div style="flex:1;min-width:180px">'+
-                '<strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' \u2014 Performance Report</strong>'+
-                '<div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+
-                failsHtml+
-                '<div id="ai-text-'+sid+'" style="font-size:.75rem;line-height:1.6;color:#374151"><span style="color:#94a3b8">Loading AI coaching...</span></div>'+
-              '</div>'+
-              '<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px">'+
-                '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">Print</button>'+
-                '<button id="es-btn-'+sid+'" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.7rem;cursor:pointer">En Espanol</button>'+
-              '</div>'+
-            '</div>'+
-            tableHtml+
-          '</div>';
-
-          // Load AI coaching
-          apiCall('POST','/api/ai',{query:prompt}).then(function(d){
-            var text=d.response||d.text||d.content||'Unable to generate.';
-            var aiEl=document.getElementById('ai-text-'+sid);
-            if(aiEl) aiEl.innerHTML=text.replace(/\n/g,'<br>');
-            window['_aiText_'+sid]=text;
-
-            // Wire Spanish button
-            var esBtn=document.getElementById('es-btn-'+sid);
-            if(esBtn) esBtn.addEventListener('click',function(){
-              var aiEl2=document.getElementById('ai-text-'+sid);
-              var curText=window['_aiText_'+sid]||'';
-              if(this.dataset.lang==='es'){
-                if(aiEl2) aiEl2.innerHTML=curText.replace(/\n/g,'<br>');
-                this.textContent='En Espanol'; this.dataset.lang='';
-              } else {
-                if(aiEl2) aiEl2.innerHTML='<span style="color:#94a3b8">Traduciendo...</span>';
-                this.dataset.lang='es'; this.textContent='In English';
-                apiCall('POST','/api/ai',{query:'Translate the following to Spanish:
-
-'+curText}).then(function(d2){
-                  var esText=d2.response||d2.text||d2.content||curText;
-                  window['_aiTextEs_'+sid]=esText;
-                  if(aiEl2) aiEl2.innerHTML=esText.replace(/\n/g,'<br>');
-                }).catch(function(){if(aiEl2) aiEl2.innerHTML=curText.replace(/\n/g,'<br>');});
-              }
-            });
-          }).catch(function(){
-            var aiEl=document.getElementById('ai-text-'+sid);
-            if(aiEl) aiEl.innerHTML='<span style="color:#ef4444">Error generating report.</span>';
-          });
-        }).catch(function(){
-          box.innerHTML='<span style="color:#ef4444">Error loading records.</span>';
-        });
-      });
-    });
+function buildTrimmerWidget() {
+  var tabs = ["&#x1F4F7; Upload C.A.T.2","&#x2702;&#xFE0F; Manual Entry","&#x1F4CB; History","&#x1F4CA; Analytics"];
+  document.getElementById("widget-tabs").innerHTML = tabs.map(function(t,i){ return '<div class="widget-tab'+(i===0?" active":"")+'" onclick="trimShowTab('+i+')">'+t+'</div>'; }).join("");
+  trimRows=[trimEmptyRow()]; trimShowTab(0);
+}
 
 function trimShowTab(idx) {
   document.querySelectorAll(".widget-tab").forEach(function(t,i){ t.classList.toggle("active",i===idx); });
@@ -175,8 +18,8 @@ function trimRenderUpload() {
     '<div class="upload-drop-zone">'+
     '<div style="font-size:2rem;margin-bottom:8px">&#x1F4C4;</div>'+
     '<div style="display:flex;gap:10px;margin-top:4px">'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">\ud83d\udcc1 Upload File</button>'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">\ud83d\udcf7 Take Photo</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">ð Upload File</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">ð· Take Photo</button>'+
     '</div>'+
     '<div style="font-size:0.75rem;color:var(--sub);margin-top:6px">PDF, JPG, PNG supported</div></div>'+
     '<input type="file" id="trim-file-input" accept="image/*,application/pdf" style="display:none" onchange="trimHandleFile(this)"/>'+
@@ -271,9 +114,9 @@ async function trimSaveEntry(entryId, reportId) {
   data.realtime_lbs_per_hour = data.minutes_worked>0?(data.total_lbs/(data.minutes_worked/60)):0;
   try {
     await apiCall('PATCH', '/api/records', { type:'entry', ...data });
-    toast('\u2705 Saved');
+    toast('â Saved');
     trimRenderHistory();
-  } catch(e) { toast('\u274c Save failed: '+e.message); }
+  } catch(e) { toast('â Save failed: '+e.message); }
 }
 
 async function trimDeleteEntry(entryId, btn) {
@@ -286,7 +129,7 @@ async function trimDeleteEntry(entryId, btn) {
     if (row) { row.style.opacity='0.3'; row.style.transition='opacity 0.2s'; setTimeout(()=>row.remove(),200); }
     else trimRenderHistory();
     toast('Entry deleted');
-  } catch(e) { toast('\u274c '+e.message); }
+  } catch(e) { toast('â '+e.message); }
 }
 
 async function trimDeleteReport(reportId) {
@@ -295,13 +138,13 @@ async function trimDeleteReport(reportId) {
     await apiCall('DELETE', '/api/records?type=trimmer&id='+reportId);
     toast('Report deleted');
     trimRenderHistory();
-  } catch(e) { toast('\u274c '+e.message); }
+  } catch(e) { toast('â '+e.message); }
 }
 
 async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history\u2026</div></div></div></div>';
+    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading historyâ¦</div></div></div></div>';
     let reports = [];
     try {
       const data = await apiCall('GET', '/api/records?type=trimmer');
@@ -317,11 +160,11 @@ async function trimRenderHistory() {
       const totalLbs = entries.reduce((s,e) => s+(parseFloat(e.total_lbs)||0),0);
       html += '<div class="wcard" style="margin-bottom:16px">';
       html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-      html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' \u2014 '+(rpt.shift||'')+' Shift</div>';
-      html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers \u00b7 '+totalLbs.toFixed(1)+' total lbs</div></div>';
-      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">\ud83d\uddd1 Delete Report</button>';
+      html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' â '+(rpt.shift||'')+' Shift</div>';
+      html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers Â· '+totalLbs.toFixed(1)+' total lbs</div></div>';
+      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">ð Delete Report</button>';
       html += '</div>';
-      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">\u270f\ufe0f Click any value to edit \u2014 saves automatically.</div>';
+      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">âï¸ Click any value to edit â saves automatically.</div>';
       html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
       ['Emp#','Name','Code','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>'+h+'</th>'; });
       html += '</tr></thead><tbody>';
@@ -343,7 +186,7 @@ async function trimRenderHistory() {
           html += '<td>'+(parseFloat(e.total_lbs)||0).toFixed(1)+'</td>';
           html += '<td>'+(parseFloat(e.total_yield_pct)||0).toFixed(1)+'%</td>';
           html += '<td>'+(parseFloat(e.realtime_lbs_per_hour)||0).toFixed(1)+'</td>';
-          html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">\u2715</button></td>';
+          html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">â</button></td>';
         } else {
           html += '<td>'+(e.emp_number||'')+'</td><td>'+(e.full_name||'')+'</td><td>'+(e.trim_number||'')+'</td>';
           html += '<td>'+(e.minutes_worked||0)+'</td><td>'+(e.incoming_lbs||0)+'</td>';
@@ -364,22 +207,24 @@ async function trimRenderHistory() {
 
 // trimSaveCell not found
 
-
-
-function trimCalcGrade(r){
-  var lph=parseFloat(r.avg_lph||0),fil=parseFloat(r.avg_fillet_pct||0);
-  var nug=parseFloat(r.avg_nugget_pct||0),mis=parseFloat(r.avg_misccut_pct||999);
+async function trimCalcGrade(r){
+  var lph=parseFloat(r.avg_lph||0);
+  var fil=parseFloat(r.avg_fillet_pct||0);
+  var nug=parseFloat(r.avg_nugget_pct||0);
+  var mis=parseFloat(r.avg_misccut_pct||999);
   var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
+  var T={lph:[150,125,115,110,100],fil:[65,63,62,61,61],nug:[20,19,18,17.5,17],mis:[5,6,6.5,7,7.5],yld:[90,85,80,75,70]};
   var base=5;
-  if(lph>=150)base=0;else if(lph>=125)base=1;else if(lph>=115)base=2;else if(lph>=110)base=3;else if(lph>=100)base=4;
+  for(var i=0;i<5;i++){if(lph>=T.lph[i]){base=i;break;}}
   var fails=[];
-  if(lph<100)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below 100 min)');
-  if(fil<61)fails.push('Fillet '+fil.toFixed(1)+'% (below 61% min)');
-  if(nug<17)fails.push('Nugget '+nug.toFixed(1)+'% (below 17% min)');
-  if(mis>7.5)fails.push('Miscut '+mis.toFixed(1)+'% (above 7.5% max)');
-  if(yld<70)fails.push('Yield '+yld.toFixed(1)+'% (below 70% min)');
+  if(base<5){
+    if(fil<T.fil[base])fails.push('Fillet '+fil.toFixed(1)+'% (needs '+T.fil[base]+'%+)');
+    if(nug<T.nug[base])fails.push('Nugget '+nug.toFixed(1)+'% (needs '+T.nug[base]+'%+)');
+    if(mis>T.mis[base])fails.push('Miscut '+mis.toFixed(1)+'% (needs <'+T.mis[base]+'%)');
+    if(yld<T.yld[base])fails.push('Yield '+yld.toFixed(1)+'% (needs '+T.yld[base]+'%+)');
+  }
   var finalIdx=Math.min(base+fails.length,5);
   return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
 }
@@ -393,18 +238,26 @@ function trimRenderAnalytics(){
     var pLabel=days===7?'7':days===30?'30':days===60?'60':'YTD';
     var pills=[{lb:'7 Day',d:7},{lb:'30 Day',d:30},{lb:'60 Day',d:60},{lb:'YTD',d:365}];
     var h='<div id="tp" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
-    pills.forEach(function(p){var a=p.d===days;h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';});
+    pills.forEach(function(p){
+      var a=p.d===days;
+      h+='<button data-d="'+p.d+'" style="border:none;border-radius:6px;padding:5px 12px;font-size:.75rem;font-weight:600;cursor:pointer;background:'+(a?'#1a3a6b':'#f1f5f9')+';color:'+(a?'#fff':'#475569')+'">'+p.lb+'</button>';
+    });
     h+='</div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">Rankings - Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
-    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Print</button></div>';
+    h+='<h3 style="margin:0;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127942; Rankings &#8212; Last '+pLabel+' Days <span style="font-weight:400;font-size:.75rem;color:#64748b">Team avg: '+teamAvg+' lbs/hr</span></h3>';
+    h+='<button id="tpb" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">&#128438; Print</button></div>';
     h+='<div style="overflow-x:auto"><table id="trt" style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr style="background:#1a3a6b;color:#fff">';
-    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';});
+    ['#','Name','Days','Avg Lbs/Hr','8Hr Lbs/Hr','Fillet%','Nugget%','MiscCut%','Tot Yield%','Grade','Trend'].forEach(function(col,i){
+      h+='<th style="padding:6px 8px;text-align:'+(i<=2?'center':'left')+';white-space:nowrap">'+col+'</th>';
+    });
     h+='</tr></thead><tbody>';
     rankings.forEach(function(r,i){
       var g=trimCalcGrade(r);
-      var avg=parseFloat(r.avg_lph||0),yld=parseFloat(r.avg_total_yield||0);
-      var nm=r.full_name||'',sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
-      var under=r.underperformer,trendIcon=under?'v':'>';
+      var avg=parseFloat(r.avg_lph||0);
+      var yld=parseFloat(r.avg_total_yield||0);
+      var nm=r.full_name||'';
+      var sid=nm.replace(/[^a-zA-Z0-9]/g,'_')+'_'+i;
+      var under=r.underperformer;
+      var trendIcon=under?'&#8681;':'&#8680;';
       var trendCol=under?'#ef4444':'#f59e0b';
       h+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'">';
       h+='<td style="padding:5px 8px;text-align:center;font-weight:700;color:#1a3a6b">'+(i+1)+'</td>';
@@ -417,11 +270,31 @@ function trimRenderAnalytics(){
       h+='<td style="padding:5px 8px">'+(r.avg_misccut_pct!=null?r.avg_misccut_pct+'%':'')+'</td>';
       h+='<td style="padding:5px 8px;font-weight:600">'+(yld?yld+'%':'')+'</td>';
       h+='<td style="padding:5px 8px"><span style="display:inline-block;min-width:30px;text-align:center;padding:2px 6px;border-radius:20px;font-weight:800;font-size:.75rem;background:'+g.bg+';color:'+g.c+'">'+g.l+'</span></td>';
-      h+='<td style="padding:5px 8px"><button class="ttb" data-sid="'+sid+'" data-nm="'+nm+'" data-gl="'+g.l+'" data-gbg="'+g.bg+'" data-gc="'+g.c+'" data-base="'+g.base+'" data-fails="'+encodeURIComponent(JSON.stringify(g.fails))+'" data-avg="'+avg+'" data-yld="'+yld+'" data-fil="'+(r.avg_fillet_pct||0)+'" data-nug="'+(r.avg_nugget_pct||0)+'" data-mis="'+(r.avg_misccut_pct||0)+'" style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px" title="View breakdown">'+trendIcon+'</button></td>';
-      h+='</tr><tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
+      h+='<td style="padding:5px 8px">';
+      h+='<button class="ttb"';
+      h+=' data-sid="'+sid+'"';
+      h+=' data-nm="'+nm+'"';
+      h+=' data-gl="'+g.l+'"';
+      h+=' data-gbg="'+g.bg+'"';
+      h+=' data-gc="'+g.c+'"';
+      h+=' data-base="'+g.base+'"';
+      h+=' data-fails="'+encodeURIComponent(JSON.stringify(g.fails))+'"';
+      h+=' data-avg="'+avg+'"';
+      h+=' data-yld="'+yld+'"';
+      h+=' data-fil="'+(r.avg_fillet_pct||0)+'"';
+      h+=' data-nug="'+(r.avg_nugget_pct||0)+'"';
+      h+=' data-mis="'+(r.avg_misccut_pct||0)+'"';
+      h+=' style="border:none;background:none;cursor:pointer;font-size:1rem;color:'+trendCol+';font-weight:700;padding:2px 5px;border-radius:4px"';
+      h+=' title="View breakdown">'+trendIcon+'</button></td>';
+      h+='</tr>';
+      h+='<tr id="bd-'+sid+'" style="display:none"><td colspan="11" style="padding:0"><div class="tbb" style="padding:10px 14px;background:#eff6ff;border-left:4px solid #1a3a6b"></div></td></tr>';
     });
     h+='</tbody></table></div>';
-    if(!document.getElementById('tps')){var s=document.createElement('style');s.id='tps';s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';document.head.appendChild(s);}
+    if(!document.getElementById('tps')){
+      var s=document.createElement('style');s.id='tps';
+      s.innerHTML='@media print{body *{visibility:hidden}#trt,#trt *,.tpa,.tpa *{visibility:visible}#trt{position:fixed;top:0;left:0;width:100%;font-size:10px}.tpa{position:fixed;top:0;left:0;width:100%}}';
+      document.head.appendChild(s);
+    }
     return h;
   }
   apiCall('GET','/api/analytics?type=rankings&days='+window._trimPeriod).then(function(data){
@@ -430,11 +303,15 @@ function trimRenderAnalytics(){
     el.innerHTML=buildTable(rankings,teamAvg,window._trimPeriod);
     var pb=document.getElementById('tpb');
     if(pb)pb.addEventListener('click',function(){window.print();});
-    document.querySelectorAll('#tp button').forEach(function(btn){btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});});
+    document.querySelectorAll('#tp button').forEach(function(btn){
+      btn.addEventListener('click',function(){window._trimPeriod=parseInt(this.dataset.d);trimRenderAnalytics();});
+    });
     document.querySelectorAll('.ttb').forEach(function(btn){
       btn.addEventListener('click',function(){
-        var sid=this.dataset.sid,nm=this.dataset.nm,gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
-        var base=this.dataset.base,avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
+        var sid=this.dataset.sid,nm=this.dataset.nm;
+        var gl=this.dataset.gl,gbg=this.dataset.gbg,gc=this.dataset.gc;
+        var base=this.dataset.base;
+        var avg=parseFloat(this.dataset.avg),yld=parseFloat(this.dataset.yld);
         var fil=this.dataset.fil,nug=this.dataset.nug,mis=this.dataset.mis;
         var fails=[];try{fails=JSON.parse(decodeURIComponent(this.dataset.fails||'[]'));}catch(e){}
         var row=document.getElementById('bd-'+sid);
@@ -442,37 +319,73 @@ function trimRenderAnalytics(){
         if(!row||!box)return;
         if(row.style.display!=='none'){row.style.display='none';return;}
         row.style.display='';
-        var failsHtml=fails.length?'<div style="font-size:.72rem;color:#ef4444;font-weight:600;margin-bottom:4px">Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.72rem;color:#059669;margin-bottom:4px">All metrics above F threshold</div>';
-        var aiId='ai-'+sid;
-        box.innerHTML='<div class="tpa" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start"><div style="text-align:center;flex:0 0 auto"><div style="width:56px;height:56px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.62rem;color:#64748b;margin-top:2px">Base: '+base+'</div></div><div style="flex:1;min-width:180px"><strong style="color:#1a3a6b;display:block;margin-bottom:3px;font-size:.82rem">'+nm+' - Performance Report</strong><div style="font-size:.72rem;color:#374151;margin-bottom:3px">'+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%</div>'+failsHtml+'<div id="'+aiId+'" style="font-size:.75rem;line-height:1.6;color:#374151;margin-bottom:8px">Generating coaching report...</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="es-btn" data-aiid="'+aiId+'" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Traducir al Espanol</button><button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.72rem;cursor:pointer">Print</button></div></div></div>';
-        var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics above the F threshold.';
-        var prompt='You are a catfish processing plant coach. Trimmer "'+nm+'" earned base grade '+base+' ('+avg+' lbs/hr) and final grade '+gl+'. '+failTxt+' Stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%. In 1-2 sentences explain the grade. Then give 2-3 specific practical tips. Be direct.';
-        var aiEl=document.getElementById(aiId);
-        apiCall('POST','/api/ai',{query:prompt}).then(function(d){
-          var text=d.response||d.text||d.content||'Unable to generate.';
-          window['_ai_'+sid]=text;
-          if(aiEl)aiEl.innerHTML=text.replace(/\n/g,'<br>');
-          var esBtn=box.querySelector('.es-btn');
-          if(esBtn)esBtn.addEventListener('click',function(){
-            var b=this;b.disabled=true;b.textContent='Traduciendo...';
-            apiCall('POST','/api/ai',{query:'Translate to Spanish, keep same format:
-
-'+text}).then(function(d2){
-              var es=d2.response||d2.text||d2.content||text;
-              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/\n/g,'<br>');
-              b.textContent='Traducir al Espanol';b.disabled=false;
-            }).catch(function(){b.disabled=false;b.textContent='Error';});
+        box.innerHTML='<span style="color:#94a3b8">Loading report...</span>';
+        apiCall('GET','/api/records?type=trimmer').then(function(records){
+          var days=[];
+          (records||[]).forEach(function(report){
+            (report.entries||[]).forEach(function(e){
+              if((e.full_name||'').toLowerCase()===nm.toLowerCase()){
+                days.push({date:(report.report_date||report.record_date||'').split('T')[0],shift:report.shift||'',lph:parseFloat(e.lbs_per_hour||e.realtime_lbs_per_hour||0).toFixed(1),fil:parseFloat(e.fillet_yield_pct||0).toFixed(1),nug:parseFloat(e.nugget_yield_pct||0).toFixed(1),mis:parseFloat(e.misccut_yield_pct||0).toFixed(1),yld:parseFloat(e.total_yield_pct||0).toFixed(1),hrs:parseFloat(e.hours_worked||0).toFixed(1)});
+              }
+            });
           });
-        }).catch(function(){if(aiEl)aiEl.innerHTML='Error generating report.';});
+          days.sort(function(a,b){return a.date<b.date?1:-1;});
+          function spark(vals,col,lbl){
+            if(vals.length<2)return '';
+            var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng=mx-mn||1,w=140,h=36,pd=3;
+            var pts=vals.map(function(v,i){return (pd+(i/(vals.length-1))*(w-pd*2)).toFixed(1)+','+(h-pd-(v-mn)/rng*(h-pd*2)).toFixed(1);}).join(' ');
+            return '<div style="display:inline-block;margin-right:10px;text-align:center"><div style="font-size:.6rem;color:#64748b">'+lbl+'</div><svg width="'+w+'" height="'+h+'" style="background:#f8fafc;border-radius:3px"><polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="1.5"/></svg><div style="font-size:.62rem;font-weight:700;color:'+col+'">'+vals[vals.length-1].toFixed(1)+'</div></div>';
+          }
+          var tableHtml='';
+          if(days.length){
+            tableHtml='<div style="margin:10px 0 6px;font-size:.78rem;font-weight:700;color:#1a3a6b">Daily Log</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.68rem"><thead><tr style="background:#1a3a6b;color:#fff"><th style="padding:3px 5px;text-align:left">Date</th><th style="padding:3px 5px">Shift</th><th style="padding:3px 5px">Lbs/Hr</th><th style="padding:3px 5px">Fil%</th><th style="padding:3px 5px">Nug%</th><th style="padding:3px 5px">Mis%</th><th style="padding:3px 5px">Yield%</th><th style="padding:3px 5px">Hrs</th></tr></thead><tbody>';
+            days.forEach(function(d,i){tableHtml+='<tr style="border-top:1px solid #e2e8f0;background:'+(i%2===0?'#fff':'#f8fafc')+'"><td style="padding:2px 5px">'+d.date+'</td><td style="padding:2px 5px;text-align:center">'+d.shift+'</td><td style="padding:2px 5px;text-align:center;color:'+(parseFloat(d.lph)>=100?'#059669':'#ef4444')+'">'+d.lph+'</td><td style="padding:2px 5px;text-align:center">'+d.fil+'%</td><td style="padding:2px 5px;text-align:center">'+d.nug+'%</td><td style="padding:2px 5px;text-align:center">'+d.mis+'%</td><td style="padding:2px 5px;text-align:center">'+d.yld+'%</td><td style="padding:2px 5px;text-align:center">'+d.hrs+'</td></tr>';});
+            tableHtml+='</tbody></table></div>';
+            var lphV=days.map(function(d){return parseFloat(d.lph);});
+            var filV=days.map(function(d){return parseFloat(d.fil);});
+            var nugV=days.map(function(d){return parseFloat(d.nug);});
+            var misV=days.map(function(d){return parseFloat(d.mis);});
+            var yldV=days.map(function(d){return parseFloat(d.yld);});
+            if(lphV.length>1)tableHtml+='<div style="margin:10px 0 6px;font-size:.78rem;font-weight:700;color:#1a3a6b">Trends</div><div style="overflow-x:auto;white-space:nowrap">'+spark(lphV,'#1a3a6b','Lbs/Hr')+spark(filV,'#10b981','Fillet%')+spark(nugV,'#f59e0b','Nugget%')+spark(misV,'#ef4444','Miscut%')+spark(yldV,'#3b82f6','Yield%')+'</div>';
+          }
+          var failsHtml=fails.length?'<div style="font-size:.7rem;color:#ef4444;font-weight:600;margin-bottom:3px">Deductions: '+fails.join(' | ')+'</div>':'<div style="font-size:.7rem;color:#059669;margin-bottom:3px">All metrics on target</div>';
+          var failTxt=fails.length?'Grade deductions: '+fails.join('; ')+'.':'All metrics met the '+base+' threshold.';
+          var prompt='Catfish processing performance coach. Trimmer "'+nm+'" base grade '+base+' ('+avg+' lbs/hr), final grade '+gl+' after penalties. '+failTxt+' Stats: '+avg+' lbs/hr | Fillet: '+fil+'% | Nugget: '+nug+'% | Miscut: '+mis+'% | Yield: '+yld+'%. In 1-2 sentences explain grade drop. Then 2-3 specific coaching tips. Be direct.';
+          box.innerHTML='<div class="tpa" style="padding:4px">'+
+            '<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px">'+
+              '<div style="text-align:center;flex:0 0 auto"><div style="width:52px;height:52px;border-radius:50%;background:'+gbg+';display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:900;color:'+gc+'">'+gl+'</div><div style="font-size:.6rem;color:#64748b;margin-top:2px">Base: '+base+'</div></div>'+
+              '<div style="flex:1;min-width:160px"><strong style="color:#1a3a6b;font-size:.8rem">'+nm+' &mdash; Performance Report</strong><div style="font-size:.7rem;color:#374151;margin:2px 0">'+avg+' lbs/hr | Fil: '+fil+'% | Nug: '+nug+'% | Mis: '+mis+'% | Yield: '+yld+'%</div>'+failsHtml+'<div id="ait-'+sid+'" style="font-size:.73rem;line-height:1.55;color:#374151">Loading AI coaching...</div></div>'+
+              '<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:5px">'+
+                '<button onclick="window.print()" style="background:#1a3a6b;color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:.68rem;cursor:pointer">Print</button>'+
+                '<button id="esb-'+sid+'" data-en="" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:.68rem;cursor:pointer">En Espanol</button>'+
+              '</div>'+
+            '</div>'+tableHtml+
+          '</div>';
+          apiCall('POST','/api/ai',{query:prompt}).then(function(d){
+            var txt=d.response||d.text||d.content||'Unable to generate.';
+            var el=document.getElementById('ait-'+sid);
+            if(el)el.innerHTML=txt.split('\n').join('<br>');
+            window['_ait_'+sid]=txt;
+            var esb=document.getElementById('esb-'+sid);
+            if(esb)esb.addEventListener('click',function(){
+              var el2=document.getElementById('ait-'+sid);
+              var cur=window['_ait_'+sid]||'';
+              if(this.dataset.en==='es'){window['_ait_'+sid]=cur;if(el2)el2.innerHTML=(window['_ait0_'+sid]||cur).split('\n').join('<br>');this.textContent='En Espanol';this.dataset.en='';}
+              else{window['_ait0_'+sid]=cur;if(el2)el2.innerHTML='Traduciendo...';this.dataset.en='es';this.textContent='In English';
+                apiCall('POST','/api/ai',{query:'Translate to Spanish:\n'+cur}).then(function(d2){var es=d2.response||d2.text||d2.content||cur;window['_ait_'+sid]=es;if(el2)el2.innerHTML=es.split('\n').join('<br>');}).catch(function(){if(el2)el2.innerHTML=cur.split('\n').join('<br>');});
+              }
+            });
+          }).catch(function(){var el=document.getElementById('ait-'+sid);if(el)el.innerHTML='Error.';});
+        }).catch(function(){box.innerHTML='<span style="color:#ef4444">Error.</span>';});
       });
-    });
+    }););
   }).catch(function(e){el.innerHTML='<div class="log-empty">'+e.message+'</div>';});
 }
 async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
     const area = document.getElementById("trim-trend-area");
     if(!area) return;
-    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trend\u2026</div></div>";
+    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trendâ¦</div></div>";
     btn.disabled = true;
     let data;
     try { data = await apiCall("GET", "/api/analytics?type=trimmer_trends&days=90&trimmer_name="+encodedName); }
@@ -489,7 +402,7 @@ async function trimShowTrend(encodedName, btn) {
     const inLbs = trends.map(function(t){ return parseFloat(t.incoming_lbs||0); });
     // Build charts
     let html = "<div class=\"wcard\" style=\"margin-top:12px\">";
-    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">\ud83d\udcc9 " + name + " \u2014 Last 90 Days (" + trends.length + " shifts)</h3>";
+    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">ð " + name + " â Last 90 Days (" + trends.length + " shifts)</h3>";
     // Summary stats
     const avgLph = lph.reduce(function(a,b){return a+b;},0)/lph.length;
     const avgFillet = fPct.reduce(function(a,b){return a+b;},0)/fPct.length;
@@ -508,11 +421,11 @@ async function trimShowTrend(encodedName, btn) {
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Lbs/Hr per shift</div>";
     html += trimBarChart(dates, lph, "#16a34a", "")+"</div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Fillet % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% \u2192 "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% â "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Nugget % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% \u2192 "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% â "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">MiscCut % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% \u2192 "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% â "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
     html += "</div>";
     // Detail table
     html += "<details style=\"margin-top:12px\"><summary style=\"font-size:0.8rem;color:var(--blue);cursor:pointer\">Show raw data (" + trends.length + " shifts)</summary>";
@@ -585,7 +498,7 @@ window.trimShowTrend = trimShowTrend;
 window.trimSetPeriod = trimSetPeriod;
 
 
-// \u2500\u2500 TRIMMER GRADING SYSTEM \u2500\u2500
+// ââ TRIMMER GRADING SYSTEM ââ
 function getTrimmerGrade(pct) {
   if (pct === null || pct === undefined || isNaN(pct)) return {letter:'N/A', color:'#94a3b8', bg:'#f8fafc'};
   if (pct >= 100) return {letter:'A+', color:'#fff', bg:'#059669'};
@@ -597,10 +510,10 @@ function getTrimmerGrade(pct) {
 }
 
 function getTrimmerTrend(curr, prev) {
-  if (curr===null||prev===null) return {arrow:'\u2014', color:'#94a3b8'};
-  if (curr > prev+2)  return {arrow:'\u2191', color:'#059669'};
-  if (curr < prev-2)  return {arrow:'\u2193', color:'#dc2626'};
-  return               {arrow:'\u2192', color:'#64748b'};
+  if (curr===null||prev===null) return {arrow:'â', color:'#94a3b8'};
+  if (curr > prev+2)  return {arrow:'â', color:'#059669'};
+  if (curr < prev-2)  return {arrow:'â', color:'#dc2626'};
+  return               {arrow:'â', color:'#64748b'};
 }
 
 function buildTrimmerGrades(period) {
