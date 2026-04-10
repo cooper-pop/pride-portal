@@ -235,16 +235,20 @@ function trimCalcGrade(r){
   var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-  var T={lph:[150,125,115,110,100],fil:[65,63,62,61,61],nug:[20,19,18,17.5,17],mis:[5,6,6.5,7,7.5],yld:[90,85,80,75,70]};
+  // Base grade from lbs/hr speed
   var base=5;
-  for(var i=0;i<5;i++){if(lph>=T.lph[i]){base=i;break;}}
+  if(lph>=150)base=0;
+  else if(lph>=125)base=1;
+  else if(lph>=115)base=2;
+  else if(lph>=110)base=3;
+  else if(lph>=100)base=4;
+  // Penalty: -1 for each metric that is at F-floor standard (absolute minimums only)
   var fails=[];
-  if(base<5){
-    if(fil<T.fil[base])fails.push('Fillet '+fil.toFixed(1)+'% (needs '+T.fil[base]+'%+)');
-    if(nug<T.nug[base])fails.push('Nugget '+nug.toFixed(1)+'% (needs '+T.nug[base]+'%+)');
-    if(mis>T.mis[base])fails.push('Miscut '+mis.toFixed(1)+'% (needs <'+T.mis[base]+'%)');
-    if(yld<T.yld[base])fails.push('Yield '+yld.toFixed(1)+'% (needs '+T.yld[base]+'%+)');
-  }
+  if(lph<100)  fails.push('Speed '+lph.toFixed(1)+' lbs/hr (F floor: below 100)');
+  if(fil<61)   fails.push('Fillet '+fil.toFixed(1)+'% (F floor: below 61%)');
+  if(nug<17)   fails.push('Nugget '+nug.toFixed(1)+'% (F floor: below 17%)');
+  if(mis>7.5)  fails.push('Miscut '+mis.toFixed(1)+'% (F floor: above 7.5%)');
+  if(yld<70)   fails.push('Yield '+yld.toFixed(1)+'% (F floor: below 70%)');
   var finalIdx=Math.min(base+fails.length,5);
   return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
 }
