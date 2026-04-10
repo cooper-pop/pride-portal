@@ -114,7 +114,7 @@ async function aiSend() {
   try {
     var data = await apiCall('POST','/api/ai',{ query: q });
     var thinkEl = document.getElementById('ai-thinking');
-    if (thinkEl) thinkEl.textContent = data.response;
+    if (thinkEl) { thinkEl.outerHTML = '<div class="ai-msg assistant" style="line-height:1.65">' + mdToHtml((data.response||''  ).replace(/\\n/g,'\n')) + '</div>'; }
     else chat.innerHTML += '<div class="ai-msg assistant" style="line-height:1.65">'+mdToHtml((data.response||'').replace(/\\n/g,'\n'))+'</div>';
   } catch(e) {
     var thinkEl2 = document.getElementById('ai-thinking');
