@@ -130,8 +130,7 @@ document.querySelectorAll('.ttb').forEach(function(btn){
           apiCall('POST','/api/ai',{query:prompt}).then(function(d){
             var text=d.response||d.text||d.content||'Unable to generate.';
             var aiEl=document.getElementById('ai-text-'+sid);
-            if(aiEl) aiEl.innerHTML=text.replace(/
-/g,'<br>');
+            if(aiEl) aiEl.innerHTML=text.replace(/\n/g,'<br>');
             window['_aiText_'+sid]=text;
 
             // Wire Spanish button
@@ -140,8 +139,7 @@ document.querySelectorAll('.ttb').forEach(function(btn){
               var aiEl2=document.getElementById('ai-text-'+sid);
               var curText=window['_aiText_'+sid]||'';
               if(this.dataset.lang==='es'){
-                if(aiEl2) aiEl2.innerHTML=curText.replace(/
-/g,'<br>');
+                if(aiEl2) aiEl2.innerHTML=curText.replace(/\n/g,'<br>');
                 this.textContent='En Español'; this.dataset.lang='';
               } else {
                 if(aiEl2) aiEl2.innerHTML='<span style="color:#94a3b8">Traduciendo...</span>';
@@ -151,10 +149,8 @@ document.querySelectorAll('.ttb').forEach(function(btn){
 '+curText}).then(function(d2){
                   var esText=d2.response||d2.text||d2.content||curText;
                   window['_aiTextEs_'+sid]=esText;
-                  if(aiEl2) aiEl2.innerHTML=esText.replace(/
-/g,'<br>');
-                }).catch(function(){if(aiEl2) aiEl2.innerHTML=curText.replace(/
-/g,'<br>');});
+                  if(aiEl2) aiEl2.innerHTML=esText.replace(/\n/g,'<br>');
+                }).catch(function(){if(aiEl2) aiEl2.innerHTML=curText.replace(/\n/g,'<br>');});
               }
             });
           }).catch(function(){
@@ -455,8 +451,7 @@ function trimRenderAnalytics(){
         apiCall('POST','/api/ai',{query:prompt}).then(function(d){
           var text=d.response||d.text||d.content||'Unable to generate.';
           window['_ai_'+sid]=text;
-          if(aiEl)aiEl.innerHTML=text.replace(/
-/g,'<br>');
+          if(aiEl)aiEl.innerHTML=text.replace(/\n/g,'<br>');
           var esBtn=box.querySelector('.es-btn');
           if(esBtn)esBtn.addEventListener('click',function(){
             var b=this;b.disabled=true;b.textContent='Traduciendo...';
@@ -464,8 +459,7 @@ function trimRenderAnalytics(){
 
 '+text}).then(function(d2){
               var es=d2.response||d2.text||d2.content||text;
-              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/
-/g,'<br>');
+              if(aiEl)aiEl.innerHTML='<strong style="color:#059669">Espanol:</strong><br>'+es.replace(/\n/g,'<br>');
               b.textContent='Traducir al Espanol';b.disabled=false;
             }).catch(function(){b.disabled=false;b.textContent='Error';});
           });
