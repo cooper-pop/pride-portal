@@ -1,7 +1,7 @@
 // admin.js - Admin panel and user management
 
 function buildAdminWidget() {
-  document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User'].map(function(t,i){
+  document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User','⚙️ Grade Config'].map(function(t,i){
     return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="adminShowTab('+i+')">'+t+'</div>';
   }).join('');
   adminShowTab(0);
@@ -17,7 +17,7 @@ function buildAdminWidget() {
 
 function adminShowTab(idx) {
   document.querySelectorAll('.widget-tab').forEach(function(t,i){ t.classList.toggle('active',i===idx); });
-  if (idx===0) adminRenderUsers(); else adminRenderAddUser();
+  if (idx===0) adminRenderUsers(); else if (idx===1) adminRenderAddUser(); else adminRenderGradeConfig();
 }
 
 async function adminRenderUsers() {
@@ -249,4 +249,96 @@ function renderGradeSettings(container){
       if(msg)msg.style.color='#ef4444',msg.textContent='Error saving.';
     });
   });
+}
+async function adminRenderGradeConfig(){
+  const el=document.getElementById('widget-content');
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:20px"><div class="spinner"></div>Loading...</div>';
+  const cfg=await apiCall('GET','/api/records?action=grade_config').catch(()=>null);
+  if(!cfg){el.innerHTML='<div class="log-empty">Error loading config</div>';return;}
+
+  function row(label,id,val,step,min,max,unit){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9">'
+      +'<div style="flex:1;font-size:.8rem;color:#374151">'+label+'</div>'
+      +'<input id="gc-'+id+'" type="number" value="'+val+'" step="'+step+'" min="'+min+'" max="'+max
+      +'" style="width:80px;padding:3px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:.8rem;text-align:right">'
+      +'<span style="font-size:.75rem;color:#64748b;width:30px">'+unit+'</span>'
+      +'</div>';
+  }
+
+  var grades=cfg.grades||[];
+  var pens=cfg.penalties||{};
+
+  var h='<div style="padding:4px">';
+  h+='<div style="font-size:.9rem;font-weight:700;color:#1a3a6b;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">Base Grade Thresholds (lbs/hr)</div>';
+  h+='<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">Minimum lbs/hr required for each base grade</div>';
+  grades.forEach(function(g,i){
+    if(g.label==='F')return;
+    h+=row(g.label+' grade',  'g'+i, g.minLph, 1, 0, 300, 'lbs/hr');
+  });
+
+  h+='<div style="font-size:.9rem;font-weight:700;color:#1a3a6b;margin:16px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0">F-Floor Penalty Thresholds</div>';
+  h+='<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">Each metric that crosses its F-floor threshold deducts one letter grade</div>';
+
+  var penKeys=['lph','fillet','nugget','miscut','yield'];
+  var penLabels={lph:'Speed (lbs/hr) below',fillet:'Fillet% below',nugget:'Nugget% below',miscut:'Miscut% above',yield:'Yield% below'};
+  var penUnits={lph:'lph',fillet:'%',nugget:'%',miscut:'%',yield:'%'};
+  var penSteps={lph:1,fillet:0.5,nugget:0.5,miscut:0.1,yield:1};
+  penKeys.forEach(function(k){
+    var p=pens[k]||{};
+    h+=row(penLabels[k],'p_'+k,p.threshold,penSteps[k],0,200,penUnits[k]);
+  });
+
+  h+='<div style="margin-top:16px;display:flex;gap:10px">';
+  h+='<button onclick="adminSaveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:8px 18px;font-size:.82rem;font-weight:600;cursor:pointer">Save Changes</button>';
+  h+='<button onclick="adminResetGradeConfig()" style="background:#f1f5f9;color:#374151;border:1px solid #d1d5db;border-radius:7px;padding:8px 14px;font-size:.82rem;cursor:pointer">Reset Defaults</button>';
+  h+='<span id="gc-msg" style="font-size:.78rem;line-height:2;color:#059669"></span>';
+  h+='</div></div>';
+  el.innerHTML=h;
+}
+
+async function adminSaveGradeConfig(){
+  const msg=document.getElementById('gc-msg');
+  if(msg)msg.textContent='Saving...';
+  const cfg=await apiCall('GET','/api/records?action=grade_config').catch(()=>null);
+  if(!cfg)return;
+  var grades=cfg.grades||[];
+  grades.forEach(function(g,i){
+    var inp=document.getElementById('gc-g'+i);
+    if(inp&&g.label!=='F') g.minLph=parseFloat(inp.value)||g.minLph;
+  });
+  var pens=cfg.penalties||{};
+  ['lph','fillet','nugget','miscut','yield'].forEach(function(k){
+    var inp=document.getElementById('gc-p_'+k);
+    if(inp&&pens[k]) pens[k].threshold=parseFloat(inp.value)||pens[k].threshold;
+  });
+  cfg.grades=grades; cfg.penalties=pens;
+  await apiCall('POST','/api/records?action=grade_config',cfg).catch(()=>null);
+  // Bust the trimmer grade cache
+  window._gradeConfig=cfg;
+  if(msg)msg.textContent='Saved!';
+  setTimeout(function(){if(msg)msg.textContent='';},2000);
+}
+
+async function adminResetGradeConfig(){
+  const defaults={
+    grades:[
+      {label:'A+',minLph:150,color:'#059669'},
+      {label:'A', minLph:125,color:'#10b981'},
+      {label:'B', minLph:115,color:'#3b82f6'},
+      {label:'C', minLph:110,color:'#f59e0b'},
+      {label:'D', minLph:100,color:'#f97316'},
+      {label:'F', minLph:0,  color:'#ef4444'}
+    ],
+    penalties:{
+      lph:   {enabled:true,threshold:100,direction:'below',label:'Speed (lbs/hr)'},
+      fillet:{enabled:true,threshold:61, direction:'below',label:'Fillet%'},
+      nugget:{enabled:true,threshold:17, direction:'below',label:'Nugget%'},
+      miscut:{enabled:true,threshold:7.5,direction:'above',label:'Miscut%'},
+      yield: {enabled:true,threshold:70, direction:'below',label:'Yield%'}
+    }
+  };
+  await apiCall('POST','/api/records?action=grade_config',defaults).catch(()=>null);
+  window._gradeConfig=defaults;
+  adminRenderGradeConfig();
 }

@@ -1,4 +1,18 @@
 
+    // Grade config CRUD
+    if (req.method === 'GET' && action === 'grade_config') {
+      const rows = await sql`SELECT value FROM app_config WHERE key = 'grade_config'`;
+      if (rows.length) return res.json(JSON.parse(rows[0].value));
+      return res.json(JSON.parse('{"grades":[{"label":"A+","minLph":150,"color":"#059669"},{"label":"A","minLph":125,"color":"#10b981"},{"label":"B","minLph":115,"color":"#3b82f6"},{"label":"C","minLph":110,"color":"#f59e0b"},{"label":"D","minLph":100,"color":"#f97316"},{"label":"F","minLph":0,"color":"#ef4444"}],"penalties":{"lph":{"enabled":true,"threshold":100,"direction":"below","label":"Speed (lbs/hr)"},"fillet":{"enabled":true,"threshold":61,"direction":"below","label":"Fillet%"},"nugget":{"enabled":true,"threshold":17,"direction":"below","label":"Nugget%"},"miscut":{"enabled":true,"threshold":7.5,"direction":"above","label":"Miscut%"},"yield":{"enabled":true,"threshold":70,"direction":"below","label":"Yield%"}}}'));
+    }
+    if (req.method === 'POST' && action === 'grade_config') {
+      const val = JSON.stringify(req.body);
+      await sql`INSERT INTO app_config (key, value) VALUES ('grade_config', ${val})
+        ON CONFLICT (key) DO UPDATE SET value = ${val}, updated_at = NOW()`;
+      return res.json({ok:true});
+    }
+
+    
 // Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
   return rows.map(r => {

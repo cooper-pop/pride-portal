@@ -233,24 +233,35 @@ function trimCalcGrade(r){
   var nug=parseFloat(r.avg_nugget_pct||0);
   var mis=parseFloat(r.avg_misccut_pct||999);
   var yld=parseFloat(r.avg_total_yield||0);
-  var GRADES=['A+','A','B','C','D','F'];
-  var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-  // Base grade from lbs/hr only
-  var base=5;
-  if(lph>=150)base=0;
-  else if(lph>=125)base=1;
-  else if(lph>=115)base=2;
-  else if(lph>=110)base=3;
-  else if(lph>=100)base=4;
-  // F-floor penalties: each metric below F standard = -1
+  var cfg=window._gradeConfig;
+  // Defaults if no config loaded
+  var GRADES=cfg?cfg.grades.map(function(g){return g.label;}):['A+','A','B','C','D','F'];
+  var COLORS=cfg?cfg.grades.map(function(g){return g.color;}):['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
+  var LPHS=cfg?cfg.grades.map(function(g){return g.minLph;}): [150,125,115,110,100,0];
+  var pens=cfg?cfg.penalties:{
+    lph:{threshold:100,direction:'below'},
+    fillet:{threshold:61,direction:'below'},
+    nugget:{threshold:17,direction:'below'},
+    miscut:{threshold:7.5,direction:'above'},
+    yield:{threshold:70,direction:'below'}
+  };
+  // Base grade from lph
+  var base=GRADES.length-1;
+  for(var i=0;i<GRADES.length-1;i++){if(lph>=LPHS[i]){base=i;break;}}
+  // F-floor penalties
   var fails=[];
-  if(lph<100)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below 100 min)');
-  if(fil<61)fails.push('Fillet '+fil.toFixed(1)+'% (below 61% min)');
-  if(nug<17)fails.push('Nugget '+nug.toFixed(1)+'% (below 17% min)');
-  if(mis>7.5)fails.push('Miscut '+mis.toFixed(1)+'% (above 7.5% max)');
-  if(yld<70)fails.push('Yield '+yld.toFixed(1)+'% (below 70% min)');
-  var finalIdx=Math.min(base+fails.length,5);
+  if(lph<(pens.lph?pens.lph.threshold:100))fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below '+(pens.lph?pens.lph.threshold:100)+' min)');
+  if(fil<(pens.fillet?pens.fillet.threshold:61))fails.push('Fillet '+fil.toFixed(1)+'% (below '+(pens.fillet?pens.fillet.threshold:61)+'% min)');
+  if(nug<(pens.nugget?pens.nugget.threshold:17))fails.push('Nugget '+nug.toFixed(1)+'% (below '+(pens.nugget?pens.nugget.threshold:17)+'% min)');
+  if(mis>(pens.miscut?pens.miscut.threshold:7.5))fails.push('Miscut '+mis.toFixed(1)+'% (above '+(pens.miscut?pens.miscut.threshold:7.5)+'% max)');
+  if(yld<(pens.yield?pens.yield.threshold:70))fails.push('Yield '+yld.toFixed(1)+'% (below '+(pens.yield?pens.yield.threshold:70)+'% min)');
+  var finalIdx=Math.min(base+fails.length,GRADES.length-1);
   return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
+}
+async function trimLoadGradeConfig(){
+  if(window._gradeConfig)return window._gradeConfig;
+  try{var cfg=await apiCall('GET','/api/records?action=grade_config');window._gradeConfig=cfg;return cfg;}
+  catch(e){return null;}
 }
 
 function trimRenderAnalytics(){
@@ -258,6 +269,7 @@ function trimRenderAnalytics(){
   if(!el)return;
   if(!window._trimPeriod)window._trimPeriod=30;
   el.innerHTML='<div style="text-align:center;padding:30px"><div class="spinner"></div>Loading...</div>';
+  trimLoadGradeConfig();
 
   function sparkline(vals,color,label){
     if(!vals||vals.length<2)return '';
