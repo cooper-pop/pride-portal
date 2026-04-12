@@ -84,7 +84,38 @@ module.exports = async function handler(req, res) {
           const rows = await sql`UPDATE trimmer_entries SET emp_number = ${fix.new_num} WHERE id = ${fix.id} RETURNING id, full_name, emp_number`;
           results.push(...rows);
         }
-        return res.json({ ok: true, updated: results.length, results });
+        return res.json({ ok: true, updated: results.length });
+      }
+      if (action === 'get_roster') {
+        await sql`CREATE TABLE IF NOT EXISTS trimmer_roster (id SERIAL PRIMARY KEY, full_name TEXT UNIQUE NOT NULL, emp_number TEXT NOT NULL, trim_number TEXT, company_id INTEGER DEFAULT 1, active BOOLEAN DEFAULT true, updated_at TIMESTAMPTZ DEFAULT NOW())`;
+        const rows = await sql`SELECT full_name, emp_number, trim_number FROM trimmer_roster WHERE active = true ORDER BY full_name`;
+        return res.json(rows);
+      }
+      if (action === 'save_roster') {
+        const {full_name, emp_number, trim_number} = body;
+        if (!full_name || !emp_number) return res.status(400).json({error:'full_name and emp_number required'});
+        const rows = await sql`INSERT INTO trimmer_roster (full_name, emp_number, trim_number) VALUES (${full_name}, ${emp_number}, ${trim_number||''}) ON CONFLICT (full_name) DO UPDATE SET emp_number=EXCLUDED.emp_number, trim_number=EXCLUDED.trim_number, updated_at=NOW() RETURNING *`;
+        return res.json({ ok: true, roster: rows[0] });
+      }
+      if (action === 'seed_roster') {
+        await sql`CREATE TABLE IF NOT EXISTS trimmer_roster (id SERIAL PRIMARY KEY, full_name TEXT UNIQUE NOT NULL, emp_number TEXT NOT NULL, trim_number TEXT, company_id INTEGER DEFAULT 1, active BOOLEAN DEFAULT true, updated_at TIMESTAMPTZ DEFAULT NOW())`;
+        const employees = [{"name":"Adriana Zuniga","emp":"5246","trim":"A Zuniga"},{"name":"Armida Miramontes","emp":"2013","trim":"A Miramor"},{"name":"Cedric Berry","emp":"1914","trim":"CBerry"},{"name":"Cielo Gonzalez","emp":"2534","trim":"C Gonzale"},{"name":"Dennise Elias","emp":"2632","trim":"D Elias"},{"name":"Dolores Hernandez","emp":"2416","trim":"D Hernand"},{"name":"Elsa Galdamez","emp":"2903","trim":"E Galdame"},{"name":"Erendira Ortega","emp":"6973","trim":"E Ortega"},{"name":"Fatima Granades","emp":"1982","trim":"Fatima Gr"},{"name":"Griselda Sanchez","emp":"1313","trim":"G Sanhez"},{"name":"Isabel Garcia","emp":"8531","trim":"I Garcia"},{"name":"Josefina Rosales","emp":"1242","trim":"J Rosales"},{"name":"Judith Rico","emp":"7854","trim":"J Rico"},{"name":"Judkrisha Carter","emp":"9935","trim":"J Carter"},{"name":"Karla Gonzales","emp":"8451","trim":"K Gonzale"},{"name":"Keesha Williams","emp":"5266","trim":"KWilliams"},{"name":"Lataska Craig","emp":"9805","trim":"L Craig"},{"name":"Lizeth Zarate","emp":"1307","trim":"L Zarate"},{"name":"Lolita Gober","emp":"1883","trim":"LGober"},{"name":"Lourdes Rodriguez","emp":"2857","trim":"L Rodrigue"},{"name":"Lucy Allen","emp":"7387","trim":"LAllen"},{"name":"Maria Alvarado","emp":"2008","trim":"M Alvarado"},{"name":"Maximina Rodriguez","emp":"3892","trim":"M Rodrigu"},{"name":"Nohemi Sanchez","emp":"7008","trim":"N Sanchez"},{"name":"Patrica Starks","emp":"7624","trim":"P Starks"},{"name":"Patrice Williams","emp":"4363","trim":"PWilliams"},{"name":"Patricia Redmon","emp":"5032","trim":"P Redmon"},{"name":"Phyllis Sturdivant","emp":"5912","trim":"P Sturdiva"},{"name":"Raquel Monroy","emp":"2560","trim":"R Monroy"},{"name":"Reyna Galdamez","emp":"7434","trim":"R Galdame"},{"name":"Rocio Hernandez","emp":"6116","trim":"R Hernand"},{"name":"Rosalia Robles","emp":"6825","trim":"R Robles"},{"name":"Roselyn Mateo","emp":"9067","trim":"R Mateo"},{"name":"Samanta Martinez","emp":"2523","trim":"S Martinez"},{"name":"Soledad Garcia","emp":"1318","trim":"S Garcia"},{"name":"Telma Galdamez","emp":"4789","trim":"T Galdam"},{"name":"Teresa Cruz","emp":"1457","trim":"TCruz"},{"name":"Yessica Hernandez","emp":"2007","trim":"Y Hernand"}]
+NaN
+        for (const emp of employees) {
+          await sql`INSERT INTO trimmer_roster (full_name, emp_number, trim_number) VALUES (${emp.name}, ${emp.emp}, ${emp.trim}) ON CONFLICT (full_name) DO UPDATE SET emp_number=EXCLUDED.emp_number, trim_number=EXCLUDED.trim_number, updated_at=NOW()`;
+        }
+        const count = await sql`SELECT COUNT(*) FROM trimmer_roster`;
+        return res.json({ ok: true, seeded: count[0].count });
+      }
+      if (action === 'validate_entry') {
+        const {full_name, emp_number} = body;
+        const rows = await sql`SELECT full_name, emp_number, trim_number FROM trimmer_roster WHERE full_name ILIKE ${full_name}`;
+        if (!rows.length) return res.json({ known: false, message: 'Employee not in roster - will be added as new' });
+        const canonical = rows[0];
+        if (canonical.emp_number !== emp_number) {
+          return res.json({ known: true, match: false, correct_emp_number: canonical.emp_number, message: 'Employee number mismatch - should be ' + canonical.emp_number });
+        }
+        return res.json({ known: true, match: true, message: 'OK' });
       }
       return res.status(400).json({error:'Unknown type'});
     }
