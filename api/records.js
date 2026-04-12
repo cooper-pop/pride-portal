@@ -77,11 +77,6 @@ module.exports = async function handler(req, res) {
         `;
         return res.json(normalizeRows(reports));
       }
-      if (action === 'fix_gober') {
-        const gid = 'd8f0d856-b614-4e46-b600-e1f0b7215b00';
-        const rows = await sql`UPDATE trimmer_entries SET emp_number = '1883' WHERE id = ${gid} AND emp_number = '1683' RETURNING id, full_name, emp_number`;
-        return res.json({ ok: true, updated: rows });
-      }
       return res.status(400).json({error:'Unknown type'});
     }
     if (req.method === 'POST') {
