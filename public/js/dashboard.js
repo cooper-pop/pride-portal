@@ -91,3 +91,27 @@ window.showScreen = showScreen;
 window.buildDash = buildDash;
 window.closeWidget = closeWidget;
 window.openWidget = openWidget;
+
+function settingsShowTab(tab){
+  document.getElementById('settings-panel-users').style.display=tab==='users'?'block':'none';
+  document.getElementById('settings-panel-grades').style.display=tab==='grades'?'block':'none';
+  var tu=document.getElementById('settings-tab-users');
+  var tg=document.getElementById('settings-tab-grades');
+  if(tu){tu.style.borderBottomColor=tab==='users'?'#1a3a6b':'transparent';tu.style.color=tab==='users'?'#1a3a6b':'#64748b';}
+  if(tg){tg.style.borderBottomColor=tab==='grades'?'#1a3a6b':'transparent';tg.style.color=tab==='grades'?'#1a3a6b':'#64748b';}
+  if(tab==='grades'){
+    apiCall('GET','/api/records?action=get_grade_config')
+      .then(function(cfg){
+        window._gradeConfig=cfg||{};
+        var gs=document.getElementById('grade-config-section-settings');
+        if(gs&&typeof renderGradeConfig==='function'){
+          var bak=document.getElementById('grade-config-section');
+          if(bak)bak.id='grade-config-section-bak';
+          gs.id='grade-config-section';
+          renderGradeConfig();
+          gs.id='grade-config-section-settings';
+          if(bak)bak.id='grade-config-section';
+        }
+      }).catch(function(){window._gradeConfig={};});
+  }
+}
