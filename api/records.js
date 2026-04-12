@@ -1,3 +1,4 @@
+// v1776014362431
 
 // Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
