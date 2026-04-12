@@ -27,17 +27,17 @@ function buildDash() {
   if (currentCompany === 'potp') {
     apps = [
       { id:'yield',     label:'Yield Calc',    icon:'⚖️', color:'#1a3a6b' },
-      { id:'injection', label:'Injection Calc', icon:'💉', color:'#c0392b' },
+      { id:'injection', label:'Injection Calc', icon:'💉',   color:'#c0392b' },
       { id:'trimmer',   label:'Trimmer Log',   icon:'✂️', color:'#1d9e75' },
-      { id:'ai',        label:'AI Analysis',   icon:'🤖', color:'#8e44ad' },
-      { id:'todo',      label:'To-Do List',    icon:'📋', color:'#1a3a6b' }
+      { id:'ai',        label:'AI Analysis',   icon:'🤖',    color:'#8e44ad' },
+      { id:'todo',      label:'To-Do List',    icon:'📋',    color:'#1a3a6b' }
     ];
   } else {
     apps = [{ id:'coming', label:'Coming Soon', icon:'🚧', color:'#5a6a85' }];
   }
   var dock = document.getElementById('dash-dock');
   dock.innerHTML = apps.map(function(a){
-    return '<div class="app-icon" onclick="openWidget(''+a.id+'',''+a.label+'')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
+    return '<div class="app-icon" onclick="openWidget(\''+a.id+'\',\''+a.label+'\')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
   }).join('');
 }
 
