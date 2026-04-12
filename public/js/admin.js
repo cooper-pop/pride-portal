@@ -5,7 +5,7 @@ function buildAdminWidget() {
     .then(function(d){window._gradeConfig=d||{};})
     .catch(function(){window._gradeConfig={};});
   setTimeout(function(){
-    var wc=document.getElementById('widget-content');
+    var wc=_adminTarget;
     if(wc){
       if(!document.getElementById('grade-config-section')){
         var gs=document.createElement('div');gs.id='grade-config-section';
@@ -22,11 +22,11 @@ function buildAdminWidget() {
 
   // Render grade settings panel
   setTimeout(function(){
-    var adminContent=document.getElementById('widget-content');
+    var adminContent=_adminTarget;
     if(adminContent)renderGradeSettings(adminContent);
   },100);
 
-  var _ac=document.getElementById('widget-content');if(_ac&&typeof renderGradeSettings==='function')renderGradeSettings(_ac);
+  var _ac=_adminTarget;if(_ac&&typeof renderGradeSettings==='function')renderGradeSettings(_ac);
 }
 
 function adminShowTab(idx) {
@@ -35,7 +35,7 @@ function adminShowTab(idx) {
 }
 
 async function adminRenderUsers() {
-  document.getElementById('widget-content').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
+  _adminTarget.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div>Loading...</div>';
   try {
     var users = await apiCall('GET','/api/users');
     var rolePillClass = { admin:'role-admin', manager:'role-manager', supervisor:'role-supervisor' };
@@ -47,12 +47,12 @@ async function adminRenderUsers() {
         html += '<div class="user-row"><div><div class="user-row-name">'+u.full_name+(isMe?' <span style="font-size:0.7rem;color:var(--sub)">(you)</span>':'')+'</div><div class="user-row-meta">@'+u.username+'</div></div><span class="role-pill '+(rolePillClass[u.role]||'role-supervisor')+'">'+u.role+'</span>'+(isMe?'':'<button class="wbtn wbtn-danger" style="padding:4px 9px;font-size:0.72rem" onclick="adminDeleteUser(\''+u.id+'\',\''+u.full_name+'\')">Remove</button>')+'</div>';
       });
     }
-    document.getElementById('widget-content').innerHTML = html;
-  } catch(e){ document.getElementById('widget-content').innerHTML='<div class="log-empty">⚠️ '+e.message+'</div>'; }
+    _adminTarget.innerHTML = html;
+  } catch(e){ _adminTarget.innerHTML='<div class="log-empty">⚠️ '+e.message+'</div>'; }
 }
 
 function adminRenderAddUser() {
-  document.getElementById('widget-content').innerHTML =
+  _adminTarget.innerHTML =
     '<div class="wcard"><h3>➕ Add New User</h3>' +
     '<div class="wfield"><label>Full Name</label><input type="text" id="nu-name" placeholder="John Smith"/></div>' +
     '<div class="wfield"><label>Username</label><input type="text" id="nu-user" placeholder="jsmith" autocapitalize="none"/></div>' +
