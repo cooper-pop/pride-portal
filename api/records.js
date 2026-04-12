@@ -77,6 +77,15 @@ module.exports = async function handler(req, res) {
         `;
         return res.json(normalizeRows(reports));
       }
+      if (action === 'bulk_fix_emp') {
+        const fixes = body.fixes || [];
+        const results = [];
+        for (const fix of fixes) {
+          const rows = await sql`UPDATE trimmer_entries SET emp_number = ${fix.new_num} WHERE id = ${fix.id} RETURNING id, full_name, emp_number`;
+          results.push(...rows);
+        }
+        return res.json({ ok: true, updated: results.length, results });
+      }
       return res.status(400).json({error:'Unknown type'});
     }
     if (req.method === 'POST') {
