@@ -1,11 +1,11 @@
 // dashboard.js - Dashboard and widget routing
-
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
   const _el=document.getElementById(id); if(_el) _el.classList.add('active');
 
   if (id === 'screen-user-mgmt') {
     settingsShowTab('users');
+    loadSettingsUsers();
     if (typeof buildAdminWidget === 'function') buildAdminWidget();
   }
 }
@@ -30,15 +30,14 @@ function buildDash() {
       { id:'injection', label:'Injection Calc', icon:'💉', color:'#c0392b' },
       { id:'trimmer',   label:'Trimmer Log',   icon:'✂️', color:'#1d9e75' },
       { id:'ai',        label:'AI Analysis',   icon:'🤖', color:'#8e44ad' },
-      { id:'todo',       label:'To-Do List',    icon:'📋', color:'#1a3a6b' }
+      { id:'todo',      label:'To-Do List',    icon:'📋', color:'#1a3a6b' }
     ];
   } else {
     apps = [{ id:'coming', label:'Coming Soon', icon:'🚧', color:'#5a6a85' }];
   }
-
   var dock = document.getElementById('dash-dock');
   dock.innerHTML = apps.map(function(a){
-    return '<div class="app-icon" onclick="openWidget(\''+a.id+'\',\''+a.label+'\')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
+    return '<div class="app-icon" onclick="openWidget(''+a.id+'',''+a.label+'')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
   }).join('');
 }
 
@@ -47,11 +46,8 @@ function closeWidget() {
   document.getElementById('widget-content').innerHTML = '';
   document.getElementById('widget-tabs').innerHTML = '';
   document.getElementById('ai-input-area').style.display = 'none';
-
-  // Start message notification polling
   if(typeof startMsgPolling !== "undefined") startMsgPolling();
   setTimeout(function(){ if(typeof wireSignOut === "function") wireSignOut(); }, 50);
-  // Wire sign out button after dynamic render
   if(typeof wireSignOut !== "undefined") wireSignOut();
 }
 
@@ -67,40 +63,11 @@ function openWidget(id, label) {
   else if (id === 'todo') todoRender();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
-// Expose functions globally for inline onclick handlers
-window.showScreen = showScreen;
-window.buildDash = buildDash;
-window.closeWidget = closeWidget;
-window.openWidget = openWidget;
-// Expose to global scope for inline onclick handlers
-window.showScreen = showScreen;
-window.buildDash = buildDash;
-window.closeWidget = closeWidget;
-window.openWidget = openWidget;
 
-function settingsShowTab(tab){
-  document.getElementById('settings-panel-users').style.display=tab==='users'?'block':'none';
-  document.getElementById('settings-panel-grades').style.display=tab==='grades'?'block':'none';
-  var tu=document.getElementById('settings-tab-users');
-  var tg=document.getElementById('settings-tab-grades');
-  if(tu){tu.style.borderBottomColor=tab==='users'?'#1a3a6b':'transparent';tu.style.color=tab==='users'?'#1a3a6b':'#64748b';}
-  if(tg){tg.style.borderBottomColor=tab==='grades'?'#1a3a6b':'transparent';tg.style.color=tab==='grades'?'#1a3a6b':'#64748b';}
-  if(tab==='grades'){
-    apiCall('GET','/api/records?action=get_grade_config')
-      .then(function(cfg){
-        window._gradeConfig=cfg||{};
-        var gs=document.getElementById('grade-config-section-settings');
-        if(gs&&typeof renderGradeConfig==='function'){
-          var bak=document.getElementById('grade-config-section');
-          if(bak)bak.id='grade-config-section-bak';
-          gs.id='grade-config-section';
-          renderGradeConfig();
-          gs.id='grade-config-section-settings';
-          if(bak)bak.id='grade-config-section';
-        }
-      }).catch(function(){window._gradeConfig={};});
-  }
-}
+window.showScreen = showScreen;
+window.buildDash = buildDash;
+window.closeWidget = closeWidget;
+window.openWidget = openWidget;
 
 function settingsShowTab(tab){
   var tabs=['users','grades'];
@@ -121,7 +88,6 @@ function settingsShowTab(tab){
       }
     }
   });
-  // Load grade config when switching to grades tab
   if(tab==='grades'){
     apiCall('GET','/api/records?action=get_grade_config')
       .then(function(cfg){
@@ -139,11 +105,6 @@ function settingsShowTab(tab){
         }
       }).catch(function(){window._gradeConfig={};});
   }
-
-  if(id==='screen-user-mgmt'){
-    settingsTab('users');
-    loadSettingsUsers();
-  }
 }
 
 function loadSettingsUsers(){
@@ -156,9 +117,13 @@ function loadSettingsUsers(){
     var roleColor={admin:'#dbeafe',manager:'#d1fae5',supervisor:'#fef9c3'};
     ul.innerHTML=users.map(function(u){
       var bg=roleColor[u.role]||'#f1f5f9';
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #f1f5f9">'        +'<div><div style="font-weight:600;font-size:.87rem;color:#1e293b">'+u.full_name+'</div>'        +'<div style="font-size:.73rem;color:#64748b">@'+u.username+(u.email?' &middot; '+u.email:'')+ '</div></div>'        +'<span style="font-size:.72rem;padding:3px 12px;border-radius:20px;background:'+bg+';color:#1e293b;font-weight:600">'+u.role+'</span>'        +'</div>';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #f1f5f9">'
+        +'<div><div style="font-weight:600;font-size:.87rem;color:#1e293b">'+u.full_name+'</div>'
+        +'<div style="font-size:.73rem;color:#64748b">@'+u.username+(u.email?' &middot; '+u.email:'')+'</div></div>'
+        +'<span style="font-size:.72rem;padding:3px 12px;border-radius:20px;background:'+bg+';color:#1e293b;font-weight:600">'+u.role+'</span>'
+        +'</div>';
     }).join('');
-  }).catch(function(e){
+  }).catch(function(){
     ul.innerHTML='<div style="color:#ef4444;padding:12px">Failed to load users.</div>';
   });
 }
@@ -186,7 +151,6 @@ function renderGradeConfigInSettings(){
   renderGradeConfig();
   div.id='grade-config-section-settings';
   if(orig)orig.id='grade-config-section';
-  // Fix save button target
   div.querySelectorAll('button').forEach(function(btn){
     if(btn.textContent.includes('Save Grade')){
       btn.onclick=function(){saveGradeConfigFromSettings();};
