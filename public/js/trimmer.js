@@ -92,7 +92,7 @@ function trimRenderForm() {
     '<div class="wcard"><h3>&#x2702;&#xFE0F; Trimmer Entries <span style="font-size:0.75rem;font-weight:400;color:var(--sub)">'+trimRows.length+' rows</span></h3>'+
     '<div class="trim-table-wrap"><table class="trim-table"><thead><tr><th>Emp#</th><th>Name</th><th>Code</th><th>Min</th><th>In lbs</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Total lbs</th><th>Total %</th><th>Lbs/Hr</th><th></th></tr></thead><tbody id="trim-tbody">'+tr2+'</tbody></table></div>'+
     '<div class="wbtn-row" style="margin-top:10px"><button class="wbtn wbtn-outline" onclick="trimAddRow()">+ Add Row</button></div></div>'+
-    '<div class="wbtn-row"><button class="wbtn wbtn-green" onclick="trimSave()">&#x1F4BE; Save Report</button><button class="wbtn wbtn-danger" onclick="trimReset()">Clear All</button></div>';
+    '<div class="wbtn-row"><button class="wbtn wbtn-green" onclick="trimValidateAndSave()">&#x1F4BE; Save Report</button><button class="wbtn wbtn-danger" onclick="trimReset()">Clear All</button></div>';
 }
 
 function trimUpdate(i,field,val){ trimRows[i][field]=val; var m=parseFloat(trimRows[i].minutes_worked)||0,n=parseFloat(trimRows[i].incoming_lbs)||0; var tb=document.getElementById("trim-tbody"); if(!tb)return; var rw=tb.rows[i]; if(rw)rw.cells[10].textContent=m>0&&n>0?(n/(m/60)).toFixed(1):"-"; }
@@ -103,7 +103,96 @@ function trimDeleteRow(i){ if(trimRows.length<=1){trimRows[0]=trimEmptyRow();tri
 
 function trimReset(){ trimRows=[trimEmptyRow()]; trimRenderForm(); }
 
-async function trimSave() {
+async 
+async function trimValidateAndSave() {
+  // Load roster from API
+  var token = (function(){ try { return JSON.parse(localStorage.getItem('potp_v2_session')).token; } catch(e){ return ''; } })();
+  var rosterMap = {};
+  try {
+    var rr = await apiCall('GET', '/api/records?action=get_roster');
+    var roster = Array.isArray(rr) ? rr : [];
+    roster.forEach(function(e){ rosterMap[e.full_name.trim().toLowerCase()] = e; });
+  } catch(e) { rosterMap = {}; }
+
+  // Check trimRows for mismatches
+  var mismatches = [];
+  var unknowns = [];
+  (window.trimRows || []).forEach(function(row, idx) {
+    if (!row.full_name || !row.emp_number) return;
+    var key = row.full_name.trim().toLowerCase();
+    var canonical = rosterMap[key];
+    if (!canonical) {
+      unknowns.push({ idx: idx, full_name: row.full_name, emp_number: row.emp_number });
+    } else if (canonical.emp_number !== String(row.emp_number)) {
+      mismatches.push({ idx: idx, full_name: row.full_name, found: row.emp_number, correct: canonical.emp_number });
+    }
+  });
+
+  if (mismatches.length === 0 && unknowns.length === 0) {
+    // All good — proceed with save
+    trimSave();
+    return;
+  }
+
+  // Build warning dialog
+  var msg = '';
+  if (mismatches.length > 0) {
+    msg += '<div style="margin-bottom:12px"><strong style="color:#ef4444">⚠️ Employee Number Mismatches Found:</strong><br>';
+    msg += '<div style="font-size:.8rem;color:#64748b;margin-top:4px">These employees have different numbers than what is on record:</div>';
+    msg += '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:.8rem">';
+    msg += '<tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">Name</th><th style="padding:4px 8px;text-align:left">Submitted #</th><th style="padding:4px 8px;text-align:left">Correct #</th></tr>';
+    mismatches.forEach(function(m) {
+      msg += '<tr style="border-top:1px solid #e2e8f0">';
+      msg += '<td style="padding:4px 8px">' + m.full_name + '</td>';
+      msg += '<td style="padding:4px 8px;color:#ef4444;font-weight:600">' + m.found + '</td>';
+      msg += '<td style="padding:4px 8px;color:#16a34a;font-weight:600">' + m.correct + '</td></tr>';
+    });
+    msg += '</table></div>';
+  }
+  if (unknowns.length > 0) {
+    msg += '<div style="margin-bottom:12px"><strong style="color:#f59e0b">ℹ️ New Employees (not in roster):</strong><br>';
+    msg += '<div style="font-size:.8rem;color:#64748b;margin-top:4px">These employees will be added to the roster:</div>';
+    unknowns.forEach(function(u) {
+      msg += '<div style="font-size:.8rem;padding:2px 8px">' + u.full_name + ' #' + u.emp_number + '</div>';
+    });
+    msg += '</div>';
+  }
+
+  // Show modal
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px;max-width:520px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+    + '<h3 style="margin:0 0 16px;font-size:1rem;color:#1e293b">Review Before Submitting</h3>'
+    + msg
+    + '<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">'
+    + '<button id="trim-fix-cancel" style="padding:8px 18px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:.85rem">Cancel &amp; Fix</button>'
+    + '<button id="trim-fix-autocorrect" style="padding:8px 18px;border:none;border-radius:6px;background:#3b82f6;color:#fff;cursor:pointer;font-size:.85rem">Auto-Correct &amp; Save</button>'
+    + (mismatches.length === 0 ? '<button id="trim-fix-proceed" style="padding:8px 18px;border:none;border-radius:6px;background:#16a34a;color:#fff;cursor:pointer;font-size:.85rem">Save Anyway</button>' : '')
+    + '</div></div>';
+  document.body.appendChild(overlay);
+
+  // Cancel
+  overlay.querySelector('#trim-fix-cancel').onclick = function() { document.body.removeChild(overlay); };
+
+  // Auto-correct mismatches then save
+  overlay.querySelector('#trim-fix-autocorrect').onclick = function() {
+    mismatches.forEach(function(m) {
+      if (window.trimRows[m.idx]) window.trimRows[m.idx].emp_number = m.correct;
+      // Also update the input field if visible
+      var inputs = document.querySelectorAll('[data-row-idx="' + m.idx + '"] .emp-number-input, input[data-emp-idx="' + m.idx + '"]');
+      inputs.forEach(function(inp) { inp.value = m.correct; });
+    });
+    document.body.removeChild(overlay);
+    trimSave();
+  };
+
+  // Proceed anyway (only for unknowns case)
+  var proceedBtn = overlay.querySelector('#trim-fix-proceed');
+  if (proceedBtn) proceedBtn.onclick = function() { document.body.removeChild(overlay); trimSave(); };
+}
+window.trimValidateAndSave = trimValidateAndSave;
+
+function trimSave() {
   var date=document.getElementById("trim-date").value, shift=document.getElementById("trim-shift").value;
   if(!date){toast("Set the date.");return;}
   var vr=trimRows.filter(function(r){return r.full_name||r.emp_number;});
