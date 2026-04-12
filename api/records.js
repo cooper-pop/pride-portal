@@ -1,19 +1,5 @@
 
-// Helper: normalize record_date from time
-    // Grade config endpoints
-    if (action === 'get_grade_config') {
-      await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
-      const cfgRows = await sql`SELECT value FROM app_config WHERE key = 'grade_config' LIMIT 1`;
-      if (cfgRows.length) return res.json(JSON.parse(cfgRows[0].value));
-      return res.json({});
-    }
-    if (req.method === 'POST' && action === 'save_grade_config') {
-      const cfgData = req.body;
-      await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
-      await sql`INSERT INTO app_config (key, value) VALUES ('grade_config', ${JSON.stringify(cfgData)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
-      return res.json({ ok: true });
-    }
-stamptz to YYYY-MM-DD string
+// Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
   return rows.map(r => {
     // Fix date: Neon returns DATE columns as JS Date objects (UTC midnight)
@@ -55,6 +41,20 @@ module.exports = async function handler(req, res) {
 
   const { type, action, id } = req.query;
   const sql = neon(process.env.DATABASE_URL);
+  // Grade config endpoints
+  if (action === 'get_grade_config') {
+    await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+    const cfgRows = await sql`SELECT value FROM app_config WHERE key = 'grade_config' LIMIT 1`;
+    if (cfgRows.length) return res.json(JSON.parse(cfgRows[0].value));
+    return res.json({});
+  }
+  if (req.method === 'POST' && action === 'save_grade_config') {
+    const cfgData = req.body;
+    await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+    await sql`INSERT INTO app_config (key, value) VALUES ('grade_config', ${JSON.stringify(cfgData)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+    return res.json({ ok: true });
+  }
+
 
   try {
     if (req.method === 'GET') {
