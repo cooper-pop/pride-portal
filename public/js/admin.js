@@ -268,71 +268,34 @@ function renderGradeConfig(){
   var cfg=window._gradeConfig||{};
   var container=document.getElementById('grade-config-section');
   if(!container)return;
-
   var grades=['aplus','a','b','c','d'];
-  var gradeLabels={'aplus':'A+','a':'A','b':'B','c':'C','d':'D'};
+  var gLabel={aplus:'A+',a:'A',b:'B',c:'C',d:'D'};
   var metrics=['lph','fil','nug','mis','yld'];
-  var metricLabels={'lph':'Lbs/Hr (min)','fil':'Fillet% (min)','nug':'Nugget% (min)','mis':'Miscut% (max)','yld':'Yield% (min)'};
-  var metricSteps={'lph':1,'fil':0.5,'nug':0.5,'mis':0.5,'yld':0.5};
-
-  function val(grade,metric){
-    var key=grade+'_'+metric;
-    if(cfg[key]!==undefined)return cfg[key];
-    return DEFAULTS[grade][metric];
-  }
-
-  function inp(grade,metric){
-    var key=grade+'_'+metric;
-    var v2=val(grade,metric);
-    var step=metricSteps[metric];
-    return '<input type="number" id="gc-'+key+'" value="'+v2+'" step="'+step+'" '+
-      'style="width:68px;padding:3px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:.72rem;text-align:center">';
-  }
-
-  var h='<div style="margin-top:16px">';
-  h+='<h3 style="font-size:.92rem;color:#1a3a6b;font-weight:700;margin:0 0 6px">&#9881;&#65039; Grade & Penalty Settings</h3>';
-  h+='<div style="font-size:.7rem;color:#64748b;margin-bottom:12px">Set the minimum standards for each grade across all 5 metrics. Each metric that falls below F-grade standards gets a -1 penalty.</div>';
-
-  // Grade standards matrix
-  h+='<div style="overflow-x:auto;margin-bottom:16px">';
-  h+='<table style="border-collapse:collapse;font-size:.73rem;width:100%">';
-  h+='<thead><tr style="background:#1a3a6b;color:#fff">';
-  h+='<th style="padding:6px 8px;text-align:left;white-space:nowrap">Grade</th>';
-  metrics.forEach(function(m){
-    h+='<th style="padding:6px 8px;text-align:center;white-space:nowrap">'+metricLabels[m]+'</th>';
-  });
+  var mLabel={lph:'Lbs/Hr (min)',fil:'Fillet% (min)',nug:'Nugget% (min)',mis:'Miscut% (max)',yld:'Yield% (min)'};
+  var mStep={lph:1,fil:0.5,nug:0.5,mis:0.5,yld:0.5};
+  var DEF={aplus:{lph:150,fil:65,nug:20,mis:5,yld:90},a:{lph:125,fil:63,nug:19,mis:6,yld:85},b:{lph:115,fil:62,nug:18,mis:6.5,yld:80},c:{lph:110,fil:61,nug:17.5,mis:7,yld:75},d:{lph:100,fil:61,nug:17,mis:7.5,yld:70},f:{lph:100,fil:61,nug:17,mis:7.5,yld:70}};
+  function gv(g,m){var k=g+'_'+m;return cfg[k]!==undefined?cfg[k]:DEF[g][m];}
+  function inp(g,m){var k=g+'_'+m;return '<input type="number" id="gc-'+k+'" value="'+gv(g,m)+'" step="'+mStep[m]+'" style="width:66px;padding:3px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:.71rem;text-align:center">';}
+  var rc={aplus:'#d1fae5',a:'#d1fae5',b:'#dbeafe',c:'#fef9c3',d:'#ffedd5'};
+  var h='<div style="margin-top:14px">';
+  h+='<h3 style="font-size:.9rem;color:#1a3a6b;font-weight:700;margin:0 0 5px">&#9881;&#65039; Grade & Penalty Settings</h3>';
+  h+='<div style="font-size:.68rem;color:#64748b;margin-bottom:10px">Edit standards per grade. Metrics in the F&nbsp;Penalty row deduct -1 letter when below that threshold.</div>';
+  h+='<div style="overflow-x:auto;margin-bottom:12px"><table style="border-collapse:collapse;font-size:.71rem;min-width:480px">';
+  h+='<thead><tr style="background:#1a3a6b;color:#fff"><th style="padding:5px 10px;text-align:left">Grade</th>';
+  metrics.forEach(function(m){h+='<th style="padding:5px 7px;text-align:center;white-space:nowrap">'+mLabel[m]+'</th>';});
   h+='</tr></thead><tbody>';
-
-  var rowColors={'aplus':'#d1fae5','a':'#d1fae5','b':'#dbeafe','c':'#fef9c3','d':'#ffedd5'};
   grades.forEach(function(g){
-    h+='<tr style="border-bottom:1px solid #e2e8f0;background:'+rowColors[g]+'">';
-    h+='<td style="padding:5px 8px;font-weight:800;font-size:.85rem;color:#1a3a6b">'+gradeLabels[g]+'</td>';
-    metrics.forEach(function(m){
-      h+='<td style="padding:4px 6px;text-align:center">'+inp(g,m)+'</td>';
-    });
+    h+='<tr style="border-bottom:1px solid #e2e8f0;background:'+rc[g]+'">'+'<td style="padding:5px 10px;font-weight:800;font-size:.83rem;color:#1a3a6b">'+gLabel[g]+'</td>';
+    metrics.forEach(function(m){h+='<td style="padding:3px 5px;text-align:center">'+inp(g,m)+'</td>';});
     h+='</tr>';
   });
-
-  // F-floor row (penalty triggers)
-  h+='<tr style="border-bottom:1px solid #e2e8f0;background:#fee2e2">';
-  h+='<td style="padding:5px 8px;font-weight:800;font-size:.85rem;color:#ef4444">F-Penalty</td>';
+  h+='<tr style="border-bottom:1px solid #e2e8f0;background:#fee2e2"><td style="padding:5px 10px;font-weight:800;font-size:.83rem;color:#ef4444">F Penalty</td>';
   metrics.forEach(function(m){
-    var fkey='f_'+m;
-    var fv=cfg[fkey]!==undefined?cfg[fkey]:DEFAULTS.f[m];
-    h+='<td style="padding:4px 6px;text-align:center">'+
-      '<input type="number" id="gc-'+fkey+'" value="'+fv+'" step="'+metricSteps[m]+'" '+
-      'style="width:68px;padding:3px 4px;border:1px solid #fca5a5;border-radius:4px;font-size:.72rem;text-align:center;background:#fff5f5">'+
-      '</td>';
+    var fk='f_'+m;var fv=cfg[fk]!==undefined?cfg[fk]:DEF.f[m];
+    h+='<td style="padding:3px 5px;text-align:center"><input type="number" id="gc-'+fk+'" value="'+fv+'" step="'+mStep[m]+'" style="width:66px;padding:3px 4px;border:1px solid #fca5a5;border-radius:4px;font-size:.71rem;text-align:center;background:#fff5f5"></td>';
   });
-  h+='</tr>';
-  h+='</tbody></table></div>';
-
-  h+='<div style="font-size:.68rem;color:#64748b;margin-bottom:10px">';
-  h+='<strong>F-Penalty row:</strong> Any metric falling below these thresholds deducts 1 letter from the base grade. ';
-  h+='Base grade is determined by the Lbs/Hr column only.</div>';
-
-  h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:8px 20px;font-size:.8rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
-  h+=' <span id="gc-msg" style="font-size:.75rem;color:#059669"></span>';
+  h+='</tr></tbody></table></div>';
+  h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:7px 18px;font-size:.78rem;font-weight:600;cursor:pointer">Save Grade Settings</button> <span id="gc-msg" style="font-size:.73rem;color:#059669"></span>';
   h+='</div>';
   container.innerHTML=h;
 }
@@ -340,28 +303,8 @@ function saveGradeConfig(){
   var grades=['aplus','a','b','c','d','f'];
   var metrics=['lph','fil','nug','mis','yld'];
   var cfg={};
-  grades.forEach(function(g){
-    metrics.forEach(function(m){
-      var el=document.getElementById('gc-'+g+'_'+m);
-      if(el)cfg[g+'_'+m]=parseFloat(el.value);
-    });
-  });
-  // Also save lph-only keys for backward compat
-  ['aplus','a','b','c','d'].forEach(function(g){
-    if(cfg[g+'_lph']!==undefined)cfg['lph_'+g]=cfg[g+'_lph'];
-  });
-  cfg.penalty_lph=cfg.f_lph||100;
-  cfg.penalty_fillet=cfg.f_fil||61;
-  cfg.penalty_nugget=cfg.f_nug||17;
-  cfg.penalty_miscut=cfg.f_mis||7.5;
-  cfg.penalty_yield=cfg.f_yld||70;
-
-  apiCall('POST','/api/records?action=save_grade_config',cfg).then(function(){
-    window._gradeConfig=cfg;
-    var msg=document.getElementById('gc-msg');
-    if(msg){msg.textContent='Saved!';setTimeout(function(){msg.textContent='';},2500);}
-  }).catch(function(){
-    var msg=document.getElementById('gc-msg');
-    if(msg){msg.style.color='#ef4444';msg.textContent='Save failed';}
-  });
+  grades.forEach(function(g){metrics.forEach(function(m){var el=document.getElementById('gc-'+g+'_'+m);if(el)cfg[g+'_'+m]=parseFloat(el.value);});});
+  cfg.lph_aplus=cfg.aplus_lph||150;cfg.lph_a=cfg.a_lph||125;cfg.lph_b=cfg.b_lph||115;cfg.lph_c=cfg.c_lph||110;cfg.lph_d=cfg.d_lph||100;
+  cfg.penalty_lph=cfg.f_lph||100;cfg.penalty_fillet=cfg.f_fil||61;cfg.penalty_nugget=cfg.f_nug||17;cfg.penalty_miscut=cfg.f_mis||7.5;cfg.penalty_yield=cfg.f_yld||70;
+  apiCall('POST','/api/records?action=save_grade_config',cfg).then(function(){window._gradeConfig=cfg;var msg=document.getElementById('gc-msg');if(msg){msg.textContent='Saved!';setTimeout(function(){msg.textContent='';},2500);}}).catch(function(){var msg=document.getElementById('gc-msg');if(msg){msg.style.color='#ef4444';msg.textContent='Save failed';}});
 }
