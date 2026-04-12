@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="POTP Portal"/>
-<link rel="stylesheet" href="/css/style.css?v=1776002269290"/>
+<link rel="stylesheet" href="/css/style.css?v=1776006835810"/>
 <title>Employee Portal</title>
 </head>
 <body>
@@ -15,17 +15,17 @@
 
 <!-- COMPANY SELECT -->
 <div id="screen-select" class="screen active">
-  <div class="portal-header"><h1>🐟 Employee Portal</h1><p>Select your company to continue</p></div>
+  <div class="portal-header"><h1>ð Employee Portal</h1><p>Select your company to continue</p></div>
   <div class="portal-cards">
     <div class="portal-card potp-card" id="card-potp">
       <div class="pc-header"><img class="pc-logo" src="https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg" alt="POTP"/>
         <div><div class="pc-name">Pride of the Pond</div><div class="pc-sub">Catfish Raised Right</div></div></div>
-      <div class="pc-footer" onclick="selectCompany('potp')" style="cursor:pointer">Enter Portal →</div>
+      <div class="pc-footer" onclick="selectCompany('potp')" style="cursor:pointer">Enter Portal â</div>
     </div>
     <div class="portal-card bfn-card" id="card-bfn" onclick="selectCompany('bfn')" style="cursor:pointer">
       <div class="pc-header"><img class="pc-logo" src="https://i.postimg.cc/jjyxGdSY/Goy-LD.jpg" alt="BFN"/>
         <div><div class="pc-name">Battle Fish North</div><div class="pc-sub">Employee Portal</div></div></div>
-      <div class="pc-footer">Enter Portal →</div>
+      <div class="pc-footer">Enter Portal â</div>
     </div>
   </div>
 </div>
@@ -35,10 +35,10 @@
 <!-- PASSKEY SETUP SCREEN -->
 <div id="screen-passkey-setup" class="screen">
   <div class="passkey-box">
-    <div class="passkey-icon">🔐</div>
+    <div class="passkey-icon">ð</div>
     <div class="passkey-title">Set Up Face ID Login</div>
-    <div class="passkey-sub">Pride of the Pond uses Face ID (Passkey) for secure login. Set it up once and you're done — no codes needed.</div>
-    <button class="passkey-btn" onclick="setupPasskey()">📱 Set Up Face ID Now</button>
+    <div class="passkey-sub">Pride of the Pond uses Face ID (Passkey) for secure login. Set it up once and you're done â no codes needed.</div>
+    <button class="passkey-btn" onclick="setupPasskey()">ð± Set Up Face ID Now</button>
     <button class="passkey-btn secondary" onclick="skipPasskeySetup()">Skip for now</button>
   </div>
 </div>
@@ -46,7 +46,7 @@
 <!-- CHANGE PASSWORD SCREEN -->
 <div id="screen-change-password" class="screen">
   <div class="chpwd-box">
-    <div class="passkey-icon">🔑</div>
+    <div class="passkey-icon">ð</div>
     <div class="passkey-title">Change Your Password</div>
     <div class="passkey-sub">You must set a new password before continuing.</div>
     <div class="lf"><label class="lf label">New Password</label><input type="password" id="new-pwd" placeholder="Min 8 characters" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:1rem;margin-bottom:12px"></div>
@@ -114,7 +114,7 @@
     <div class="lf"><label>Password</label><input type="password" id="login-pass" onkeydown="if(event.key==='Enter')doLogin()" placeholder="Enter password"/></div>
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
     <div class="login-error" id="login-error">Incorrect username or password.</div>
-    <span class="back-link" id="back-link">← Back to company selection</span>
+    <span class="back-link" id="back-link">â Back to company selection</span>
   </div>
 </div>
 
@@ -127,10 +127,10 @@
       <p id="dash-role"></p>
     </div>
     <div id="dash-user" class="dash-user-badge"></div>
-    <button class="admin-btn" id="admin-btn" onclick="loadUserMgmt()" style="display:none">⚙️</button>
+    <button class="admin-btn" id="admin-btn" onclick="loadUserMgmt()" style="display:none">âï¸</button>
     <button class="logout-btn" id="logout-btn">Sign Out</button>
   </div>
-  <div id="sync-badge" class="sync-badge synced" style="display:block;text-align:center;margin:6px auto;width:fit-content">💾 Connected</div>
+  <div id="sync-badge" class="sync-badge synced" style="display:block;text-align:center;margin:6px auto;width:fit-content">ð¾ Connected</div>
   <div class="dash-date" id="dash-date"></div>
   <div class="dash-greeting" id="dash-greeting"></div>
   <div class="dash-dock" id="dash-dock"></div>
@@ -140,7 +140,7 @@
 <div id="widget-overlay">
   <div class="widget-sheet">
     <div class="widget-header">
-      <button class="widget-close-btn" id="widget-close" onclick="closeWidget()">✕</button>
+      <button class="widget-close-btn" id="widget-close" onclick="closeWidget()">â</button>
       <div class="widget-title" id="widget-title"></div>
       <div id="sync-badge-widget" class="sync-badge" style="display:none"></div>
     </div>
@@ -157,16 +157,16 @@
 
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/js/utils.js?v=1776002269290"></script>
-<script src="/js/auth.js?v=1776002269290"></script>
-<script src="/js/dashboard.js?v=1776002269290"></script>
-<script src="/js/yield.js?v=1776002269290"></script>
-<script src="/js/injector.js?v=1776002269290"></script>
-<script src="/js/trimmer.js?v=1776002269290"></script>
-<script src="/js/ai.js?v=1776002269290"></script>
-<script src="/js/admin.js?v=1776002269290"></script>
-<script src="/js/todo.js?v=1776002269290"></script>
-  <script src="/js/print.js?v=1776002269290"></script>
+<script src="/js/utils.js?v=1776006835810"></script>
+<script src="/js/auth.js?v=1776006835810"></script>
+<script src="/js/dashboard.js?v=1776006835810"></script>
+<script src="/js/yield.js?v=1776006835810"></script>
+<script src="/js/injector.js?v=1776006835810"></script>
+<script src="/js/trimmer.js?v=1776006835810"></script>
+<script src="/js/ai.js?v=1776006835810"></script>
+<script src="/js/admin.js?v=1776006835810"></script>
+<script src="/js/todo.js?v=1776006835810"></script>
+  <script src="/js/print.js?v=1776006835810"></script>
 <script>
 (function() {
   // Show company selection immediately as default
