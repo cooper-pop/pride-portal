@@ -1,6 +1,16 @@
 // admin.js - Admin panel and user management
 
-function buildAdminWidget() {
+function buildAdminWidget()  apiCall('GET','/api/records?action=get_grade_config').then(function(d){window._gradeConfig=d||{};}).catch(function(){window._gradeConfig={};});
+  // Add grade config section to admin panel
+  setTimeout(function(){
+    var wc=document.getElementById('widget-content');
+    if(wc&&!document.getElementById('grade-config-section')){
+      var gs=document.createElement('div');gs.id='grade-config-section';
+      wc.appendChild(gs);
+    }
+    renderGradeConfig();
+  },600);
+ {
   document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User','⚙️ Grade Config'].map(function(t,i){
     return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="adminShowTab('+i+')">'+t+'</div>';
   }).join('');
@@ -13,6 +23,54 @@ function buildAdminWidget() {
   },100);
 
   var _ac=document.getElementById('widget-content');if(_ac&&typeof renderGradeSettings==='function')renderGradeSettings(_ac);
+}
+
+function renderGradeConfig(){
+  var cfg=window._gradeConfig||{};
+  var container=document.getElementById('grade-config-section');
+  if(!container)return;
+  function field(label,key,val,step){
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'      +'<label style="flex:0 0 160px;font-size:.78rem;color:#374151;font-weight:500">'+label+'</label>'      +'<input type="number" id="gc-'+key+'" value="'+val+'" step="'+step+'" style="width:80px;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:.78rem">'      +'</div>';
+  }
+  var h='<div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px">';
+  h+='<h4 style="margin:0 0 12px;font-size:.88rem;color:#1a3a6b;font-weight:700">&#127941; Base Grade Thresholds (Lbs/Hr)</h4>';
+  h+='<div style="font-size:.72rem;color:#64748b;margin-bottom:10px">Minimum lbs/hr required for each base grade (before penalties)</div>';
+  h+=field('A+ Grade (>=)','lph_aplus',cfg.lph_aplus||150,1);
+  h+=field('A Grade (>=)','lph_a',cfg.lph_a||125,1);
+  h+=field('B Grade (>=)','lph_b',cfg.lph_b||115,1);
+  h+=field('C Grade (>=)','lph_c',cfg.lph_c||110,1);
+  h+=field('D Grade (>=)','lph_d',cfg.lph_d||100,1);
+  h+='<div style="color:#94a3b8;font-size:.72rem;margin-top:4px">Below D threshold = F base grade</div>';
+  h+='</div>';
+  h+='<div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px">';
+  h+='<h4 style="margin:0 0 12px;font-size:.88rem;color:#1a3a6b;font-weight:700">&#9660; F-Floor Penalty Thresholds</h4>';
+  h+='<div style="font-size:.72rem;color:#64748b;margin-bottom:10px">Each metric that falls into F territory deducts 1 letter from the base grade</div>';
+  h+=field('Speed below (lbs/hr)','penalty_lph',cfg.penalty_lph||100,1);
+  h+=field('Fillet% below','penalty_fillet',cfg.penalty_fillet||61,0.5);
+  h+=field('Nugget% below','penalty_nugget',cfg.penalty_nugget||17,0.5);
+  h+=field('Miscut% above','penalty_miscut',cfg.penalty_miscut||7.5,0.5);
+  h+=field('Yield% below','penalty_yield',cfg.penalty_yield||70,0.5);
+  h+='</div>';
+  h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:8px 20px;font-size:.8rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
+  h+='&nbsp;<span id="gc-msg" style="font-size:.75rem;color:#059669"></span>';
+  container.innerHTML=h;
+}
+
+function saveGradeConfig(){
+  var keys=['lph_aplus','lph_a','lph_b','lph_c','lph_d','penalty_lph','penalty_fillet','penalty_nugget','penalty_miscut','penalty_yield'];
+  var cfg={};
+  keys.forEach(function(k){
+    var el=document.getElementById('gc-'+k);
+    if(el)cfg[k]=parseFloat(el.value);
+  });
+  apiCall('POST','/api/records?action=save_grade_config',cfg).then(function(){
+    window._gradeConfig=cfg;
+    var msg=document.getElementById('gc-msg');
+    if(msg){msg.textContent='Saved!';setTimeout(function(){msg.textContent='';},2500);}
+  }).catch(function(){
+    var msg=document.getElementById('gc-msg');
+    if(msg)msg.style.color='#ef4444',msg.textContent='Save failed';
+  });
 }
 
 function adminShowTab(idx) {
