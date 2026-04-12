@@ -139,4 +139,62 @@ function settingsShowTab(tab){
         }
       }).catch(function(){window._gradeConfig={};});
   }
+
+  if(id==='screen-user-mgmt'){
+    settingsTab('users');
+    if(typeof loadUserList==='function')loadUserList();
+    else if(typeof buildAdminWidget==='function'){
+      // Load users into um-user-list
+      apiCall('GET','/api/users').then(function(data){
+        var ul=document.getElementById('um-user-list');
+        if(!ul)return;
+        var users=data.users||data||[];
+        ul.innerHTML=users.map(function(u){
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f1f5f9">'            +'<div><div style="font-weight:600;font-size:.88rem">'+u.full_name+'</div>'            +'<div style="font-size:.75rem;color:#64748b">@'+u.username+'</div></div>'            +'<span style="font-size:.75rem;padding:3px 10px;border-radius:20px;background:'+(u.role==='admin'?'#dbeafe':u.role==='manager'?'#d1fae5':'#fef9c3')+';color:#1e293b">'+u.role+'</span></div>';
+        }).join('');
+      }).catch(function(){});
+    }
+  }
+}
+
+function settingsTab(tab){
+  document.getElementById('settings-tab-users').style.display=tab==='users'?'block':'none';
+  document.getElementById('settings-tab-grades').style.display=tab==='grades'?'block':'none';
+  document.getElementById('stab-users').style.color=tab==='users'?'#1a3a6b':'#94a3b8';
+  document.getElementById('stab-users').style.borderBottomColor=tab==='users'?'#1a3a6b':'transparent';
+  document.getElementById('stab-grades').style.color=tab==='grades'?'#1a3a6b':'#94a3b8';
+  document.getElementById('stab-grades').style.borderBottomColor=tab==='grades'?'#1a3a6b':'transparent';
+  if(tab==='grades'){
+    apiCall('GET','/api/records?action=get_grade_config')
+      .then(function(cfg){window._gradeConfig=cfg||{};renderGradeConfigInSettings();})
+      .catch(function(){window._gradeConfig={};renderGradeConfigInSettings();});
+  }
+}
+
+function renderGradeConfigInSettings(){
+  var div=document.getElementById('grade-config-section-settings');
+  if(!div||typeof renderGradeConfig!=='function')return;
+  var orig=document.getElementById('grade-config-section');
+  if(orig)orig.id='grade-config-section-bak';
+  div.id='grade-config-section';
+  renderGradeConfig();
+  div.id='grade-config-section-settings';
+  if(orig)orig.id='grade-config-section';
+  // Fix save button target
+  div.querySelectorAll('button').forEach(function(btn){
+    if(btn.textContent.includes('Save Grade')){
+      btn.onclick=function(){saveGradeConfigFromSettings();};
+    }
+  });
+}
+
+function saveGradeConfigFromSettings(){
+  var div=document.getElementById('grade-config-section-settings');
+  if(!div)return;
+  var orig=document.getElementById('grade-config-section');
+  if(orig)orig.id='grade-config-section-bak';
+  div.id='grade-config-section';
+  saveGradeConfig();
+  div.id='grade-config-section-settings';
+  if(orig)orig.id='grade-config-section';
 }

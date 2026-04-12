@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="POTP Portal"/>
-<link rel="stylesheet" href="/css/style.css?v=1776001421406"/>
+<link rel="stylesheet" href="/css/style.css?v=1776001918157"/>
 <title>Employee Portal</title>
 </head>
 <body>
@@ -58,25 +58,25 @@
 
 <!-- USER MANAGEMENT SCREEN -->
 <div id="screen-user-mgmt" class="screen">
-  <div class="usermgmt-box" style="max-width:820px;width:100%">
+  <div class="usermgmt-box" style="max-width:820px;width:100%;overflow-y:auto;max-height:calc(100vh - 80px)">
     <div class="um-header">
       <div style="display:flex;align-items:center;gap:12px">
-        <button onclick="showScreen('screen-dash')" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#1a3a6b">&#8592;</button>
-        <span class="um-title">&#128101; Settings</span>
+        <button onclick="showScreen('screen-dash')" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#64748b">&#8592;</button>
+        <h2 class="um-title">&#128101; Settings</h2>
       </div>
-      <button id="um-add-btn" onclick="adminShowAddUser()" style="background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:.82rem;font-weight:600;cursor:pointer">+ Add User</button>
+      <button onclick="showAddUserModal()" style="background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:.82rem;font-weight:600;cursor:pointer">+ Add User</button>
     </div>
-    <!-- Settings tabs -->
-    <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:16px;margin-top:4px">
-      <button id="settings-tab-users" onclick="settingsShowTab('users')" style="padding:8px 20px;border:none;background:none;font-size:.82rem;font-weight:600;color:#1a3a6b;border-bottom:3px solid #1a3a6b;cursor:pointer">&#128101; Users</button>
-      <button id="settings-tab-grades" onclick="settingsShowTab('grades')" style="padding:8px 20px;border:none;background:none;font-size:.82rem;font-weight:500;color:#64748b;border-bottom:3px solid transparent;cursor:pointer">&#127941; Grade Settings</button>
+    <!-- Settings Tabs -->
+    <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:16px;gap:0">
+      <button id="stab-users" onclick="settingsTab('users')" style="padding:10px 20px;border:none;background:none;font-size:.83rem;font-weight:600;cursor:pointer;color:#1a3a6b;border-bottom:2px solid #1a3a6b;margin-bottom:-2px">&#128101; Users</button>
+      <button id="stab-grades" onclick="settingsTab('grades')" style="padding:10px 20px;border:none;background:none;font-size:.83rem;font-weight:600;cursor:pointer;color:#94a3b8;border-bottom:2px solid transparent;margin-bottom:-2px">&#9881;&#65039; Grade Settings</button>
     </div>
-    <!-- Users tab content -->
-    <div id="settings-panel-users">
-      <div id="um-list"></div>
+    <!-- Users Tab -->
+    <div id="settings-tab-users">
+      <div id="um-user-list"></div>
     </div>
-    <!-- Grade settings tab content -->
-    <div id="settings-panel-grades" style="display:none">
+    <!-- Grade Settings Tab -->
+    <div id="settings-tab-grades" style="display:none">
       <div id="grade-config-section-settings"></div>
     </div>
   </div>
@@ -157,16 +157,16 @@
 
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/js/utils.js?v=1776001421406"></script>
-<script src="/js/auth.js?v=1776001421406"></script>
-<script src="/js/dashboard.js?v=1776001421406"></script>
-<script src="/js/yield.js?v=1776001421406"></script>
-<script src="/js/injector.js?v=1776001421406"></script>
-<script src="/js/trimmer.js?v=1776001421406"></script>
-<script src="/js/ai.js?v=1776001421406"></script>
-<script src="/js/admin.js?v=1776001421406"></script>
-<script src="/js/todo.js?v=1776001421406"></script>
-  <script src="/js/print.js?v=1776001421406"></script>
+<script src="/js/utils.js?v=1776001918157"></script>
+<script src="/js/auth.js?v=1776001918157"></script>
+<script src="/js/dashboard.js?v=1776001918157"></script>
+<script src="/js/yield.js?v=1776001918157"></script>
+<script src="/js/injector.js?v=1776001918157"></script>
+<script src="/js/trimmer.js?v=1776001918157"></script>
+<script src="/js/ai.js?v=1776001918157"></script>
+<script src="/js/admin.js?v=1776001918157"></script>
+<script src="/js/todo.js?v=1776001918157"></script>
+  <script src="/js/print.js?v=1776001918157"></script>
 <script>
 (function() {
   // Show company selection immediately as default
