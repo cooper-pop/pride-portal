@@ -1,4 +1,4 @@
-// v1776014362431
+// records.js v1776017595455 — bulk_fix_emp, seed_roster, validate_entry
 
 // Helper: normalize record_date from timestamptz to YYYY-MM-DD string
 function normalizeRows(rows) {
