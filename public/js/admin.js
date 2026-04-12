@@ -13,7 +13,7 @@ function buildAdminWidget() {
       }
       setTimeout(renderGradeConfig,200);
     }
-  },700);
+  },1500);
 
   document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User'].map(function(t,i){
     return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="adminShowTab('+i+')">'+t+'</div>';
