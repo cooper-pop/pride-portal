@@ -192,7 +192,7 @@ async function trimValidateAndSave() {
 }
 window.trimValidateAndSave = trimValidateAndSave;
 
-function trimSave() {
+async function trimSave() {
   var date=document.getElementById("trim-date").value, shift=document.getElementById("trim-shift").value;
   if(!date){toast("Set the date.");return;}
   var vr=trimRows.filter(function(r){return r.full_name||r.emp_number;});
