@@ -265,56 +265,97 @@ function renderGradeSettings(container){
   });
 }
 function renderGradeConfig(){
-  var D={aplus:{lph:150,fil:65,nug:20,mis:5,yld:90},a:{lph:125,fil:63,nug:19,mis:6,yld:85},b:{lph:115,fil:62,nug:18,mis:6.5,yld:80},c:{lph:110,fil:61,nug:17.5,mis:7,yld:75},d:{lph:100,fil:61,nug:17,mis:7.5,yld:70},penalty_lph:100,penalty_fillet:61,penalty_nugget:17,penalty_miscut:7.5,penalty_yield:70};
   var cfg=window._gradeConfig||{};
   var container=document.getElementById('grade-config-section');
   if(!container)return;
-  function gv(grade,key){var obj=cfg[grade]||D[grade]||{};return obj[key]!==undefined?obj[key]:D[grade][key];}
-  function inp(id,val,step){return '<input type="number" id="'+id+'" value="'+val+'" step="'+(step||0.5)+'" style="width:60px;padding:3px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:.71rem;text-align:center">';}
-  var thS='padding:5px 6px;font-size:.68rem;color:#fff;text-align:center;white-space:nowrap';
-  var tdS='padding:4px 6px;text-align:center';
+
+  var grades=['aplus','a','b','c','d'];
+  var gradeLabels={'aplus':'A+','a':'A','b':'B','c':'C','d':'D'};
+  var metrics=['lph','fil','nug','mis','yld'];
+  var metricLabels={'lph':'Lbs/Hr (min)','fil':'Fillet% (min)','nug':'Nugget% (min)','mis':'Miscut% (max)','yld':'Yield% (min)'};
+  var metricSteps={'lph':1,'fil':0.5,'nug':0.5,'mis':0.5,'yld':0.5};
+
+  function val(grade,metric){
+    var key=grade+'_'+metric;
+    if(cfg[key]!==undefined)return cfg[key];
+    return DEFAULTS[grade][metric];
+  }
+
+  function inp(grade,metric){
+    var key=grade+'_'+metric;
+    var v2=val(grade,metric);
+    var step=metricSteps[metric];
+    return '<input type="number" id="gc-'+key+'" value="'+v2+'" step="'+step+'" '+
+      'style="width:68px;padding:3px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:.72rem;text-align:center">';
+  }
+
   var h='<div style="margin-top:16px">';
-  h+='<h3 style="font-size:.88rem;color:#1a3a6b;font-weight:700;margin:0 0 5px">&#9881;&#65039; Grading & Penalty Settings</h3>';
-  h+='<div style="font-size:.68rem;color:#64748b;margin-bottom:8px">Set minimum standards for each grade. Base grade is determined by Lbs/Hr; F-floor penalties apply deductions.</div>';
-  h+='<div style="overflow-x:auto;margin-bottom:12px"><table style="border-collapse:collapse;font-size:.73rem;width:100%;min-width:420px">';
-  h+='<thead><tr style="background:#1a3a6b"><th style="'+thS+';text-align:left;padding-left:8px">Grade</th><th style="'+thS+'">Lbs/Hr >=</th><th style="'+thS+'">Fillet% >=</th><th style="'+thS+'">Nugget% >=</th><th style="'+thS+'">Miscut% <=</th><th style="'+thS+'">Yield% >=</th></tr></thead><tbody>';
-  var grades=[{k:'aplus',l:'A+',c:'#059669'},{k:'a',l:'A',c:'#10b981'},{k:'b',l:'B',c:'#3b82f6'},{k:'c',l:'C',c:'#f59e0b'},{k:'d',l:'D',c:'#f97316'}];
-  grades.forEach(function(gr,i){
-    h+='<tr style="border-bottom:1px solid #e2e8f0;background:'+(i%2===0?'#f8fafc':'#fff')+'">';
-    h+='<td style="'+tdS+';padding-left:8px"><span style="display:inline-block;width:26px;height:26px;border-radius:50%;background:'+gr.c+';color:#fff;font-weight:800;font-size:.77rem;line-height:26px;text-align:center">'+gr.l+'</span></td>';
-    h+='<td style="'+tdS+'">'+inp('gc-'+gr.k+'-lph',gv(gr.k,'lph'),1)+'</td>';
-    h+='<td style="'+tdS+'">'+inp('gc-'+gr.k+'-fil',gv(gr.k,'fil'),0.5)+'</td>';
-    h+='<td style="'+tdS+'">'+inp('gc-'+gr.k+'-nug',gv(gr.k,'nug'),0.5)+'</td>';
-    h+='<td style="'+tdS+'">'+inp('gc-'+gr.k+'-mis',gv(gr.k,'mis'),0.5)+'</td>';
-    h+='<td style="'+tdS+'">'+inp('gc-'+gr.k+'-yld',gv(gr.k,'yld'),0.5)+'</td>';
+  h+='<h3 style="font-size:.92rem;color:#1a3a6b;font-weight:700;margin:0 0 6px">&#9881;&#65039; Grade & Penalty Settings</h3>';
+  h+='<div style="font-size:.7rem;color:#64748b;margin-bottom:12px">Set the minimum standards for each grade across all 5 metrics. Each metric that falls below F-grade standards gets a -1 penalty.</div>';
+
+  // Grade standards matrix
+  h+='<div style="overflow-x:auto;margin-bottom:16px">';
+  h+='<table style="border-collapse:collapse;font-size:.73rem;width:100%">';
+  h+='<thead><tr style="background:#1a3a6b;color:#fff">';
+  h+='<th style="padding:6px 8px;text-align:left;white-space:nowrap">Grade</th>';
+  metrics.forEach(function(m){
+    h+='<th style="padding:6px 8px;text-align:center;white-space:nowrap">'+metricLabels[m]+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+
+  var rowColors={'aplus':'#d1fae5','a':'#d1fae5','b':'#dbeafe','c':'#fef9c3','d':'#ffedd5'};
+  grades.forEach(function(g){
+    h+='<tr style="border-bottom:1px solid #e2e8f0;background:'+rowColors[g]+'">';
+    h+='<td style="padding:5px 8px;font-weight:800;font-size:.85rem;color:#1a3a6b">'+gradeLabels[g]+'</td>';
+    metrics.forEach(function(m){
+      h+='<td style="padding:4px 6px;text-align:center">'+inp(g,m)+'</td>';
+    });
     h+='</tr>';
   });
-  h+='</tbody></table></div>';
-  h+='<div style="background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:10px;margin-bottom:12px">';
-  h+='<h4 style="margin:0 0 5px;font-size:.78rem;color:#1a3a6b;font-weight:700">&#9660; F-Floor Penalty Thresholds</h4>';
-  h+='<div style="font-size:.66rem;color:#64748b;margin-bottom:7px">Each metric below these levels deducts 1 letter from the base grade.</div>';
-  h+='<div style="display:flex;flex-wrap:wrap;gap:10px">';
-  [{k:'penalty_lph',l:'Speed < (lbs/hr)',v:cfg.penalty_lph||D.penalty_lph,s:1},{k:'penalty_fillet',l:'Fillet% <',v:cfg.penalty_fillet||D.penalty_fillet,s:0.5},{k:'penalty_nugget',l:'Nugget% <',v:cfg.penalty_nugget||D.penalty_nugget,s:0.5},{k:'penalty_miscut',l:'Miscut% >',v:cfg.penalty_miscut||D.penalty_miscut,s:0.5},{k:'penalty_yield',l:'Yield% <',v:cfg.penalty_yield||D.penalty_yield,s:0.5}].forEach(function(p){
-    h+='<div style="display:flex;flex-direction:column;align-items:center;gap:2px"><label style="font-size:.63rem;color:#374151;font-weight:500;text-align:center;white-space:nowrap">'+p.l+'</label>'+inp('gc-'+p.k,p.v,p.s)+'</div>';
+
+  // F-floor row (penalty triggers)
+  h+='<tr style="border-bottom:1px solid #e2e8f0;background:#fee2e2">';
+  h+='<td style="padding:5px 8px;font-weight:800;font-size:.85rem;color:#ef4444">F-Penalty</td>';
+  metrics.forEach(function(m){
+    var fkey='f_'+m;
+    var fv=cfg[fkey]!==undefined?cfg[fkey]:DEFAULTS.f[m];
+    h+='<td style="padding:4px 6px;text-align:center">'+
+      '<input type="number" id="gc-'+fkey+'" value="'+fv+'" step="'+metricSteps[m]+'" '+
+      'style="width:68px;padding:3px 4px;border:1px solid #fca5a5;border-radius:4px;font-size:.72rem;text-align:center;background:#fff5f5">'+
+      '</td>';
   });
-  h+='</div></div>';
-  h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:7px 18px;font-size:.78rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
-  h+=' <span id="gc-msg" style="font-size:.74rem;color:#059669"></span></div>';
+  h+='</tr>';
+  h+='</tbody></table></div>';
+
+  h+='<div style="font-size:.68rem;color:#64748b;margin-bottom:10px">';
+  h+='<strong>F-Penalty row:</strong> Any metric falling below these thresholds deducts 1 letter from the base grade. ';
+  h+='Base grade is determined by the Lbs/Hr column only.</div>';
+
+  h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:8px 20px;font-size:.8rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
+  h+=' <span id="gc-msg" style="font-size:.75rem;color:#059669"></span>';
+  h+='</div>';
   container.innerHTML=h;
 }
 function saveGradeConfig(){
+  var grades=['aplus','a','b','c','d','f'];
+  var metrics=['lph','fil','nug','mis','yld'];
   var cfg={};
-  ['aplus','a','b','c','d'].forEach(function(gr){
-    cfg[gr]={};
-    ['lph','fil','nug','mis','yld'].forEach(function(f){
-      var el=document.getElementById('gc-'+gr+'-'+f);
-      if(el)cfg[gr][f]=parseFloat(el.value);
+  grades.forEach(function(g){
+    metrics.forEach(function(m){
+      var el=document.getElementById('gc-'+g+'_'+m);
+      if(el)cfg[g+'_'+m]=parseFloat(el.value);
     });
   });
-  ['penalty_lph','penalty_fillet','penalty_nugget','penalty_miscut','penalty_yield'].forEach(function(k){
-    var el=document.getElementById('gc-'+k);
-    if(el)cfg[k]=parseFloat(el.value);
+  // Also save lph-only keys for backward compat
+  ['aplus','a','b','c','d'].forEach(function(g){
+    if(cfg[g+'_lph']!==undefined)cfg['lph_'+g]=cfg[g+'_lph'];
   });
+  cfg.penalty_lph=cfg.f_lph||100;
+  cfg.penalty_fillet=cfg.f_fil||61;
+  cfg.penalty_nugget=cfg.f_nug||17;
+  cfg.penalty_miscut=cfg.f_mis||7.5;
+  cfg.penalty_yield=cfg.f_yld||70;
+
   apiCall('POST','/api/records?action=save_grade_config',cfg).then(function(){
     window._gradeConfig=cfg;
     var msg=document.getElementById('gc-msg');

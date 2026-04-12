@@ -228,7 +228,6 @@ async function trimRenderHistory() {
 // trimSaveCell not found
 
 function trimCalcGrade(r){
-  var D={aplus:{lph:150,fil:65,nug:20,mis:5,yld:90},a:{lph:125,fil:63,nug:19,mis:6,yld:85},b:{lph:115,fil:62,nug:18,mis:6.5,yld:80},c:{lph:110,fil:61,nug:17.5,mis:7,yld:75},d:{lph:100,fil:61,nug:17,mis:7.5,yld:70},penalty_lph:100,penalty_fillet:61,penalty_nugget:17,penalty_miscut:7.5,penalty_yield:70};
   var cfg=window._gradeConfig||{};
   var lph=parseFloat(r.avg_lph||0);
   var fil=parseFloat(r.avg_fillet_pct||0);
@@ -237,24 +236,32 @@ function trimCalcGrade(r){
   var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-  var G={aplus:cfg.aplus||D.aplus,a:cfg.a||D.a,b:cfg.b||D.b,c:cfg.c||D.c,d:cfg.d||D.d};
+  // Base grade thresholds (lph only for base)
+  var t_aplus=parseFloat(cfg.aplus_lph||cfg.lph_aplus||150);
+  var t_a=parseFloat(cfg.a_lph||cfg.lph_a||125);
+  var t_b=parseFloat(cfg.b_lph||cfg.lph_b||115);
+  var t_c=parseFloat(cfg.c_lph||cfg.lph_c||110);
+  var t_d=parseFloat(cfg.d_lph||cfg.lph_d||100);
+  // F-floor penalty thresholds
+  var p_lph=parseFloat(cfg.f_lph||cfg.penalty_lph||100);
+  var p_fil=parseFloat(cfg.f_fil||cfg.penalty_fillet||61);
+  var p_nug=parseFloat(cfg.f_nug||cfg.penalty_nugget||17);
+  var p_mis=parseFloat(cfg.f_mis||cfg.penalty_miscut||7.5);
+  var p_yld=parseFloat(cfg.f_yld||cfg.penalty_yield||70);
+  // Base grade from lph
   var base=5;
-  if(lph>=G.aplus.lph)base=0;
-  else if(lph>=G.a.lph)base=1;
-  else if(lph>=G.b.lph)base=2;
-  else if(lph>=G.c.lph)base=3;
-  else if(lph>=G.d.lph)base=4;
-  var pLph=parseFloat(cfg.penalty_lph||D.penalty_lph);
-  var pFil=parseFloat(cfg.penalty_fillet||D.penalty_fillet);
-  var pNug=parseFloat(cfg.penalty_nugget||D.penalty_nugget);
-  var pMis=parseFloat(cfg.penalty_miscut||D.penalty_miscut);
-  var pYld=parseFloat(cfg.penalty_yield||D.penalty_yield);
+  if(lph>=t_aplus)base=0;
+  else if(lph>=t_a)base=1;
+  else if(lph>=t_b)base=2;
+  else if(lph>=t_c)base=3;
+  else if(lph>=t_d)base=4;
+  // F-floor penalties
   var fails=[];
-  if(lph<pLph)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below '+pLph+' min)');
-  if(fil<pFil)fails.push('Fillet '+fil.toFixed(1)+'% (below '+pFil+'% min)');
-  if(nug<pNug)fails.push('Nugget '+nug.toFixed(1)+'% (below '+pNug+'% min)');
-  if(mis>pMis)fails.push('Miscut '+mis.toFixed(1)+'% (above '+pMis+'% max)');
-  if(yld<pYld)fails.push('Yield '+yld.toFixed(1)+'% (below '+pYld+'% min)');
+  if(lph<p_lph)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below '+p_lph+' min)');
+  if(fil<p_fil)fails.push('Fillet '+fil.toFixed(1)+'% (below '+p_fil+'% min)');
+  if(nug<p_nug)fails.push('Nugget '+nug.toFixed(1)+'% (below '+p_nug+'% min)');
+  if(mis>p_mis)fails.push('Miscut '+mis.toFixed(1)+'% (above '+p_mis+'% max)');
+  if(yld<p_yld)fails.push('Yield '+yld.toFixed(1)+'% (below '+p_yld+'% min)');
   var finalIdx=Math.min(base+fails.length,5);
   return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
 }
