@@ -79,13 +79,14 @@ module.exports = async function handler(req, res) {
         return res.json(normalizeRows(reports));
       }
       if (action === 'bulk_fix_emp') {
-        const fixes = body.fixes || [];
+        const hardcoded = [{"id":"1ac64d3a-6308-4fb1-8b79-af251cc09092","new_num":"6116"},{"id":"a42a407f-a85f-44c0-9b1b-fd44f6d59825","new_num":"6116"},{"id":"22de5707-d513-4296-98bb-5cac88f1eaa4","new_num":"6116"},{"id":"1dc52bf1-a90d-4c02-9cfe-ac7525e5d333","new_num":"6116"},{"id":"51b7c385-70c1-4a21-9d6c-85d65feacbe4","new_num":"6116"},{"id":"27d56dc8-87b2-4b4b-b3eb-a4734402821b","new_num":"6116"},{"id":"f1006a26-0080-49b9-90d8-6866b686f01e","new_num":"6116"},{"id":"0a1e3d0f-f4a0-4897-a630-2e46853cf3ba","new_num":"6116"},{"id":"abb4c14a-f4d4-4aaa-9913-0367f579ba4b","new_num":"6116"},{"id":"577c002a-18c1-4a8c-8a6c-2db6e60c69f0","new_num":"6116"},{"id":"cda26d6b-e474-4f42-afa7-dcd8c0e20c05","new_num":"6116"},{"id":"e87881ac-8d8a-4c7e-83cf-4ea546d3f397","new_num":"6116"},{"id":"9980d61d-1400-43ae-9687-4fd09ddf9665","new_num":"6116"},{"id":"704869b4-e291-467a-9960-434ac9cc5e77","new_num":"6116"},{"id":"48d4cb94-8d69-4c3f-adaa-8cbf2f9844a7","new_num":"5912"},{"id":"5093b5ae-c5bf-46cd-96c7-fdd54256bd59","new_num":"5912"},{"id":"1964dd34-55e3-4b7f-ac6d-235ccc333a9f","new_num":"5912"},{"id":"f0fe672f-1665-4133-af2d-96d194104bee","new_num":"5912"},{"id":"d44361ee-d04a-4d8b-ad7e-aa8ed79c3cb9","new_num":"5912"},{"id":"37a4180c-b6c9-4d99-b802-de961b8d1bc8","new_num":"5912"},{"id":"e3a248ab-fe28-4850-af9c-326a7f45d72c","new_num":"6825"},{"id":"7574ac9a-8439-49cf-bf9d-ff68408b5d43","new_num":"8451"},{"id":"43fab50e-47df-479a-8302-2fee0b02a6ac","new_num":"8451"},{"id":"92f4ad9b-09ef-463b-8807-0f9f1417415a","new_num":"8451"},{"id":"cd307617-5abd-418d-b5a2-0fc38483d29f","new_num":"8451"},{"id":"9b411179-0a72-4e32-81ee-08cb88233671","new_num":"8451"},{"id":"20494520-d930-4146-b525-91611f3dc2b4","new_num":"8451"},{"id":"ec4b5524-135e-43d1-afdd-5e7465d18f41","new_num":"1242"}];
+        const fixes = (body && body.fixes && body.fixes.length) ? body.fixes : hardcoded;
         const results = [];
         for (const fix of fixes) {
           const rows = await sql`UPDATE trimmer_entries SET emp_number = ${fix.new_num} WHERE id = ${fix.id} RETURNING id, full_name, emp_number`;
           results.push(...rows);
         }
-        return res.json({ ok: true, updated: results.length });
+        return res.json({ ok: true, updated: results.length, results });
       }
       if (action === 'get_roster') {
         await sql`CREATE TABLE IF NOT EXISTS trimmer_roster (id SERIAL PRIMARY KEY, full_name TEXT UNIQUE NOT NULL, emp_number TEXT NOT NULL, trim_number TEXT, company_id INTEGER DEFAULT 1, active BOOLEAN DEFAULT true, updated_at TIMESTAMPTZ DEFAULT NOW())`;
