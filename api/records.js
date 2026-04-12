@@ -89,18 +89,6 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({error:'Unknown type'});
     }
-    if (action === 'get_grade_config') {
-      await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
-      const cfgRows = await sql`SELECT value FROM app_config WHERE key = 'grade_config' LIMIT 1`;
-      if (cfgRows.length) return res.json(JSON.parse(cfgRows[0].value));
-      return res.json({});
-    }
-    if (req.method === 'POST' && action === 'save_grade_config') {
-      const cfgData = req.body;
-      await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
-      await sql`INSERT INTO app_config (key, value) VALUES ('grade_config', ${JSON.stringify(cfgData)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
-      return res.json({ ok: true });
-    }
     if (req.method === 'PATCH' && action === 'rename_employee') {
       const { emp_number, new_name } = req.body;
       if (!emp_number || !new_name) return res.status(400).json({ error: 'Missing fields' });
