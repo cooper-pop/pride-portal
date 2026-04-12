@@ -11,6 +11,8 @@ function buildAdminWidget() {
     var adminContent=document.getElementById('widget-content');
     if(adminContent)renderGradeSettings(adminContent);
   },100);
+
+  var _ac=document.getElementById('widget-content');if(_ac&&typeof renderGradeSettings==='function')renderGradeSettings(_ac);
 }
 
 function adminShowTab(idx) {
