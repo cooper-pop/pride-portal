@@ -236,22 +236,27 @@ function trimCalcGrade(r){
   var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-  var aplus=parseFloat(cfg.lph_aplus||150);
-  var a=parseFloat(cfg.lph_a||125);
-  var b=parseFloat(cfg.lph_b||115);
-  var c=parseFloat(cfg.lph_c||110);
-  var d=parseFloat(cfg.lph_d||100);
-  var pFil=parseFloat(cfg.penalty_fillet||61);
-  var pNug=parseFloat(cfg.penalty_nugget||17);
-  var pMis=parseFloat(cfg.penalty_miscut||7.5);
-  var pYld=parseFloat(cfg.penalty_yield||70);
-  var pLph=parseFloat(cfg.penalty_lph||100);
+  // Grade thresholds from config
+  var G={
+    aplus:cfg.aplus||DEFAULT_CFG.aplus,
+    a:cfg.a||DEFAULT_CFG.a,
+    b:cfg.b||DEFAULT_CFG.b,
+    c:cfg.c||DEFAULT_CFG.c,
+    d:cfg.d||DEFAULT_CFG.d
+  };
+  // Base grade from lbs/hr
   var base=5;
-  if(lph>=aplus)base=0;
-  else if(lph>=a)base=1;
-  else if(lph>=b)base=2;
-  else if(lph>=c)base=3;
-  else if(lph>=d)base=4;
+  if(lph>=G.aplus.lph)base=0;
+  else if(lph>=G.a.lph)base=1;
+  else if(lph>=G.b.lph)base=2;
+  else if(lph>=G.c.lph)base=3;
+  else if(lph>=G.d.lph)base=4;
+  // F-floor penalties
+  var pLph=parseFloat(cfg.penalty_lph||DEFAULT_CFG.penalty_lph);
+  var pFil=parseFloat(cfg.penalty_fillet||DEFAULT_CFG.penalty_fillet);
+  var pNug=parseFloat(cfg.penalty_nugget||DEFAULT_CFG.penalty_nugget);
+  var pMis=parseFloat(cfg.penalty_miscut||DEFAULT_CFG.penalty_miscut);
+  var pYld=parseFloat(cfg.penalty_yield||DEFAULT_CFG.penalty_yield);
   var fails=[];
   if(lph<pLph)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below '+pLph+' min)');
   if(fil<pFil)fails.push('Fillet '+fil.toFixed(1)+'% (below '+pFil+'% min)');

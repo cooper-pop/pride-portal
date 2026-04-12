@@ -265,53 +265,95 @@ function renderGradeSettings(container){
   });
 }
 function renderGradeConfig(){
-      var cfg=window._gradeConfig||{};
-      var container=document.getElementById('grade-config-section');
-      if(!container)return;
-      function field(label,key,val,step){
-        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-          +'<label style="flex:0 0 180px;font-size:.78rem;color:#374151;font-weight:500">'+label+'</label>'
-          +'<input type="number" id="gc-'+key+'" value="'+val+'" step="'+step+'" style="width:80px;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:.78rem">'
-          +'</div>';
-      }
-      var h='<div style="margin-top:20px">';
-      h+='<h3 style="font-size:.95rem;color:#1a3a6b;font-weight:700;margin:0 0 12px">&#9881;&#65039; Grading & Penalty Settings</h3>';
-      h+='<div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px">';
-      h+='<h4 style="margin:0 0 8px;font-size:.83rem;color:#1a3a6b;font-weight:700">&#127941; Base Grade Thresholds (Lbs/Hr)</h4>';
-      h+='<div style="font-size:.7rem;color:#64748b;margin-bottom:10px">Minimum lbs/hr to earn each base grade. Below the D threshold = F base grade.</div>';
-      h+=field('A+ Grade (>= lbs/hr)','lph_aplus',cfg.lph_aplus||150,1);
-      h+=field('A Grade (>= lbs/hr)','lph_a',cfg.lph_a||125,1);
-      h+=field('B Grade (>= lbs/hr)','lph_b',cfg.lph_b||115,1);
-      h+=field('C Grade (>= lbs/hr)','lph_c',cfg.lph_c||110,1);
-      h+=field('D Grade (>= lbs/hr)','lph_d',cfg.lph_d||100,1);
-      h+='</div>';
-      h+='<div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px">';
-      h+='<h4 style="margin:0 0 8px;font-size:.83rem;color:#1a3a6b;font-weight:700">&#9660; F-Floor Penalty Thresholds (-1 per violation)</h4>';
-      h+='<div style="font-size:.7rem;color:#64748b;margin-bottom:10px">Each metric in F territory deducts 1 letter from the base grade.</div>';
-      h+=field('Speed below (lbs/hr)','penalty_lph',cfg.penalty_lph||100,1);
-      h+=field('Fillet% below','penalty_fillet',cfg.penalty_fillet||61,0.5);
-      h+=field('Nugget% below','penalty_nugget',cfg.penalty_nugget||17,0.5);
-      h+=field('Miscut% above','penalty_miscut',cfg.penalty_miscut||7.5,0.5);
-      h+=field('Yield% below','penalty_yield',cfg.penalty_yield||70,0.5);
-      h+='</div>';
-      h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:8px 20px;font-size:.8rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
-      h+=' <span id="gc-msg" style="font-size:.75rem;color:#059669"></span>';
-      h+='</div>';
-      container.innerHTML=h;
-    }
+  var cfg=window._gradeConfig||{};
+  var container=document.getElementById('grade-config-section');
+  if(!container)return;
+  var D=DEFAULT_CFG;
+  function g(grade,key){
+    var obj=cfg[grade]||D[grade]||{};
+    return obj[key]!==undefined?obj[key]:D[grade][key];
+  }
+  function inp(id,val,step){
+    return '<input type="number" id="'+id+'" value="'+val+'" step="'+(step||0.5)+'" style="width:62px;padding:3px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:.72rem;text-align:center">';
+  }
+  var thStyle='padding:5px 6px;font-size:.7rem;color:#fff;text-align:center;white-space:nowrap';
+  var tdStyle='padding:4px 6px;text-align:center';
+  var h='<div style="margin-top:18px">';
+  h+='<h3 style="font-size:.9rem;color:#1a3a6b;font-weight:700;margin:0 0 6px">&#9881;&#65039; Grading & Penalty Settings</h3>';
+  h+='<div style="font-size:.7rem;color:#64748b;margin-bottom:10px">Set the minimum standards for each grade. The base grade is determined by Lbs/Hr, then F-floor penalty thresholds apply.</div>';
+  h+='<div style="overflow-x:auto;margin-bottom:14px">';
+  h+='<table style="border-collapse:collapse;font-size:.75rem;width:100%">';
+  h+='<thead><tr style="background:#1a3a6b">';
+  h+='<th style="'+thStyle+';text-align:left;padding-left:10px">Grade</th>';
+  h+='<th style="'+thStyle+'">Lbs/Hr >=</th>';
+  h+='<th style="'+thStyle+'">Fillet% >=</th>';
+  h+='<th style="'+thStyle+'">Nugget% >=</th>';
+  h+='<th style="'+thStyle+'">Miscut% <=</th>';
+  h+='<th style="'+thStyle+'">Yield% >=</th>';
+  h+='</tr></thead><tbody>';
+  var grades=[
+    {key:'aplus',label:'A+',color:'#059669'},
+    {key:'a',label:'A',color:'#10b981'},
+    {key:'b',label:'B',color:'#3b82f6'},
+    {key:'c',label:'C',color:'#f59e0b'},
+    {key:'d',label:'D',color:'#f97316'}
+  ];
+  grades.forEach(function(gr,i){
+    var bg=i%2===0?'#f8fafc':'#fff';
+    h+='<tr style="border-bottom:1px solid #e2e8f0;background:'+bg+'">';
+    h+='<td style="'+tdStyle+';padding-left:10px"><span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:'+gr.color+';color:#fff;font-weight:800;font-size:.8rem;line-height:28px;text-align:center">'+gr.label+'</span></td>';
+    h+='<td style="'+tdStyle+'">'+inp('gc-'+gr.key+'-lph',g(gr.key,'lph'),1)+'</td>';
+    h+='<td style="'+tdStyle+'">'+inp('gc-'+gr.key+'-fil',g(gr.key,'fil'),0.5)+'</td>';
+    h+='<td style="'+tdStyle+'">'+inp('gc-'+gr.key+'-nug',g(gr.key,'nug'),0.5)+'</td>';
+    h+='<td style="'+tdStyle+'">'+inp('gc-'+gr.key+'-mis',g(gr.key,'mis'),0.5)+'</td>';
+    h+='<td style="'+tdStyle+'">'+inp('gc-'+gr.key+'-yld',g(gr.key,'yld'),0.5)+'</td>';
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  // F-floor penalty section
+  h+='<div style="background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:12px;margin-bottom:12px">';
+  h+='<h4 style="margin:0 0 6px;font-size:.8rem;color:#1a3a6b;font-weight:700">&#9660; F-Floor Penalty Thresholds (-1 grade per violation)</h4>';
+  h+='<div style="font-size:.68rem;color:#64748b;margin-bottom:8px">Any metric falling below these levels deducts 1 letter from the base grade.</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:8px">';
+  [
+    {key:'penalty_lph',label:'Speed < (lbs/hr)',val:cfg.penalty_lph||D.penalty_lph,step:1},
+    {key:'penalty_fillet',label:'Fillet% <',val:cfg.penalty_fillet||D.penalty_fillet,step:0.5},
+    {key:'penalty_nugget',label:'Nugget% <',val:cfg.penalty_nugget||D.penalty_nugget,step:0.5},
+    {key:'penalty_miscut',label:'Miscut% >',val:cfg.penalty_miscut||D.penalty_miscut,step:0.5},
+    {key:'penalty_yield',label:'Yield% <',val:cfg.penalty_yield||D.penalty_yield,step:0.5}
+  ].forEach(function(p){
+    h+='<div style="display:flex;flex-direction:column;align-items:center;gap:3px">';
+    h+='<label style="font-size:.65rem;color:#374151;font-weight:500;text-align:center">'+p.label+'</label>';
+    h+=inp('gc-'+p.key,p.val,p.step);
+    h+='</div>';
+  });
+  h+='</div></div>';
+  h+='<button onclick="saveGradeConfig()" style="background:#1a3a6b;color:#fff;border:none;border-radius:7px;padding:8px 20px;font-size:.8rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
+  h+=' <span id="gc-msg" style="font-size:.75rem;color:#059669"></span>';
+  h+='</div>';
+  container.innerHTML=h;
+}
 function saveGradeConfig(){
-      var keys=['lph_aplus','lph_a','lph_b','lph_c','lph_d','penalty_lph','penalty_fillet','penalty_nugget','penalty_miscut','penalty_yield'];
-      var cfg={};
-      keys.forEach(function(k){
-        var el=document.getElementById('gc-'+k);
-        if(el)cfg[k]=parseFloat(el.value);
-      });
-      apiCall('POST','/api/records?action=save_grade_config',cfg).then(function(){
-        window._gradeConfig=cfg;
-        var msg=document.getElementById('gc-msg');
-        if(msg){msg.textContent='Saved!';setTimeout(function(){msg.textContent='';},2500);}
-      }).catch(function(){
-        var msg=document.getElementById('gc-msg');
-        if(msg){msg.style.color='#ef4444';msg.textContent='Save failed';}
-      });
-    }
+  var grades=['aplus','a','b','c','d'];
+  var fields=['lph','fil','nug','mis','yld'];
+  var cfg={};
+  grades.forEach(function(gr){
+    cfg[gr]={};
+    fields.forEach(function(f){
+      var el=document.getElementById('gc-'+gr+'-'+f);
+      if(el)cfg[gr][f]=parseFloat(el.value);
+    });
+  });
+  ['penalty_lph','penalty_fillet','penalty_nugget','penalty_miscut','penalty_yield'].forEach(function(k){
+    var el=document.getElementById('gc-'+k);
+    if(el)cfg[k]=parseFloat(el.value);
+  });
+  apiCall('POST','/api/records?action=save_grade_config',cfg).then(function(){
+    window._gradeConfig=cfg;
+    var msg=document.getElementById('gc-msg');
+    if(msg){msg.textContent='Saved!';setTimeout(function(){msg.textContent='';},2500);}
+  }).catch(function(){
+    var msg=document.getElementById('gc-msg');
+    if(msg){msg.style.color='#ef4444';msg.textContent='Save failed';}
+  });
+}
