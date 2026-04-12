@@ -228,14 +228,6 @@ async function trimRenderHistory() {
 // trimSaveCell not found
 
 function trimCalcGrade(r){
-  // Use editable settings if loaded
-  var S=window._gradeSettings||{};
-  var penaltyPts=typeof S.penalty==='number'?S.penalty:0.5;
-  var minLph=typeof S.min_lph==='number'?S.min_lph:100;
-  var minFil=typeof S.min_fillet==='number'?S.min_fillet:61;
-  var minNug=typeof S.min_nugget==='number'?S.min_nugget:17;
-  var maxMis=typeof S.max_miscut==='number'?S.max_miscut:7.5;
-  var minYld=typeof S.min_yield==='number'?S.min_yield:70;
   var lph=parseFloat(r.avg_lph||0);
   var fil=parseFloat(r.avg_fillet_pct||0);
   var nug=parseFloat(r.avg_nugget_pct||0);
@@ -243,22 +235,22 @@ function trimCalcGrade(r){
   var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
+  // Base grade from lbs/hr only
   var base=5;
   if(lph>=150)base=0;
   else if(lph>=125)base=1;
   else if(lph>=115)base=2;
   else if(lph>=110)base=3;
   else if(lph>=100)base=4;
+  // F-floor penalties: each metric below F standard = -1
   var fails=[];
-  if(lph<minLph)   fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below '+minLph+' min)');
-  if(fil<minFil)   fails.push('Fillet '+fil.toFixed(1)+'% (below '+minFil+'% min)');
-  if(nug<minNug)   fails.push('Nugget '+nug.toFixed(1)+'% (below '+minNug+'% min)');
-  if(mis>maxMis)   fails.push('Miscut '+mis.toFixed(1)+'% (above '+maxMis+'% max)');
-  if(yld<minYld)   fails.push('Yield '+yld.toFixed(1)+'% (below '+minYld+'% min)');
-  // Apply penalty: each failing metric drops grade by penaltyPts
-  var totalDrop=fails.length*penaltyPts;
-  var finalIdx=Math.min(Math.round(base+totalDrop),5);
-  return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails,penalty:penaltyPts};
+  if(lph<100)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below 100 min)');
+  if(fil<61)fails.push('Fillet '+fil.toFixed(1)+'% (below 61% min)');
+  if(nug<17)fails.push('Nugget '+nug.toFixed(1)+'% (below 17% min)');
+  if(mis>7.5)fails.push('Miscut '+mis.toFixed(1)+'% (above 7.5% max)');
+  if(yld<70)fails.push('Yield '+yld.toFixed(1)+'% (below 70% min)');
+  var finalIdx=Math.min(base+fails.length,5);
+  return{l:GRADES[finalIdx],bg:COLORS[finalIdx],c:'#fff',base:GRADES[base],fails:fails};
 }
 
 function trimRenderAnalytics(){
