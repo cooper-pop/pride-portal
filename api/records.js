@@ -55,7 +55,6 @@ module.exports = async function handler(req, res) {
 
   const { type, action, id } = req.query;
   const sql = neon(process.env.DATABASE_URL);
-  sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`.catch(function(){});
 
   try {
     if (req.method === 'GET') {
@@ -105,15 +104,16 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({error:'Unknown type'});
     }
     if(action==='get_grade_config'){
-      var rows=await sql`SELECT value FROM app_config WHERE key='grade_config' LIMIT 1`;
+      await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+      const rows=await sql`SELECT value FROM app_config WHERE key='grade_config' LIMIT 1`;
       if(rows.length) return res.json(JSON.parse(rows[0].value));
       return res.json({});
     }
     if(req.method==='POST'&&action==='save_grade_config'){
-      var cfg=req.body;
-      await sql`INSERT INTO app_config(key,value) VALUES('grade_config',${JSON.stringify(cfg)}) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`;
-      window._gradeConfig=cfg;
-      return res.json({ok:true});
+      const cfg2=req.body;
+      await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+      await sql`INSERT INTO app_config(key,value) VALUES('grade_config',${JSON.stringify(cfg2)}) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`;
+      return res.json({ok:true,saved:cfg2});
     }
     if (req.method === 'PATCH' && action === 'rename_employee') {
       const { emp_number, new_name } = req.body;
