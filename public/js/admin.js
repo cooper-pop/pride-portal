@@ -5,6 +5,12 @@ function buildAdminWidget() {
     return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="adminShowTab('+i+')">'+t+'</div>';
   }).join('');
   adminShowTab(0);
+
+  // Render grade settings panel
+  setTimeout(function(){
+    var adminContent=document.getElementById('widget-content');
+    if(adminContent)renderGradeSettings(adminContent);
+  },100);
 }
 
 function adminShowTab(idx) {
@@ -196,3 +202,49 @@ window.umCloseModal = umCloseModal;
 window.umSaveUser = umSaveUser;
 window.umResetPasskey = umResetPasskey;
 window.umToggleActive = umToggleActive;
+
+function renderGradeSettings(container){
+  var S=window._gradeSettings||{};
+  var penalty=typeof S.penalty==='number'?S.penalty:0.5;
+  var minLph=typeof S.min_lph==='number'?S.min_lph:100;
+  var minFil=typeof S.min_fillet==='number'?S.min_fillet:61;
+  var minNug=typeof S.min_nugget==='number'?S.min_nugget:17;
+  var maxMis=typeof S.max_miscut==='number'?S.max_miscut:7.5;
+  var minYld=typeof S.min_yield==='number'?S.min_yield:70;
+  var h='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px">';
+  h+='<h4 style="margin:0 0 10px;color:#1a3a6b;font-size:.85rem;font-weight:700">Trimmer Grade Settings</h4>';
+  h+='<div style="font-size:.72rem;color:#64748b;margin-bottom:10px">F-floor thresholds: a metric below these values triggers a grade penalty. Penalty is subtracted per failing metric.</div>';
+  var fields=[
+    {key:'penalty',label:'Penalty per F-floor metric',val:penalty,step:0.5,min:0,max:3},
+    {key:'min_lph',label:'Min Lbs/Hr (F threshold)',val:minLph,step:1,min:50,max:150},
+    {key:'min_fillet',label:'Min Fillet% (F threshold)',val:minFil,step:0.5,min:50,max:75},
+    {key:'min_nugget',label:'Min Nugget% (F threshold)',val:minNug,step:0.5,min:10,max:25},
+    {key:'max_miscut',label:'Max Miscut% (F threshold)',val:maxMis,step:0.5,min:2,max:15},
+    {key:'min_yield',label:'Min Total Yield% (F threshold)',val:minYld,step:1,min:50,max:85}
+  ];
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">';
+  fields.forEach(function(f){
+    h+='<div><label style="display:block;font-size:.7rem;color:#374151;font-weight:600;margin-bottom:2px">'+f.label+'</label>';
+    h+='<input type="number" data-key="'+f.key+'" value="'+f.val+'" step="'+f.step+'" min="'+f.min+'" max="'+f.max+'" style="width:100%;padding:5px 7px;border:1px solid #cbd5e1;border-radius:5px;font-size:.78rem"></div>';
+  });
+  h+='</div>';
+  h+='<div style="font-size:.68rem;color:#64748b;margin-bottom:8px">Base grades from Lbs/Hr: A+(>=150) A(>=125) B(>=115) C(>=110) D(>=100) F(<100)</div>';
+  h+='<button id="save-grade-settings" style="background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:.75rem;font-weight:600;cursor:pointer">Save Grade Settings</button>';
+  h+='<span id="grade-settings-msg" style="margin-left:10px;font-size:.72rem;color:#059669"></span>';
+  h+='</div>';
+  container.innerHTML+=h;
+  document.getElementById('save-grade-settings')?.addEventListener('click',function(){
+    var settings={};
+    container.querySelectorAll('input[data-key]').forEach(function(inp){
+      settings[inp.dataset.key]=parseFloat(inp.value);
+    });
+    apiCall('POST','/api/settings',settings).then(function(){
+      window._gradeSettings=settings;
+      var msg=document.getElementById('grade-settings-msg');
+      if(msg){msg.textContent='Saved!';setTimeout(function(){msg.textContent='';},2000);}
+    }).catch(function(){
+      var msg=document.getElementById('grade-settings-msg');
+      if(msg)msg.style.color='#ef4444',msg.textContent='Error saving.';
+    });
+  });
+}
