@@ -38,8 +38,8 @@ function trimRenderUpload() {
     '<div class="upload-drop-zone">'+
     '<div style="font-size:2rem;margin-bottom:8px">&#x1F4C4;</div>'+
     '<div style="display:flex;gap:10px;margin-top:4px">'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">ð Upload File</button>'+
-    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">ð· Take Photo</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-file-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--blue);border-radius:8px;background:#f0f4ff;color:var(--blue);font-weight:600;cursor:pointer;font-size:0.82rem">📁 Upload File</button>'+
+    '<button onclick="event.stopPropagation();document.getElementById(\'trim-camera-input\').click()" style="flex:1;padding:8px;border:1.5px solid var(--green);border-radius:8px;background:#f0fff4;color:var(--green);font-weight:600;cursor:pointer;font-size:0.82rem">📷 Take Photo</button>'+
     '</div>'+
     '<div style="font-size:0.75rem;color:var(--sub);margin-top:6px">PDF, JPG, PNG supported</div></div>'+
     '<input type="file" id="trim-file-input" accept="image/*,application/pdf" style="display:none" onchange="trimHandleFile(this)"/>'+
@@ -134,9 +134,9 @@ async function trimSaveEntry(entryId, reportId) {
   data.realtime_lbs_per_hour = data.minutes_worked>0?(data.total_lbs/(data.minutes_worked/60)):0;
   try {
     await apiCall('PATCH', '/api/records', { type:'entry', ...data });
-    toast('â Saved');
+    toast('✅ Saved');
     trimRenderHistory();
-  } catch(e) { toast('â Save failed: '+e.message); }
+  } catch(e) { toast('❌ Save failed: '+e.message); }
 }
 
 async function trimDeleteEntry(entryId, btn) {
@@ -149,7 +149,7 @@ async function trimDeleteEntry(entryId, btn) {
     if (row) { row.style.opacity='0.3'; row.style.transition='opacity 0.2s'; setTimeout(()=>row.remove(),200); }
     else trimRenderHistory();
     toast('Entry deleted');
-  } catch(e) { toast('â '+e.message); }
+  } catch(e) { toast('❌ '+e.message); }
 }
 
 async function trimDeleteReport(reportId) {
@@ -158,13 +158,13 @@ async function trimDeleteReport(reportId) {
     await apiCall('DELETE', '/api/records?type=trimmer&id='+reportId);
     toast('Report deleted');
     trimRenderHistory();
-  } catch(e) { toast('â '+e.message); }
+  } catch(e) { toast('❌ '+e.message); }
 }
 
 async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     const wc = document.getElementById('widget-content');
-    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading historyâ¦</div></div></div></div>';
+    wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
     let reports = [];
     try {
       const data = await apiCall('GET', '/api/records?type=trimmer');
@@ -180,11 +180,11 @@ async function trimRenderHistory() {
       const totalLbs = entries.reduce((s,e) => s+(parseFloat(e.total_lbs)||0),0);
       html += '<div class="wcard" style="margin-bottom:16px">';
       html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-      html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' â '+(rpt.shift||'')+' Shift</div>';
-      html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers Â· '+totalLbs.toFixed(1)+' total lbs</div></div>';
-      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">ð Delete Report</button>';
+      html += '<div><div style="font-weight:700">'+(isAdmin ? '<input type="date" value="'+d+'" data-id="'+rpt.id+'" onchange="trimUpdateDate(this)" style="font-size:0.95rem;font-weight:700;border:none;border-bottom:2px solid var(--blue);background:transparent;cursor:pointer;color:inherit;padding:0"/>' : d)+' — '+(rpt.shift||'')+' Shift</div>';
+      html += '<div style="font-size:0.78rem;color:var(--sub)">'+entries.length+' trimmers · '+totalLbs.toFixed(1)+' total lbs</div></div>';
+      if (isAdmin) html += '<button onclick="trimDeleteReport(\''+rpt.id+'\',this)" style="background:none;border:1px solid #fca5a5;color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.75rem">🗑 Delete Report</button>';
       html += '</div>';
-      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">âï¸ Click any value to edit â saves automatically.</div>';
+      if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">✏️ Click any value to edit — saves automatically.</div>';
       html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
       ['Emp#','Name','Code','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>'+h+'</th>'; });
       html += '</tr></thead><tbody>';
@@ -206,7 +206,7 @@ async function trimRenderHistory() {
           html += '<td>'+(parseFloat(e.total_lbs)||0).toFixed(1)+'</td>';
           html += '<td>'+(parseFloat(e.total_yield_pct)||0).toFixed(1)+'%</td>';
           html += '<td>'+(parseFloat(e.realtime_lbs_per_hour)||0).toFixed(1)+'</td>';
-          html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">â</button></td>';
+          html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">✕</button></td>';
         } else {
           html += '<td>'+(e.emp_number||'')+'</td><td>'+(e.full_name||'')+'</td><td>'+(e.trim_number||'')+'</td>';
           html += '<td>'+(e.minutes_worked||0)+'</td><td>'+(e.incoming_lbs||0)+'</td>';
@@ -507,7 +507,7 @@ async function trimShowTrend(encodedName, btn) {
     const name = decodeURIComponent(encodedName);
     const area = document.getElementById("trim-trend-area");
     if(!area) return;
-    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trendâ¦</div></div>";
+    area.innerHTML = "<div class=\"spinner-wrap\"><div class=\"spinner\"></div><div>Loading trend…</div></div>";
     btn.disabled = true;
     let data;
     try { data = await apiCall("GET", "/api/analytics?type=trimmer_trends&days=90&trimmer_name="+encodedName); }
@@ -524,7 +524,7 @@ async function trimShowTrend(encodedName, btn) {
     const inLbs = trends.map(function(t){ return parseFloat(t.incoming_lbs||0); });
     // Build charts
     let html = "<div class=\"wcard\" style=\"margin-top:12px\">";
-    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">ð " + name + " â Last 90 Days (" + trends.length + " shifts)</h3>";
+    html += "<h3 style=\"font-size:0.95rem;margin-bottom:4px\">📉 " + name + " — Last 90 Days (" + trends.length + " shifts)</h3>";
     // Summary stats
     const avgLph = lph.reduce(function(a,b){return a+b;},0)/lph.length;
     const avgFillet = fPct.reduce(function(a,b){return a+b;},0)/fPct.length;
@@ -543,11 +543,11 @@ async function trimShowTrend(encodedName, btn) {
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Lbs/Hr per shift</div>";
     html += trimBarChart(dates, lph, "#16a34a", "")+"</div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Fillet % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% â "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+fPct[0].toFixed(1)+"% → "+fPct[fPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">Nugget % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% â "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+nPct[0].toFixed(1)+"% → "+nPct[nPct.length-1].toFixed(1)+"%</div></div>";
     html += "<div style=\"flex:0 0 auto\"><div style=\"font-size:0.75rem;color:#64748b;margin-bottom:2px\">MiscCut % trend</div>";
-    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% â "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
+    html += "<div style=\"font-size:0.7rem;color:#64748b;text-align:right\">"+mcPct[0].toFixed(1)+"% → "+mcPct[mcPct.length-1].toFixed(1)+"%</div></div>";
     html += "</div>";
     // Detail table
     html += "<details style=\"margin-top:12px\"><summary style=\"font-size:0.8rem;color:var(--blue);cursor:pointer\">Show raw data (" + trends.length + " shifts)</summary>";
@@ -620,7 +620,7 @@ window.trimShowTrend = trimShowTrend;
 window.trimSetPeriod = trimSetPeriod;
 
 
-// ââ TRIMMER GRADING SYSTEM ââ
+// ── TRIMMER GRADING SYSTEM ──
 function getTrimmerGrade(pct) {
   if (pct === null || pct === undefined || isNaN(pct)) return {letter:'N/A', color:'#94a3b8', bg:'#f8fafc'};
   if (pct >= 100) return {letter:'A+', color:'#fff', bg:'#059669'};
@@ -632,10 +632,10 @@ function getTrimmerGrade(pct) {
 }
 
 function getTrimmerTrend(curr, prev) {
-  if (curr===null||prev===null) return {arrow:'â', color:'#94a3b8'};
-  if (curr > prev+2)  return {arrow:'â', color:'#059669'};
-  if (curr < prev-2)  return {arrow:'â', color:'#dc2626'};
-  return               {arrow:'â', color:'#64748b'};
+  if (curr===null||prev===null) return {arrow:'—', color:'#94a3b8'};
+  if (curr > prev+2)  return {arrow:'↑', color:'#059669'};
+  if (curr < prev-2)  return {arrow:'↓', color:'#dc2626'};
+  return               {arrow:'→', color:'#64748b'};
 }
 
 function buildTrimmerGrades(period) {
