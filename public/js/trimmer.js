@@ -228,6 +228,7 @@ async function trimRenderHistory() {
 // trimSaveCell not found
 
 function trimCalcGrade(r){
+  var D={aplus:{lph:150,fil:65,nug:20,mis:5,yld:90},a:{lph:125,fil:63,nug:19,mis:6,yld:85},b:{lph:115,fil:62,nug:18,mis:6.5,yld:80},c:{lph:110,fil:61,nug:17.5,mis:7,yld:75},d:{lph:100,fil:61,nug:17,mis:7.5,yld:70},penalty_lph:100,penalty_fillet:61,penalty_nugget:17,penalty_miscut:7.5,penalty_yield:70};
   var cfg=window._gradeConfig||{};
   var lph=parseFloat(r.avg_lph||0);
   var fil=parseFloat(r.avg_fillet_pct||0);
@@ -236,27 +237,18 @@ function trimCalcGrade(r){
   var yld=parseFloat(r.avg_total_yield||0);
   var GRADES=['A+','A','B','C','D','F'];
   var COLORS=['#059669','#10b981','#3b82f6','#f59e0b','#f97316','#ef4444'];
-  // Grade thresholds from config
-  var G={
-    aplus:cfg.aplus||DEFAULT_CFG.aplus,
-    a:cfg.a||DEFAULT_CFG.a,
-    b:cfg.b||DEFAULT_CFG.b,
-    c:cfg.c||DEFAULT_CFG.c,
-    d:cfg.d||DEFAULT_CFG.d
-  };
-  // Base grade from lbs/hr
+  var G={aplus:cfg.aplus||D.aplus,a:cfg.a||D.a,b:cfg.b||D.b,c:cfg.c||D.c,d:cfg.d||D.d};
   var base=5;
   if(lph>=G.aplus.lph)base=0;
   else if(lph>=G.a.lph)base=1;
   else if(lph>=G.b.lph)base=2;
   else if(lph>=G.c.lph)base=3;
   else if(lph>=G.d.lph)base=4;
-  // F-floor penalties
-  var pLph=parseFloat(cfg.penalty_lph||DEFAULT_CFG.penalty_lph);
-  var pFil=parseFloat(cfg.penalty_fillet||DEFAULT_CFG.penalty_fillet);
-  var pNug=parseFloat(cfg.penalty_nugget||DEFAULT_CFG.penalty_nugget);
-  var pMis=parseFloat(cfg.penalty_miscut||DEFAULT_CFG.penalty_miscut);
-  var pYld=parseFloat(cfg.penalty_yield||DEFAULT_CFG.penalty_yield);
+  var pLph=parseFloat(cfg.penalty_lph||D.penalty_lph);
+  var pFil=parseFloat(cfg.penalty_fillet||D.penalty_fillet);
+  var pNug=parseFloat(cfg.penalty_nugget||D.penalty_nugget);
+  var pMis=parseFloat(cfg.penalty_miscut||D.penalty_miscut);
+  var pYld=parseFloat(cfg.penalty_yield||D.penalty_yield);
   var fails=[];
   if(lph<pLph)fails.push('Speed '+lph.toFixed(1)+' lbs/hr (below '+pLph+' min)');
   if(fil<pFil)fails.push('Fillet '+fil.toFixed(1)+'% (below '+pFil+'% min)');
