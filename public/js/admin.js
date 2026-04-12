@@ -9,7 +9,7 @@ function buildAdminWidget() {
     if(wc){
       if(!document.getElementById('grade-config-section')){
         var gs=document.createElement('div');gs.id='grade-config-section';
-        wc.appendChild(gs);
+        wc.insertBefore(gs,wc.firstChild);
       }
       setTimeout(renderGradeConfig,200);
     }
