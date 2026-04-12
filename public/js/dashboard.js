@@ -142,19 +142,25 @@ function settingsShowTab(tab){
 
   if(id==='screen-user-mgmt'){
     settingsTab('users');
-    if(typeof loadUserList==='function')loadUserList();
-    else if(typeof buildAdminWidget==='function'){
-      // Load users into um-user-list
-      apiCall('GET','/api/users').then(function(data){
-        var ul=document.getElementById('um-user-list');
-        if(!ul)return;
-        var users=data.users||data||[];
-        ul.innerHTML=users.map(function(u){
-          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f1f5f9">'            +'<div><div style="font-weight:600;font-size:.88rem">'+u.full_name+'</div>'            +'<div style="font-size:.75rem;color:#64748b">@'+u.username+'</div></div>'            +'<span style="font-size:.75rem;padding:3px 10px;border-radius:20px;background:'+(u.role==='admin'?'#dbeafe':u.role==='manager'?'#d1fae5':'#fef9c3')+';color:#1e293b">'+u.role+'</span></div>';
-        }).join('');
-      }).catch(function(){});
-    }
+    loadSettingsUsers();
   }
+}
+
+function loadSettingsUsers(){
+  var ul=document.getElementById('um-user-list');
+  if(!ul)return;
+  ul.innerHTML='<div style="color:#94a3b8;font-size:.8rem;padding:12px">Loading...</div>';
+  apiCall('GET','/api/users').then(function(data){
+    var users=(data&&data.users)||data||[];
+    if(!users.length){ul.innerHTML='<div style="color:#94a3b8;padding:12px">No users found.</div>';return;}
+    var roleColor={admin:'#dbeafe',manager:'#d1fae5',supervisor:'#fef9c3'};
+    ul.innerHTML=users.map(function(u){
+      var bg=roleColor[u.role]||'#f1f5f9';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #f1f5f9">'        +'<div><div style="font-weight:600;font-size:.87rem;color:#1e293b">'+u.full_name+'</div>'        +'<div style="font-size:.73rem;color:#64748b">@'+u.username+(u.email?' &middot; '+u.email:'')+ '</div></div>'        +'<span style="font-size:.72rem;padding:3px 12px;border-radius:20px;background:'+bg+';color:#1e293b;font-weight:600">'+u.role+'</span>'        +'</div>';
+    }).join('');
+  }).catch(function(e){
+    ul.innerHTML='<div style="color:#ef4444;padding:12px">Failed to load users.</div>';
+  });
 }
 
 function settingsTab(tab){
