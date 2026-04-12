@@ -5,22 +5,8 @@ function showScreen(id) {
   const _el=document.getElementById(id); if(_el) _el.classList.add('active');
 
   if (id === 'screen-user-mgmt') {
-    var settingsGradeDiv = document.getElementById('grade-config-section-settings');
-    if (settingsGradeDiv) {
-      apiCall('GET', '/api/records?action=get_grade_config')
-        .then(function(cfg) {
-          window._gradeConfig = cfg || {};
-          if (typeof renderGradeConfig === 'function') {
-            // Temporarily point renderGradeConfig at the settings div
-            var orig = document.getElementById('grade-config-section');
-            if (orig) orig.id = 'grade-config-section-bak';
-            settingsGradeDiv.id = 'grade-config-section';
-            renderGradeConfig();
-            settingsGradeDiv.id = 'grade-config-section-settings';
-            if (orig) orig.id = 'grade-config-section';
-          }
-        }).catch(function() { window._gradeConfig = {}; });
-    }
+    settingsShowTab('users');
+    if (typeof buildAdminWidget === 'function') buildAdminWidget();
   }
 }
 
@@ -111,6 +97,45 @@ function settingsShowTab(tab){
           renderGradeConfig();
           gs.id='grade-config-section-settings';
           if(bak)bak.id='grade-config-section';
+        }
+      }).catch(function(){window._gradeConfig={};});
+  }
+}
+
+function settingsShowTab(tab){
+  var tabs=['users','grades'];
+  tabs.forEach(function(t){
+    var btn=document.getElementById('settings-tab-'+t);
+    var panel=document.getElementById('settings-panel-'+t);
+    if(btn&&panel){
+      if(t===tab){
+        btn.style.borderBottomColor='#1a3a6b';
+        btn.style.color='#1a3a6b';
+        btn.style.fontWeight='600';
+        panel.style.display='';
+      } else {
+        btn.style.borderBottomColor='transparent';
+        btn.style.color='#64748b';
+        btn.style.fontWeight='500';
+        panel.style.display='none';
+      }
+    }
+  });
+  // Load grade config when switching to grades tab
+  if(tab==='grades'){
+    apiCall('GET','/api/records?action=get_grade_config')
+      .then(function(cfg){
+        window._gradeConfig=cfg||{};
+        if(typeof renderGradeConfig==='function'){
+          var gs=document.getElementById('grade-config-section-settings');
+          if(gs){
+            var orig=document.getElementById('grade-config-section');
+            if(orig)orig.id='grade-config-section-bak';
+            gs.id='grade-config-section';
+            renderGradeConfig();
+            gs.id='grade-config-section-settings';
+            if(orig)orig.id='grade-config-section';
+          }
         }
       }).catch(function(){window._gradeConfig={};});
   }
