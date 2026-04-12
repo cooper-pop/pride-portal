@@ -3,6 +3,25 @@
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
   const _el=document.getElementById(id); if(_el) _el.classList.add('active');
+
+  if (id === 'screen-user-mgmt') {
+    var settingsGradeDiv = document.getElementById('grade-config-section-settings');
+    if (settingsGradeDiv) {
+      apiCall('GET', '/api/records?action=get_grade_config')
+        .then(function(cfg) {
+          window._gradeConfig = cfg || {};
+          if (typeof renderGradeConfig === 'function') {
+            // Temporarily point renderGradeConfig at the settings div
+            var orig = document.getElementById('grade-config-section');
+            if (orig) orig.id = 'grade-config-section-bak';
+            settingsGradeDiv.id = 'grade-config-section';
+            renderGradeConfig();
+            settingsGradeDiv.id = 'grade-config-section-settings';
+            if (orig) orig.id = 'grade-config-section';
+          }
+        }).catch(function() { window._gradeConfig = {}; });
+    }
+  }
 }
 
 function buildDash() {
