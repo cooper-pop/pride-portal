@@ -21,7 +21,7 @@ function buildPartsWidget() {
 function partsInit() {
   var token = (function(){ try { return JSON.parse(localStorage.getItem('potp_v2_session')).token; } catch(e){ return ''; } })();
   // Init DB then load
-  apiCall('GET','/api/records?action=init_parts_db').then(function(){
+  apiCall('GET','/api/parts?action=init_parts_db').then(function(){
     partsShowTab('inventory');
   }).catch(function(){ partsShowTab('inventory'); });
 }
@@ -176,7 +176,7 @@ function partsSavePart(id) {
   });
   if (!vals.part_number) { alert('Part number is required'); return; }
   if (id) vals.id = id;
-  apiCall('POST','/api/records?action=save_part',vals).then(function(){
+  apiCall('POST','/api/parts?action=save_part',vals).then(function(){
     var m = document.getElementById('parts-modal');
     if (m) m.remove();
     partsShowTab('inventory');
@@ -186,7 +186,7 @@ window.partsSavePart = partsSavePart;
 
 function partsDeletePart(id) {
   if (!confirm('Delete this part?')) return;
-  apiCall('POST','/api/records?action=delete_part',{id:id}).then(function(){ partsShowTab('inventory'); });
+  apiCall('POST','/api/parts?action=delete_part',{id:id}).then(function(){ partsShowTab('inventory'); });
 }
 window.partsDeletePart = partsDeletePart;
 
@@ -362,7 +362,7 @@ function partsSaveInvoice(id) {
     notes: (document.getElementById('inv-notes')||{}).value || ''
   };
   if (id) data.id = id;
-  apiCall('POST','/api/records?action=save_invoice',data).then(function(){
+  apiCall('POST','/api/parts?action=save_invoice',data).then(function(){
     var m = document.getElementById('parts-modal');
     if (m) m.remove();
     partsShowTab('invoices');
@@ -490,7 +490,7 @@ function partsSaveRef(id) {
   };
   if (!data.part_number_a || !data.part_number_b) { alert('Both part numbers required'); return; }
   if (id) data.id = id;
-  apiCall('POST','/api/records?action=save_cross_ref',data).then(function(){
+  apiCall('POST','/api/parts?action=save_cross_ref',data).then(function(){
     var m = document.getElementById('parts-modal');
     if (m) m.remove();
     partsShowTab('crossref');
@@ -500,7 +500,7 @@ window.partsSaveRef = partsSaveRef;
 
 function partsDeleteRef(id) {
   if (!confirm('Delete this cross-reference?')) return;
-  apiCall('POST','/api/records?action=delete_cross_ref',{id:id}).then(function(){ partsShowTab('crossref'); });
+  apiCall('POST','/api/parts?action=delete_cross_ref',{id:id}).then(function(){ partsShowTab('crossref'); });
 }
 window.partsDeleteRef = partsDeleteRef;
 
@@ -579,7 +579,7 @@ function partsSaveOrder() {
     status: 'ordered'
   };
   if (!data.part_number) { alert('Part number required'); return; }
-  apiCall('POST','/api/records?action=save_parts_order',data).then(function(){
+  apiCall('POST','/api/parts?action=save_parts_order',data).then(function(){
     var m = document.getElementById('parts-modal');
     if (m) m.remove();
     partsShowTab('orders');
@@ -590,7 +590,7 @@ window.partsSaveOrder = partsSaveOrder;
 function partsAddTracking(id) {
   var num = prompt('Enter tracking number:');
   if (!num) return;
-  apiCall('POST','/api/records?action=update_tracking',{id:id,tracking_number:num,status:'shipped'}).then(function(){
+  apiCall('POST','/api/parts?action=update_tracking',{id:id,tracking_number:num,status:'shipped'}).then(function(){
     partsShowTab('orders');
   });
 }
@@ -599,10 +599,10 @@ window.partsAddTracking = partsAddTracking;
 function partsReceiveOrder(id, qty) {
   var q = parseFloat(prompt('Qty received:', qty)||qty);
   if (!q) return;
-  apiCall('POST','/api/records?action=receive_part',{id:id,qty_received:q}).then(function(){
+  apiCall('POST','/api/parts?action=receive_part',{id:id,qty_received:q}).then(function(){
     partsShowTab('orders');
     // Refresh inventory too
-    apiCall('GET','/api/records?action=get_parts').then(function(data){
+    apiCall('GET','/api/parts?action=get_parts').then(function(data){
       _partsData.inventory = Array.isArray(data) ? data : [];
     });
   });
@@ -647,7 +647,7 @@ function partsSearchManuals() {
   if (!q) return;
   var results = document.getElementById('manual-results');
   if (results) results.innerHTML = '<div style="color:#94a3b8;font-size:.8rem;padding:8px">Searching...</div>';
-  apiCall('POST','/api/records?action=search_manual',{query:q}).then(function(data){
+  apiCall('POST','/api/parts?action=search_manual',{query:q}).then(function(data){
     var hits = Array.isArray(data) ? data : [];
     if (!results) return;
     if (!hits.length) {
@@ -696,7 +696,7 @@ function partsSaveManual() {
     extracted_text: (document.getElementById('man-text')||{}).value||''
   };
   if (!data.title) { alert('Title required'); return; }
-  apiCall('POST','/api/records?action=save_manual',data).then(function(){
+  apiCall('POST','/api/parts?action=save_manual',data).then(function(){
     var m = document.getElementById('parts-modal');
     if (m) m.remove();
     partsShowTab('manuals');
@@ -706,7 +706,7 @@ window.partsSaveManual = partsSaveManual;
 
 // ===== LOW STOCK NOTIFICATIONS =====
 function partsCheckLowStock(callback) {
-  apiCall('GET','/api/records?action=get_low_stock').then(function(data){
+  apiCall('GET','/api/parts?action=get_low_stock').then(function(data){
     if (callback) callback(Array.isArray(data) ? data : []);
   }).catch(function(){ if (callback) callback([]); });
 }
