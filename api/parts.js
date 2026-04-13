@@ -24,7 +24,7 @@ module.exports = async function handler(req, res) {
   const body = req.body || {};
 
   try {
-    // ── INIT / MIGRATE ──────────────────────────────────────────────────────
+    // ââ INIT / MIGRATE ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'init_parts_db') {
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -119,7 +119,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true, message: 'Tables recreated with full schema' });
     }
 
-    // ── GET actions ──────────────────────────────────────────────────────────
+    // ââ GET actions ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'get_parts') {
       const rows = await sql`SELECT * FROM parts_inventory WHERE company_id = ${company_id} ORDER BY part_number`;
       return res.json(rows);
@@ -145,12 +145,12 @@ module.exports = async function handler(req, res) {
       return res.json(rows);
     }
     if (action === 'get_parts_todo_alerts') {
-      const waiting = await sql`SELECT id, title, notes FROM tasks WHERE status = 'waiting_parts' AND company_id = ${company_id} ORDER BY created_at DESC`;
+      const waiting = await sql`SELECT id, title FROM tasks WHERE status = 'waiting_parts' AND company_id = ${company_id} ORDER BY created_at DESC`;
       const low = await sql`SELECT id, part_number, description, quantity, min_quantity FROM parts_inventory WHERE quantity <= min_quantity AND company_id = ${company_id} ORDER BY quantity ASC`;
       return res.json({ waiting_parts: waiting, low_stock: low });
     }
 
-    // ── INVENTORY CRUD ───────────────────────────────────────────────────────
+    // ââ INVENTORY CRUD âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'save_part') {
       const p = body;
       let rows;
@@ -192,7 +192,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
 
-    // ── INVOICES CRUD ────────────────────────────────────────────────────────
+    // ââ INVOICES CRUD ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'save_invoice') {
       const inv = body;
       let rows;
@@ -221,7 +221,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
 
-    // ── CROSS-REFERENCE CRUD ─────────────────────────────────────────────────
+    // ââ CROSS-REFERENCE CRUD âââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'save_cross_ref') {
       const cr = body;
       let rows;
@@ -253,7 +253,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
 
-    // ── ORDERS CRUD ──────────────────────────────────────────────────────────
+    // ââ ORDERS CRUD ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'save_parts_order') {
       const o = body;
       let rows;
@@ -314,7 +314,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
 
-    // ── MANUALS CRUD ─────────────────────────────────────────────────────────
+    // ââ MANUALS CRUD âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'save_manual') {
       const m = body;
       let rows;
@@ -349,7 +349,7 @@ module.exports = async function handler(req, res) {
       return res.json(rows);
     }
 
-    // ── WEB SEARCH ───────────────────────────────────────────────────────────
+    // ââ WEB SEARCH âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'search_parts_web') {
       const pn = body.part_number || '';
       const desc = body.description || '';
