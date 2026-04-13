@@ -46,7 +46,7 @@ module.exports=async function handler(req,res){
     return res.json(rows);
   }
   if(act==='get_parts_todo_alerts'){
-    const w=await sql`SELECT id,title FROM tasks WHERE status='waiting_parts' AND company_id=${cid} ORDER BY created_at DESC`;
+    let w=[];try{w=await sql`SELECT id,title FROM tasks WHERE (status='waiting_parts' OR task_status='waiting_parts') AND company_id=${cid} ORDER BY created_at DESC`;}catch(e){try{w=await sql`SELECT id,title FROM tasks WHERE task_status='waiting_parts' AND company_id=${cid}`;}catch(e2){}}
     const l=await sql`SELECT id,part_number,description,qty_on_hand as quantity,COALESCE(qty_minimum,min_quantity,1) as min_quantity FROM parts_inventory WHERE company_id=${cid} AND qty_on_hand<=COALESCE(qty_minimum,min_quantity,1) ORDER BY qty_on_hand ASC`;
     return res.json({waiting_parts:w,low_stock:l});
   }
@@ -77,7 +77,8 @@ module.exports=async function handler(req,res){
     const cr=b;let rows;
     const pa=cr.part_number_a||'',ma=cr.manufacturer_a||'',pb=cr.part_number_b||'',mb=cr.manufacturer_b||'',de=cr.description||'',pra=parseFloat(cr.price_a)||0,prb=parseFloat(cr.price_b)||0,no=cr.notes||'';
     if(cr.id){rows=await sql`UPDATE parts_cross_ref SET part_number_a=${pa},manufacturer_a=${ma},part_number_b=${pb},manufacturer_b=${mb},description=${de},price_a=${pra},price_b=${prb},notes=${no},updated_at=NOW() WHERE id=${cr.id} RETURNING *`;}
-    else{rows=await sql`INSERT INTO parts_cross_ref(part_number_a,manufacturer_a,part_number_b,manufacturer_b,description,price_a,price_b,notes,company_id)VALUES(${pa},${ma},${pb},${mb},${de},${pra},${prb},${no},${cid})RETURNING *`;}
+    else{try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''`;}catch(e){}
+rows=await sql`INSERT INTO parts_cross_ref(part_number_a,manufacturer_a,part_number_b,manufacturer_b,description,price_a,price_b,notes,company_id)VALUES(${pa},${ma},${pb},${mb},${de},${pra},${prb},${no},${cid})RETURNING *`;}
     return res.json({ok:true,ref:rows[0]});
   }
   if(act==='delete_cross_ref'){await sql`DELETE FROM parts_cross_ref WHERE id=${b.id}`;return res.json({ok:true});}
