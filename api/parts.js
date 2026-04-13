@@ -24,6 +24,15 @@ module.exports=async function handler(req,res){
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS task_id UUID`;}catch(e){}
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS ordered_by UUID`;}catch(e){}
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS price_a NUMERIC(10,2) DEFAULT 0`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS price_b NUMERIC(10,2) DEFAULT 0`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS manufacturer_a TEXT DEFAULT ''`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS manufacturer_b TEXT DEFAULT ''`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`;}catch(e){}
+    try{await sql`ALTER TABLE parts_cross_ref ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
+    try{await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`;}catch(e){}
+    try{await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
     return res.json({ok:true,message:'Parts DB ready'});
   }
   if(act==='debug_columns'){
