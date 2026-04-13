@@ -32,6 +32,25 @@ module.exports = async function handler(req, res) {
       const low=await sql`SELECT id,part_number,description,quantity,min_quantity FROM parts_inventory WHERE quantity<=min_quantity AND company_id=${company_id} ORDER BY quantity ASC`;
       return res.json({waiting_parts:waiting,low_stock:low});
     }
+    if(action==='migrate_parts_db'){
+      const alters=[
+        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''`,
+        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS min_quantity INT DEFAULT 1`,
+        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS location TEXT DEFAULT ''`,
+        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`,
+        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
+        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS tracking_number TEXT DEFAULT ''`,
+        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS carrier TEXT DEFAULT ''`,
+        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS task_id UUID`,
+        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS ordered_by UUID`,
+        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`,
+        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
+        `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_number TEXT DEFAULT ''`,
+        `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_description TEXT DEFAULT ''`
+      ];
+      for(const q of alters){try{await sql.unsafe(q);}catch(e){}}
+      return res.json({ok:true,message:'Migration complete'});
+    }
     if(action==='save_part'){
       const p=body; let rows;
       if(p.id){rows=await sql`UPDATE parts_inventory SET part_number=${p.part_number||''},description=${p.description||''},manufacturer=${p.manufacturer||''},category=${p.category||''},quantity=${p.quantity||0},min_quantity=${p.min_quantity||1},unit_cost=${p.unit_cost||0},location=${p.location||''},notes=${p.notes||''},updated_at=NOW() WHERE id=${p.id} AND company_id=${company_id} RETURNING *`;}
