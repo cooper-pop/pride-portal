@@ -1,4 +1,20 @@
-const { neon } = require('@neondatabase/serverless');
+    if(action==='migrate_parts_db'){
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS min_quantity INT DEFAULT 1`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS location TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS tracking_number TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS carrier TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS task_id UUID`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS ordered_by UUID`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
+      try{await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_number TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_description TEXT DEFAULT ''`;}catch(e){}
+      return res.json({ok:true,message:'Migration complete'});
+    }
+    const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 
 module.exports = async function handler(req, res) {
