@@ -250,6 +250,63 @@ NaN
         const rows = await sql`SELECT * FROM parts_inventory WHERE company_id=1 AND qty_on_hand <= qty_minimum ORDER BY part_number`;
         return res.json(rows);
       }
+      if (action === 'save_part') {
+        const {id,part_number,description,manufacturer,category,quantity,min_quantity,unit_cost,location,notes} = body;
+        let rows;
+        if (id) {
+          rows = await sql`UPDATE parts_inventory SET part_number=${part_number},description=${description},manufacturer=${manufacturer},category=${category||''},quantity=${quantity||0},min_quantity=${min_quantity||1},unit_cost=${unit_cost||0},location=${location||''},notes=${notes||''},updated_at=NOW() WHERE id=${id} RETURNING *`;
+        } else {
+          rows = await sql`INSERT INTO parts_inventory (part_number,description,manufacturer,category,quantity,min_quantity,unit_cost,location,notes,company_id) VALUES (${part_number},${description},${manufacturer||''},${category||''},${quantity||0},${min_quantity||1},${unit_cost||0},${location||''},${notes||''},${company_id}) RETURNING *`;
+        }
+        return res.json({ ok: true, part: rows[0] });
+      }
+      if (action === 'delete_part') {
+        const {id} = body;
+        await sql`DELETE FROM parts_inventory WHERE id=${id} AND company_id=${company_id}`;
+        return res.json({ ok: true });
+      }
+      if (action === 'update_part') {
+        const {id, quantity, field, value} = body;
+        if (field && value !== undefined) {
+          if (field === 'quantity') await sql`UPDATE parts_inventory SET quantity=${value}, updated_at=NOW() WHERE id=${id}`;
+          else if (field === 'location') await sql`UPDATE parts_inventory SET location=${value}, updated_at=NOW() WHERE id=${id}`;
+        } else {
+          await sql`UPDATE parts_inventory SET quantity=${quantity}, updated_at=NOW() WHERE id=${id}`;
+        }
+        return res.json({ ok: true });
+      }
+      if (action === 'add_tracking') {
+        const {order_id, tracking_number, carrier, task_id} = body;
+        await sql`UPDATE parts_orders SET tracking_number=${tracking_number}, carrier=${carrier||''}, status='ordered', updated_at=NOW() WHERE id=${order_id}`;
+        if (task_id) {
+          await sql`UPDATE tasks SET status='parts_ordered', updated_at=NOW() WHERE id=${task_id}`;
+        }
+        return res.json({ ok: true });
+      }
+      if (action === 'receive_part') {
+        const {order_id, task_id, parts} = body;
+        await sql`UPDATE parts_orders SET status='received', received_at=NOW(), updated_at=NOW() WHERE id=${order_id}`;
+        for (const p of (parts || [])) {
+          const existing = await sql`SELECT id, quantity FROM parts_inventory WHERE part_number=${p.part_number} AND company_id=${company_id} LIMIT 1`;
+          if (existing.length > 0) {
+            await sql`UPDATE parts_inventory SET quantity=quantity+${p.quantity||1}, updated_at=NOW() WHERE id=${existing[0].id}`;
+          } else {
+            await sql`INSERT INTO parts_inventory (part_number,description,manufacturer,quantity,unit_cost,company_id) VALUES (${p.part_number},${p.description||''},${p.manufacturer||''},${p.quantity||1},${p.unit_cost||0},${company_id})`;
+          }
+        }
+        if (task_id) await sql`UPDATE tasks SET status='in_progress', updated_at=NOW() WHERE id=${task_id}`;
+        return res.json({ ok: true });
+      }
+      if (action === 'get_parts_todo_alerts') {
+        const waiting = await sql`SELECT id, title, part_number, part_description FROM tasks WHERE status='waiting_parts' AND company_id=${company_id} ORDER BY created_at DESC`;
+        const lowStock = await sql`SELECT id, part_number, description, quantity, min_quantity FROM parts_inventory WHERE quantity <= min_quantity AND company_id=${company_id} ORDER BY quantity ASC`;
+        return res.json({ waiting_parts: waiting, low_stock: lowStock });
+      }
+      if (action === 'search_parts_web') {
+        const {part_number, description} = body;
+        const query = (part_number || '') + ' ' + (description || '') + ' price buy';
+        return res.json({ ok: true, search_url: 'https://www.google.com/search?q=' + encodeURIComponent(query.trim()), query: query.trim() });
+      }
       return res.status(400).json({error:'Unknown type'});
     }
     if (req.method === 'POST') {
