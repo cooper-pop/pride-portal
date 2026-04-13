@@ -31,6 +31,11 @@ module.exports=async function handler(req,res){
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
     return res.json({ok:true,message:'Parts DB ready'});
   }
+  if(act==='debug_columns'){
+    const cols=await sql`SELECT column_name,data_type FROM information_schema.columns WHERE table_name='parts_inventory' ORDER BY ordinal_position`;
+    const ocols=await sql`SELECT column_name FROM information_schema.columns WHERE table_name='parts_orders' ORDER BY ordinal_position`;
+    return res.json({inventory:cols.map(c=>c.column_name),orders:ocols.map(c=>c.column_name)});
+  }
   if(act==='get_parts'){const rows=await sql`SELECT * FROM parts_inventory WHERE company_id=${cid} ORDER BY part_number`;return res.json(rows);}
   if(act==='get_invoices'){const rows=await sql`SELECT * FROM parts_invoices WHERE company_id=${cid} ORDER BY created_at DESC`;return res.json(rows);}
   if(act==='get_cross_ref'){const rows=await sql`SELECT * FROM parts_cross_ref WHERE company_id=${cid} ORDER BY part_number_a`;return res.json(rows);}
