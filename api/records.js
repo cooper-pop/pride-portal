@@ -141,6 +141,115 @@ NaN
         }
         return res.json({ known: true, match: true, message: 'OK' });
       }
+      if (action === 'init_parts_db') {
+        await sql`CREATE TABLE IF NOT EXISTS parts_inventory (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), part_number TEXT NOT NULL, description TEXT, manufacturer TEXT, qty_on_hand NUMERIC DEFAULT 0, qty_minimum NUMERIC DEFAULT 0, unit_cost NUMERIC, supplier TEXT, location TEXT, notes TEXT, company_id INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`;
+        await sql`CREATE TABLE IF NOT EXISTS parts_invoices (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), invoice_number TEXT, supplier TEXT, invoice_date DATE, total_amount NUMERIC, line_items JSONB DEFAULT '[]', notes TEXT, company_id INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT NOW())`;
+        await sql`CREATE TABLE IF NOT EXISTS parts_manuals (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, manufacturer TEXT, model TEXT, file_url TEXT, extracted_text TEXT, company_id INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT NOW())`;
+        await sql`CREATE TABLE IF NOT EXISTS parts_cross_ref (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), part_number_a TEXT NOT NULL, manufacturer_a TEXT, part_number_b TEXT NOT NULL, manufacturer_b TEXT, notes TEXT, company_id INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT NOW())`;
+        await sql`CREATE TABLE IF NOT EXISTS parts_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), part_number TEXT, description TEXT, supplier TEXT, qty_ordered NUMERIC, unit_cost NUMERIC, total_cost NUMERIC, order_date DATE, tracking_number TEXT, status TEXT DEFAULT 'pending', todo_item_id TEXT, received_date DATE, notes TEXT, company_id INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`;
+        return res.json({ ok: true, message: 'Parts DB initialized' });
+      }
+      if (action === 'get_parts') {
+        const rows = await sql`SELECT * FROM parts_inventory WHERE company_id=1 ORDER BY part_number`;
+        return res.json(rows);
+      }
+      if (action === 'save_part') {
+        const {id,part_number,description,manufacturer,qty_on_hand,qty_minimum,unit_cost,supplier,location,notes} = body;
+        if (id) {
+          const r = await sql`UPDATE parts_inventory SET part_number=${part_number},description=${description},manufacturer=${manufacturer},qty_on_hand=${qty_on_hand},qty_minimum=${qty_minimum},unit_cost=${unit_cost},supplier=${supplier},location=${location},notes=${notes},updated_at=NOW() WHERE id=${id} RETURNING *`;
+          return res.json({ok:true,part:r[0]});
+        }
+        const r = await sql`INSERT INTO parts_inventory (part_number,description,manufacturer,qty_on_hand,qty_minimum,unit_cost,supplier,location,notes) VALUES (${part_number},${description},${manufacturer},${qty_on_hand||0},${qty_minimum||0},${unit_cost||0},${supplier},${location},${notes}) RETURNING *`;
+        return res.json({ok:true,part:r[0]});
+      }
+      if (action === 'update_part_qty') {
+        const {id,qty_on_hand} = body;
+        const r = await sql`UPDATE parts_inventory SET qty_on_hand=${qty_on_hand},updated_at=NOW() WHERE id=${id} RETURNING *`;
+        return res.json({ok:true,part:r[0]});
+      }
+      if (action === 'delete_part') {
+        await sql`DELETE FROM parts_inventory WHERE id=${body.id}`;
+        return res.json({ok:true});
+      }
+      if (action === 'get_invoices') {
+        const rows = await sql`SELECT * FROM parts_invoices WHERE company_id=1 ORDER BY invoice_date DESC NULLS LAST, created_at DESC`;
+        return res.json(rows);
+      }
+      if (action === 'save_invoice') {
+        const {id,invoice_number,supplier,invoice_date,total_amount,line_items,notes} = body;
+        const li = JSON.stringify(line_items||[]);
+        if (id) {
+          const r = await sql`UPDATE parts_invoices SET invoice_number=${invoice_number},supplier=${supplier},invoice_date=${invoice_date},total_amount=${total_amount},line_items=${li}::jsonb,notes=${notes} WHERE id=${id} RETURNING *`;
+          return res.json({ok:true,invoice:r[0]});
+        }
+        const r = await sql`INSERT INTO parts_invoices (invoice_number,supplier,invoice_date,total_amount,line_items,notes) VALUES (${invoice_number},${supplier},${invoice_date},${total_amount||0},${li}::jsonb,${notes}) RETURNING *`;
+        return res.json({ok:true,invoice:r[0]});
+      }
+      if (action === 'get_cross_ref') {
+        const rows = await sql`SELECT * FROM parts_cross_ref WHERE company_id=1 ORDER BY part_number_a`;
+        return res.json(rows);
+      }
+      if (action === 'save_cross_ref') {
+        const {id,part_number_a,manufacturer_a,part_number_b,manufacturer_b,notes} = body;
+        if (id) {
+          const r = await sql`UPDATE parts_cross_ref SET part_number_a=${part_number_a},manufacturer_a=${manufacturer_a},part_number_b=${part_number_b},manufacturer_b=${manufacturer_b},notes=${notes} WHERE id=${id} RETURNING *`;
+          return res.json({ok:true,ref:r[0]});
+        }
+        const r = await sql`INSERT INTO parts_cross_ref (part_number_a,manufacturer_a,part_number_b,manufacturer_b,notes) VALUES (${part_number_a},${manufacturer_a},${part_number_b},${manufacturer_b},${notes}) RETURNING *`;
+        return res.json({ok:true,ref:r[0]});
+      }
+      if (action === 'delete_cross_ref') {
+        await sql`DELETE FROM parts_cross_ref WHERE id=${body.id}`;
+        return res.json({ok:true});
+      }
+      if (action === 'get_parts_orders') {
+        const rows = await sql`SELECT * FROM parts_orders WHERE company_id=1 ORDER BY created_at DESC`;
+        return res.json(rows);
+      }
+      if (action === 'save_parts_order') {
+        const {id,part_number,description,supplier,qty_ordered,unit_cost,total_cost,order_date,tracking_number,status,todo_item_id,notes} = body;
+        if (id) {
+          const r = await sql`UPDATE parts_orders SET part_number=${part_number},description=${description},supplier=${supplier},qty_ordered=${qty_ordered},unit_cost=${unit_cost},total_cost=${total_cost},order_date=${order_date},tracking_number=${tracking_number},status=${status},todo_item_id=${todo_item_id},notes=${notes},updated_at=NOW() WHERE id=${id} RETURNING *`;
+          return res.json({ok:true,order:r[0]});
+        }
+        const r = await sql`INSERT INTO parts_orders (part_number,description,supplier,qty_ordered,unit_cost,total_cost,order_date,tracking_number,status,todo_item_id,notes) VALUES (${part_number},${description},${supplier},${qty_ordered||1},${unit_cost||0},${total_cost||0},${order_date},${tracking_number||''},${status||'pending'},${todo_item_id||''},${notes||''}) RETURNING *`;
+          return res.json({ok:true,order:r[0]});
+      }
+      if (action === 'update_tracking') {
+        const {id,tracking_number,status} = body;
+        const r = await sql`UPDATE parts_orders SET tracking_number=${tracking_number},status=${status||'ordered'},updated_at=NOW() WHERE id=${id} RETURNING *`;
+        if (r[0] && r[0].todo_item_id) {
+          await sql`UPDATE todo_items SET status='Parts Ordered',updated_at=NOW() WHERE id=${r[0].todo_item_id}`;
+        }
+        return res.json({ok:true,order:r[0]});
+      }
+      if (action === 'receive_part') {
+        const {id,qty_received} = body;
+        const ord = await sql`UPDATE parts_orders SET status='received',received_date=NOW(),updated_at=NOW() WHERE id=${id} RETURNING *`;
+        if (ord[0]) {
+          await sql`INSERT INTO parts_inventory (part_number,description,supplier,qty_on_hand,unit_cost) VALUES (${ord[0].part_number},${ord[0].description},${ord[0].supplier},${qty_received||ord[0].qty_ordered},${ord[0].unit_cost}) ON CONFLICT DO NOTHING`;
+          await sql`UPDATE parts_inventory SET qty_on_hand=qty_on_hand+${qty_received||ord[0].qty_ordered},updated_at=NOW() WHERE part_number=${ord[0].part_number} AND supplier=${ord[0].supplier}`;
+        }
+        return res.json({ok:true});
+      }
+      if (action === 'get_manuals') {
+        const rows = await sql`SELECT id,title,manufacturer,model,file_url,created_at FROM parts_manuals WHERE company_id=1 ORDER BY created_at DESC`;
+        return res.json(rows);
+      }
+      if (action === 'save_manual') {
+        const {title,manufacturer,model,file_url,extracted_text} = body;
+        const r = await sql`INSERT INTO parts_manuals (title,manufacturer,model,file_url,extracted_text) VALUES (${title},${manufacturer},${model},${file_url||''},${extracted_text||''}) RETURNING id,title,manufacturer,model,file_url,created_at`;
+        return res.json({ok:true,manual:r[0]});
+      }
+      if (action === 'search_manual') {
+        const q = body.query || '';
+        const rows = await sql`SELECT id,title,manufacturer,model,file_url,extracted_text FROM parts_manuals WHERE company_id=1 AND (extracted_text ILIKE ${'%'+q+'%'} OR title ILIKE ${'%'+q+'%'})`;
+        return res.json(rows.map(r => ({...r, excerpt: (r.extracted_text||'').split(q)[0].slice(-100) + q + (r.extracted_text||'').split(q)[1]?.slice(0,100)})));
+      }
+      if (action === 'get_low_stock') {
+        const rows = await sql`SELECT * FROM parts_inventory WHERE company_id=1 AND qty_on_hand <= qty_minimum ORDER BY part_number`;
+        return res.json(rows);
+      }
       return res.status(400).json({error:'Unknown type'});
     }
     if (req.method === 'POST') {
