@@ -13,51 +13,55 @@ module.exports=async function handler(req,res){
   const b=req.body||{};
   try{
   if(act==='init_parts_db'||act==='migrate_parts_db'){
-    await sql`CREATE TABLE IF NOT EXISTS parts_inventory(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,part_number TEXT DEFAULT '',description TEXT DEFAULT '',manufacturer TEXT DEFAULT '',category TEXT DEFAULT '',quantity INT DEFAULT 0,min_quantity INT DEFAULT 1,unit_cost NUMERIC(10,2)DEFAULT 0,location TEXT DEFAULT '',notes TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
+    await sql`CREATE TABLE IF NOT EXISTS parts_inventory(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,part_number TEXT DEFAULT '',description TEXT DEFAULT '',manufacturer TEXT DEFAULT '',category TEXT DEFAULT '',qty_on_hand INT DEFAULT 0,qty_minimum INT DEFAULT 1,min_quantity INT DEFAULT 1,unit_cost NUMERIC(10,2)DEFAULT 0,supplier TEXT DEFAULT '',location TEXT DEFAULT '',notes TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
     await sql`CREATE TABLE IF NOT EXISTS parts_invoices(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,vendor TEXT DEFAULT '',invoice_number TEXT DEFAULT '',invoice_date DATE,total_amount NUMERIC(10,2)DEFAULT 0,notes TEXT DEFAULT '',items JSONB DEFAULT '[]',created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
     await sql`CREATE TABLE IF NOT EXISTS parts_cross_ref(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,part_number_a TEXT DEFAULT '',manufacturer_a TEXT DEFAULT '',part_number_b TEXT DEFAULT '',manufacturer_b TEXT DEFAULT '',description TEXT DEFAULT '',price_a NUMERIC(10,2)DEFAULT 0,price_b NUMERIC(10,2)DEFAULT 0,notes TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
-    await sql`CREATE TABLE IF NOT EXISTS parts_orders(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,vendor TEXT DEFAULT '',part_number TEXT DEFAULT '',description TEXT DEFAULT '',quantity INT DEFAULT 1,unit_cost NUMERIC(10,2)DEFAULT 0,status TEXT DEFAULT 'pending',tracking_number TEXT DEFAULT '',carrier TEXT DEFAULT '',task_id UUID,notes TEXT DEFAULT '',ordered_by UUID,received_at TIMESTAMPTZ,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
+    await sql`CREATE TABLE IF NOT EXISTS parts_orders(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,supplier TEXT DEFAULT '',part_number TEXT DEFAULT '',description TEXT DEFAULT '',qty_ordered INT DEFAULT 1,unit_cost NUMERIC(10,2)DEFAULT 0,total_cost NUMERIC(10,2)DEFAULT 0,status TEXT DEFAULT 'pending',tracking_number TEXT DEFAULT '',carrier TEXT DEFAULT '',task_id UUID,todo_item_id UUID,notes TEXT DEFAULT '',ordered_by UUID,order_date DATE DEFAULT CURRENT_DATE,received_at TIMESTAMPTZ,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
     await sql`CREATE TABLE IF NOT EXISTS parts_manuals(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),company_id INT,title TEXT DEFAULT '',manufacturer TEXT DEFAULT '',model TEXT DEFAULT '',file_url TEXT DEFAULT '',notes TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())`;
     try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''`;}catch(e){}
     try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS min_quantity INT DEFAULT 1`;}catch(e){}
-    try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS location TEXT DEFAULT ''`;}catch(e){}
-    try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`;}catch(e){}
-    try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
-    try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS tracking_number TEXT DEFAULT ''`;}catch(e){}
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS carrier TEXT DEFAULT ''`;}catch(e){}
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS task_id UUID`;}catch(e){}
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS ordered_by UUID`;}catch(e){}
     try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`;}catch(e){}
-    try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
     return res.json({ok:true,message:'Parts DB ready'});
   }
   if(act==='debug_columns'){
-    const cols=await sql`SELECT column_name,data_type FROM information_schema.columns WHERE table_name='parts_inventory' ORDER BY ordinal_position`;
-    const ocols=await sql`SELECT column_name FROM information_schema.columns WHERE table_name='parts_orders' ORDER BY ordinal_position`;
-    return res.json({inventory:cols.map(c=>c.column_name),orders:ocols.map(c=>c.column_name)});
+    const cols=await sql`SELECT column_name FROM information_schema.columns WHERE table_name='parts_inventory' ORDER BY ordinal_position`;
+    return res.json({inventory:cols.map(c=>c.column_name)});
   }
-  if(act==='get_parts'){const rows=await sql`SELECT * FROM parts_inventory WHERE company_id=${cid} ORDER BY part_number`;return res.json(rows);}
+  if(act==='get_parts'){
+    const rows=await sql`SELECT id,part_number,description,manufacturer,supplier,category,qty_on_hand as quantity,COALESCE(qty_minimum,min_quantity,1) as min_quantity,unit_cost,location,notes,created_at,updated_at FROM parts_inventory WHERE company_id=${cid} ORDER BY part_number`;
+    return res.json(rows);
+  }
   if(act==='get_invoices'){const rows=await sql`SELECT * FROM parts_invoices WHERE company_id=${cid} ORDER BY created_at DESC`;return res.json(rows);}
   if(act==='get_cross_ref'){const rows=await sql`SELECT * FROM parts_cross_ref WHERE company_id=${cid} ORDER BY part_number_a`;return res.json(rows);}
-  if(act==='get_parts_orders'){const rows=await sql`SELECT * FROM parts_orders WHERE company_id=${cid} ORDER BY created_at DESC`;return res.json(rows);}
+  if(act==='get_parts_orders'){
+    const rows=await sql`SELECT id,supplier as vendor,part_number,description,qty_ordered as quantity,unit_cost,total_cost,status,tracking_number,carrier,task_id,todo_item_id,notes,order_date,received_at,created_at FROM parts_orders WHERE company_id=${cid} ORDER BY created_at DESC`;
+    return res.json(rows);
+  }
   if(act==='get_manuals'){const rows=await sql`SELECT * FROM parts_manuals WHERE company_id=${cid} ORDER BY title`;return res.json(rows);}
-  if(act==='get_low_stock'){const rows=await sql`SELECT * FROM parts_inventory WHERE company_id=${cid} AND quantity<=min_quantity ORDER BY quantity ASC`;return res.json(rows);}
+  if(act==='get_low_stock'){
+    const rows=await sql`SELECT id,part_number,description,manufacturer,qty_on_hand as quantity,COALESCE(qty_minimum,min_quantity,1) as min_quantity,location FROM parts_inventory WHERE company_id=${cid} AND qty_on_hand<=COALESCE(qty_minimum,min_quantity,1) ORDER BY qty_on_hand ASC`;
+    return res.json(rows);
+  }
   if(act==='get_parts_todo_alerts'){
     const w=await sql`SELECT id,title FROM tasks WHERE status='waiting_parts' AND company_id=${cid} ORDER BY created_at DESC`;
-    const l=await sql`SELECT id,part_number,description,quantity,min_quantity FROM parts_inventory WHERE company_id=${cid} AND quantity<=min_quantity ORDER BY quantity ASC`;
+    const l=await sql`SELECT id,part_number,description,qty_on_hand as quantity,COALESCE(qty_minimum,min_quantity,1) as min_quantity FROM parts_inventory WHERE company_id=${cid} AND qty_on_hand<=COALESCE(qty_minimum,min_quantity,1) ORDER BY qty_on_hand ASC`;
     return res.json({waiting_parts:w,low_stock:l});
   }
   if(act==='save_part'){
     const p=b;let rows;
-    const pn=p.part_number||'',de=p.description||'',mf=p.manufacturer||'',ca=p.category||'',qt=parseInt(p.quantity)||0,mq=parseInt(p.min_quantity)||1,co=parseFloat(p.unit_cost)||0,lo=p.location||'',no=p.notes||'';
-    if(p.id){rows=await sql`UPDATE parts_inventory SET part_number=${pn},description=${de},manufacturer=${mf},category=${ca},quantity=${qt},min_quantity=${mq},unit_cost=${co},location=${lo},notes=${no},updated_at=NOW() WHERE id=${p.id} RETURNING *`;}
-    else{rows=await sql`INSERT INTO parts_inventory(part_number,description,manufacturer,category,quantity,min_quantity,unit_cost,location,notes,company_id)VALUES(${pn},${de},${mf},${ca},${qt},${mq},${co},${lo},${no},${cid})RETURNING *`;}
+    const pn=p.part_number||'',de=p.description||'',mf=p.manufacturer||p.supplier||'',ca=p.category||'',qt=parseInt(p.quantity||p.qty_on_hand)||0,mq=parseInt(p.min_quantity||p.qty_minimum)||1,co=parseFloat(p.unit_cost)||0,lo=p.location||'',no=p.notes||'';
+    if(p.id){rows=await sql`UPDATE parts_inventory SET part_number=${pn},description=${de},manufacturer=${mf},supplier=${mf},category=${ca},qty_on_hand=${qt},qty_minimum=${mq},min_quantity=${mq},unit_cost=${co},location=${lo},notes=${no},updated_at=NOW() WHERE id=${p.id} RETURNING *`;}
+    else{rows=await sql`INSERT INTO parts_inventory(part_number,description,manufacturer,supplier,category,qty_on_hand,qty_minimum,min_quantity,unit_cost,location,notes,company_id)VALUES(${pn},${de},${mf},${mf},${ca},${qt},${mq},${mq},${co},${lo},${no},${cid})RETURNING *`;}
     return res.json({ok:true,part:rows[0]});
   }
   if(act==='delete_part'){await sql`DELETE FROM parts_inventory WHERE id=${b.id}`;return res.json({ok:true});}
   if(act==='update_part'){
     const{id,quantity,field,value}=b;
-    if(!field||field==='quantity')await sql`UPDATE parts_inventory SET quantity=${value!==undefined?parseInt(value):parseInt(quantity)},updated_at=NOW() WHERE id=${id}`;
+    const qty=value!==undefined?parseInt(value):parseInt(quantity);
+    if(!field||field==='quantity')await sql`UPDATE parts_inventory SET qty_on_hand=${qty},updated_at=NOW() WHERE id=${id}`;
     else if(field==='location')await sql`UPDATE parts_inventory SET location=${value},updated_at=NOW() WHERE id=${id}`;
     return res.json({ok:true});
   }
@@ -79,9 +83,9 @@ module.exports=async function handler(req,res){
   if(act==='delete_cross_ref'){await sql`DELETE FROM parts_cross_ref WHERE id=${b.id}`;return res.json({ok:true});}
   if(act==='save_parts_order'){
     const o=b;let rows;
-    const vn=o.vendor||'',pn=o.part_number||'',de=o.description||'',qt=parseInt(o.quantity)||1,co=parseFloat(o.unit_cost)||0,st=o.status||'pending',ti=o.task_id||null,no=o.notes||'';
-    if(o.id){rows=await sql`UPDATE parts_orders SET vendor=${vn},part_number=${pn},description=${de},quantity=${qt},unit_cost=${co},status=${st},task_id=${ti},notes=${no},updated_at=NOW() WHERE id=${o.id} RETURNING *`;}
-    else{rows=await sql`INSERT INTO parts_orders(vendor,part_number,description,quantity,unit_cost,status,task_id,notes,company_id,ordered_by)VALUES(${vn},${pn},${de},${qt},${co},${st},${ti},${no},${cid},${uid})RETURNING *`;}
+    const vn=o.vendor||o.supplier||'',pn=o.part_number||'',de=o.description||'',qt=parseInt(o.quantity||o.qty_ordered)||1,co=parseFloat(o.unit_cost)||0,tc=qt*co,st=o.status||'pending',ti=o.task_id||o.todo_item_id||null,no=o.notes||'';
+    if(o.id){rows=await sql`UPDATE parts_orders SET supplier=${vn},part_number=${pn},description=${de},qty_ordered=${qt},unit_cost=${co},total_cost=${tc},status=${st},task_id=${ti},notes=${no},updated_at=NOW() WHERE id=${o.id} RETURNING *`;}
+    else{rows=await sql`INSERT INTO parts_orders(supplier,part_number,description,qty_ordered,unit_cost,total_cost,status,task_id,todo_item_id,notes,company_id,ordered_by)VALUES(${vn},${pn},${de},${qt},${co},${tc},${st},${ti},${ti},${no},${cid},${uid})RETURNING *`;}
     return res.json({ok:true,order:rows[0]});
   }
   if(act==='update_tracking'||act==='add_tracking'){
@@ -95,8 +99,8 @@ module.exports=async function handler(req,res){
     if(order_id)await sql`UPDATE parts_orders SET status='received',received_at=NOW(),updated_at=NOW() WHERE id=${order_id}`;
     for(const p of(parts||[])){
       const ex=await sql`SELECT id FROM parts_inventory WHERE part_number=${p.part_number} AND company_id=${cid} LIMIT 1`;
-      if(ex.length>0)await sql`UPDATE parts_inventory SET quantity=quantity+${parseInt(p.quantity)||1},updated_at=NOW() WHERE id=${ex[0].id}`;
-      else await sql`INSERT INTO parts_inventory(part_number,description,manufacturer,quantity,unit_cost,company_id)VALUES(${p.part_number},${p.description||''},${p.manufacturer||''},${parseInt(p.quantity)||1},${parseFloat(p.unit_cost)||0},${cid})`;
+      if(ex.length>0)await sql`UPDATE parts_inventory SET qty_on_hand=qty_on_hand+${parseInt(p.quantity)||1},updated_at=NOW() WHERE id=${ex[0].id}`;
+      else await sql`INSERT INTO parts_inventory(part_number,description,manufacturer,supplier,qty_on_hand,unit_cost,company_id)VALUES(${p.part_number},${p.description||''},${p.manufacturer||''},${p.manufacturer||''},${parseInt(p.quantity)||1},${parseFloat(p.unit_cost)||0},${cid})`;
     }
     if(task_id)await sql`UPDATE tasks SET status='in_progress',updated_at=NOW() WHERE id=${task_id}`;
     return res.json({ok:true});
