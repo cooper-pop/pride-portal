@@ -1,4 +1,20 @@
-const { neon } = require('@neondatabase/serverless');
+    if(action==='migrate_parts_db'){
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS min_quantity INT DEFAULT 1`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS location TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS tracking_number TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS carrier TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS task_id UUID`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS ordered_by UUID`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`;}catch(e){}
+      try{await sql`ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`;}catch(e){}
+      try{await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_number TEXT DEFAULT ''`;}catch(e){}
+      try{await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_description TEXT DEFAULT ''`;}catch(e){}
+      return res.json({ok:true,message:'Migration complete'});
+    }
+    const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 
 module.exports = async function handler(req, res) {
@@ -31,25 +47,6 @@ module.exports = async function handler(req, res) {
       const waiting=await sql`SELECT id,title,notes FROM tasks WHERE status='waiting_parts' AND company_id=${company_id} ORDER BY created_at DESC`;
       const low=await sql`SELECT id,part_number,description,quantity,min_quantity FROM parts_inventory WHERE quantity<=min_quantity AND company_id=${company_id} ORDER BY quantity ASC`;
       return res.json({waiting_parts:waiting,low_stock:low});
-    }
-    if(action==='migrate_parts_db'){
-      const alters=[
-        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''`,
-        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS min_quantity INT DEFAULT 1`,
-        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS location TEXT DEFAULT ''`,
-        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''`,
-        `ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
-        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS tracking_number TEXT DEFAULT ''`,
-        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS carrier TEXT DEFAULT ''`,
-        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS task_id UUID`,
-        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS ordered_by UUID`,
-        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`,
-        `ALTER TABLE parts_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
-        `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_number TEXT DEFAULT ''`,
-        `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS part_description TEXT DEFAULT ''`
-      ];
-      for(const q of alters){try{await sql.unsafe(q);}catch(e){}}
-      return res.json({ok:true,message:'Migration complete'});
     }
     if(action==='save_part'){
       const p=body; let rows;
