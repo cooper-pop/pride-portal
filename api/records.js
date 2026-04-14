@@ -77,6 +77,19 @@ module.exports = async function handler(req, res) {
     return res.json({ ok: true });
   }
 
+  if (req.method === 'POST' && action === 'fix_entry_emp') {
+    const {entry_ids, emp_number, full_name} = req.body || {};
+    if (!entry_ids || !emp_number) return res.status(400).json({error:'entry_ids and emp_number required'});
+    let count = 0;
+    for (const eid of entry_ids) {
+      const updates = {emp_number};
+      if (full_name) updates.full_name = full_name;
+      await sql`UPDATE trimmer_entries SET emp_number=${emp_number}${full_name ? sql`, full_name=${full_name}` : sql``} WHERE id=${eid}`;
+      count++;
+    }
+    return res.json({ok:true, fixed:count});
+  }
+
 
 
   try {
