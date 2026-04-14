@@ -72,7 +72,7 @@ function partsRenderInventory() {
   html += '<div><div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Inventory</div>';
   if (lowStock.length) html += '<div style="font-size:.72rem;color:#ef4444;margin-top:2px">â ï¸ ' + lowStock.length + ' part(s) below minimum stock</div>';
   html += '</div>';
-  html += '<button style="' + BTN_PRIMARY + '" onclick="partsEditPart(null)">+ Add Part</button></div>';
+  html += '<button onclick="partsSmartSearch('','')" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.875rem;font-weight:600;margin-right:8px">🔎 Find Parts</button><button style="' + BTN_PRIMARY + '" onclick="partsEditPart(null)">+ Add Part</button></div>';
 
   // Search
   html += '<input id="parts-search" placeholder="🔍 Search part number, description..." style="' + INPUT + ';margin-bottom:12px" oninput="partsFilterInventory()" />';
@@ -109,7 +109,7 @@ function partsInventoryTable(parts) {
     html += '<td style="padding:8px 10px;color:#64748b">' + (p.supplier||'') + '</td>';
     html += '<td style="padding:8px 10px;color:#64748b">' + (p.location||'') + '</td>';
     html += '<td style="padding:8px 10px;white-space:nowrap">';
-    html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsWebSearch(' + JSON.stringify(p.part_number) + ',' + JSON.stringify(p.description) + ')">🔍 Buy</button>';
+    html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsSmartSearch(' + JSON.stringify(p.part_number) + ',' + JSON.stringify(p.description) + ')">🔍 Buy</button>';
     html += '<button style="' + BTN_SECONDARY + ';margin-right:4px;padding:5px 8px;font-size:.75rem" onclick="partsEditPart(' + JSON.stringify(p.id) + ')">✏️</button>';
     html += '<button style="' + BTN_DANGER + '" onclick="partsDeletePart(' + JSON.stringify(p.id) + ')">🗑</button>';
     html += '</td></tr>';
@@ -191,7 +191,7 @@ function partsDeletePart(id) {
 window.partsDeletePart = partsDeletePart;
 
 // ===== WEB SEARCH FOR PRICING =====
-function partsWebSearch(partNum, desc) {
+function partsSmartSearch(partNum, desc) {
   var query = encodeURIComponent((partNum||'') + ' ' + (desc||'') + ' price buy');
   var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">';
   html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto">';
@@ -512,7 +512,7 @@ function partsRenderOrders() {
   var html = '<div style="padding:16px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
   html += '<div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Orders</div>';
-  html += '<button style="' + BTN_PRIMARY + '" onclick="partsNewOrder()">+ New Order</button></div>';
+  html += '<button onclick="partsAutoTrackingImport()" style="padding:7px 14px;background:#15803d;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;margin-right:6px">📦 Import Tracking</button><button onclick="partsSmartSearch('','')" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;margin-right:6px">🔎 Find Parts</button><button style="' + BTN_PRIMARY + '" onclick="partsNewOrder()">+ New Order</button></div>';
   if (!orders.length) {
     html += '<div style="text-align:center;padding:40px;color:#94a3b8">No orders yet.</div>';
   } else {
