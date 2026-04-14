@@ -662,6 +662,26 @@ async function trimShowTrend(encodedName, btn) {
   }
 // Expose functions globally for inline onclick handlers
 window.buildTrimmerWidget = buildTrimmerWidget;
+
+function trimBarChart(dates, values, color, label) {
+  if (!values || !values.length) return '<div style="color:#94a3b8;font-size:12px;padding:8px">No data</div>';
+  var w = 220, h = 80, pad = 20, barW = Math.max(2, Math.floor((w - pad*2) / values.length) - 2);
+  var max = Math.max.apply(null, values.map(Number).filter(isFinite));
+  if (!max) max = 1;
+  var svgBars = values.map(function(v, i) {
+    var x = pad + i * ((w - pad*2) / values.length);
+    var bh = Math.round((Number(v) / max) * (h - pad));
+    var y = h - bh - 4;
+    var date = dates && dates[i] ? String(dates[i]).slice(5) : '';
+    return '<rect x="'+x+'" y="'+y+'" width="'+barW+'" height="'+Math.max(2,bh)+'" rx="1" fill="'+color+'" opacity="0.85">' +
+      '<title>'+date+(v!==null&&v!==undefined?' · '+Number(v).toFixed(1):'')+'</title></rect>';
+  }).join('');
+  var lastVal = values.length ? Number(values[values.length-1]).toFixed(1) : '-';
+  return '<svg width="'+w+'" height="'+h+'" style="display:block">'+svgBars+
+    '<text x="'+w+'" y="'+(h-2)+'" text-anchor="end" font-size="9" fill="#94a3b8">'+lastVal+'</text>'+
+    (label?'<text x="'+pad+'" y="10" font-size="9" fill="'+color+'">'+label+'</text>':'')+'</svg>';
+}
+
 window.trimShowTab = trimShowTab;
 window.trimRenderUpload = trimRenderUpload;
 window.trimHandleFile = trimHandleFile;
