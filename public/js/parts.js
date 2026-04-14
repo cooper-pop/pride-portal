@@ -40,7 +40,7 @@ function partsShowTab(tab) {
   if (!panel) return;
   panel.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:.8rem">Loading...</div>';
   var actions = {inventory:'get_parts',invoices:'get_invoices',manuals:'get_manuals',crossref:'get_cross_ref',orders:'get_parts_orders'};
-  apiCall('GET','/api/records?action=' + actions[tab]).then(function(data){
+  apiCall('GET','/api/parts?action=' + actions[tab]).then(function(data){
     _partsData[tab] = Array.isArray(data) ? data : [];
     var renders = {inventory:partsRenderInventory,invoices:partsRenderInvoices,manuals:partsRenderManuals,crossref:partsRenderCrossRef,orders:partsRenderOrders};
     if (renders[tab]) renders[tab]();
