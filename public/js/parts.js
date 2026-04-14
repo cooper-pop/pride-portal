@@ -588,6 +588,19 @@ function partsRenderManuals() {
       html += '<div style="' + CARD + ';display:flex;justify-content:space-between;align-items:center">';
       html += '<div>';
       html += '<div style="font-weight:600;color:#1e293b">📖 ' + (m.title||'Untitled') + '</div>';
+  html += '<div style="font-size:.78rem;color:#64748b;margin-top:2px">' + [m.manufacturer, m.model ? 'Model: '+m.model : ''].filter(Boolean).join(' · ') + '</div>';
+  if (m.file_url) {
+    var isData = m.file_url.startsWith('data:');
+    var isPdf  = (m.file_name||m.file_url).toLowerCase().includes('.pdf') || m.file_url.startsWith('data:application/pdf');
+    if (isData) {
+      html += '<div style="margin-top:6px;display:flex;gap:6px">';
+      html += '<button onclick="partsViewManual(\''+m.id+'\')" style="padding:4px 10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer">👁 View</button>';
+      html += '<button onclick="partsDownloadManual(\''+m.id+'\')" style="padding:4px 10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer">⬇ Download</button>';
+      html += '</div>';
+    } else {
+      html += '<div style="margin-top:6px"><a href="'+m.file_url+'" target="_blank" style="padding:4px 10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:.75rem;font-weight:600;text-decoration:none;display:inline-block">👁 Open PDF</a></div>';
+    }
+  }
       html += '<div style="font-size:.73rem;color:#64748b;margin-top:2px">' + (m.manufacturer||'') + (m.model?' â Model: '+m.model:'') + '</div>';
       html += '</div>';
       if (m.file_url) {
@@ -624,40 +637,118 @@ function partsSearchManuals() {
 window.partsSearchManuals = partsSearchManuals;
 
 function partsAddManual() {
-  var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">';
-  html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:440px;width:100%">';
-  html += '<h3 style="margin:0 0 16px;font-size:1rem;color:#1e293b">Add Parts Manual</h3>';
-  html += '<div style="display:grid;gap:10px">';
-  html += '<div><label style="' + LABEL + '">Manual Title *</label><input id="man-title" placeholder="e.g. Caterpillar D6 Parts Manual" style="' + INPUT + '" /></div>';
-  html += '<div><label style="' + LABEL + '">Manufacturer</label><input id="man-mfr" style="' + INPUT + '" /></div>';
-  html += '<div><label style="' + LABEL + '">Model / Equipment</label><input id="man-model" style="' + INPUT + '" /></div>';
-  html += '<div><label style="' + LABEL + '">PDF URL (link to hosted PDF)</label><input id="man-url" placeholder="https://..." style="' + INPUT + '" /></div>';
-  html += '<div><label style="' + LABEL + '">Paste part numbers / text excerpt (for search)</label>';
-  html += '<textarea id="man-text" rows="5" placeholder="Paste part numbers, descriptions, or any searchable text from the manual..." style="' + INPUT + ';resize:vertical"></textarea></div>';
-  html += '</div>';
-  html += '<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">';
-  html += '<button style="' + BTN_SECONDARY + '" onclick="document.getElementById(\'parts-modal\').remove()">Cancel</button>';
-  html += '<button style="' + BTN_PRIMARY + '" onclick="partsSaveManual()">Save Manual</button></div></div></div>';
   var modal = document.createElement('div');
   modal.id = 'parts-modal';
-  modal.innerHTML = html;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:24px;max-width:480px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.22);max-height:90vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <h3 style="margin:0;font-size:1rem;font-weight:700;color:#1e293b">📖 Upload Parts Manual</h3>
+        <button onclick="document.getElementById('parts-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;line-height:1">✕</button>
+      </div>
+      <div style="display:grid;gap:12px">
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Manual Title *</label>
+          <input id="man-title" placeholder="e.g. Baldor Motor VM3546 Manual" style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.9rem;box-sizing:border-box;outline:none">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Manufacturer</label>
+            <input id="man-mfr" placeholder="e.g. Baldor" style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.9rem;box-sizing:border-box;outline:none">
+          </div>
+          <div>
+            <label style="font-size:.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Model / Equipment</label>
+            <input id="man-model" placeholder="e.g. VM3546" style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.9rem;box-sizing:border-box;outline:none">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">File Upload (PDF, JPG, PNG)</label>
+          <div id="man-drop-zone" onclick="document.getElementById('man-file-input').click()"
+            ondragover="event.preventDefault();this.style.borderColor='#3b82f6';this.style.background='#eff6ff'"
+            ondragleave="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc'"
+            ondrop="partsHandleManualDrop(event)"
+            style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;background:#f8fafc;transition:all .2s">
+            <div id="man-drop-label">
+              <div style="font-size:32px;margin-bottom:6px">📁</div>
+              <div style="font-size:.88rem;font-weight:600;color:#475569">Click to browse or drag &amp; drop</div>
+              <div style="font-size:.76rem;color:#94a3b8;margin-top:4px">PDF · JPG · PNG — up to 10 MB</div>
+            </div>
+            <input id="man-file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp" style="display:none" onchange="partsHandleManualFile(this.files[0])">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Or paste a URL (optional)</label>
+          <input id="man-url" placeholder="https://... link to an already-hosted PDF" style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.9rem;box-sizing:border-box;outline:none">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Searchable notes (part numbers, keywords)</label>
+          <textarea id="man-text" rows="3" placeholder="Optional — paste part numbers or notes for search..." style="width:100%;padding:9px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.9rem;box-sizing:border-box;outline:none;resize:vertical"></textarea>
+        </div>
+        <div id="man-progress" style="display:none;padding:10px 14px;background:#eff6ff;border-radius:8px;font-size:.85rem;color:#1d4ed8;text-align:center">⏳ Reading file…</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+          <button onclick="document.getElementById('parts-modal').remove()" style="padding:9px 18px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer">Cancel</button>
+          <button onclick="partsSaveManual()" style="padding:9px 18px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer">💾 Save Manual</button>
+        </div>
+      </div>
+    </div>
+  `;
   document.body.appendChild(modal);
+  window._manFileData = null;
 }
 window.partsAddManual = partsAddManual;
 
-function partsSaveManual() {
-  var data = {
-    title: (document.getElementById('man-title')||{}).value||'',
-    manufacturer: (document.getElementById('man-mfr')||{}).value||'',
-    model: (document.getElementById('man-model')||{}).value||'',
-    file_url: (document.getElementById('man-url')||{}).value||'',
-    extracted_text: (document.getElementById('man-text')||{}).value||''
+function partsHandleManualFile(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { alert('File is larger than 10 MB — please use a smaller file or paste a URL instead.'); return; }
+  var prog = document.getElementById('man-progress');
+  if (prog) { prog.style.display = 'block'; prog.textContent = '⏳ Reading file…'; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    window._manFileData = { name: file.name, type: file.type, size: file.size, dataUrl: e.target.result };
+    var sizeMB = (file.size / 1024 / 1024).toFixed(2);
+    var dropLabel = document.getElementById('man-drop-label');
+    if (dropLabel) dropLabel.innerHTML = '<div style="font-size:28px;margin-bottom:4px">✅</div><div style="font-weight:600;color:#166534;font-size:.88rem">' + file.name + '</div><div style="font-size:.76rem;color:#059669;margin-top:2px">' + sizeMB + ' MB — click to change file</div>';
+    if (prog) { prog.style.display = 'none'; }
+    var titleEl = document.getElementById('man-title');
+    if (titleEl && !titleEl.value) titleEl.value = file.name.replace(/.[^.]+$/, '').replace(/[-_]/g, ' ');
   };
-  if (!data.title) { alert('Title required'); return; }
-  apiCall('POST','/api/parts?action=save_manual',data).then(function(){
+  reader.onerror = function() { if (prog) prog.textContent = '❌ Error reading file.'; };
+  reader.readAsDataURL(file);
+}
+window.partsHandleManualFile = partsHandleManualFile;
+
+function partsHandleManualDrop(event) {
+  event.preventDefault();
+  var zone = document.getElementById('man-drop-zone');
+  if (zone) { zone.style.borderColor = '#cbd5e1'; zone.style.background = '#f8fafc'; }
+  var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if (file) partsHandleManualFile(file);
+}
+window.partsHandleManualDrop = partsHandleManualDrop;
+
+function partsSaveManual() {
+  var fileUrl = (window._manFileData && window._manFileData.dataUrl) || (document.getElementById('man-url') && document.getElementById('man-url').value) || '';
+  var fileName = window._manFileData ? window._manFileData.name : '';
+  var data = {
+    title:          (document.getElementById('man-title') || {}).value || '',
+    manufacturer:   (document.getElementById('man-mfr')   || {}).value || '',
+    model:          (document.getElementById('man-model')  || {}).value || '',
+    file_url:       fileUrl,
+    file_name:      fileName,
+    extracted_text: (document.getElementById('man-text')   || {}).value || ''
+  };
+  if (!data.title) { alert('Please enter a title for the manual.'); return; }
+  if (!data.file_url) { alert('Please upload a file or paste a URL.'); return; }
+  var btn = event && event.target;
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  apiCall('POST', '/api/parts?action=save_manual', data).then(function() {
+    window._manFileData = null;
     var m = document.getElementById('parts-modal');
     if (m) m.remove();
     partsShowTab('manuals');
+  }).catch(function(e) {
+    alert('Save failed: ' + e.message);
+    if (btn) { btn.textContent = '💾 Save Manual'; btn.disabled = false; }
   });
 }
 window.partsSaveManual = partsSaveManual;
@@ -1076,3 +1167,38 @@ async function _partsSaveManualTracking() {
   const carrier = _partsDetectCarrier(num) || 'Unknown';
   await _partsSaveTracking(orderId, num, carrier);
 }
+
+// ── Manual view / download helpers ──────────────────────────────────────────
+function partsViewManual(id) {
+  var m = (_partsData.manuals||[]).find(function(x){return x.id===id;});
+  if (!m || !m.file_url) return;
+  var isPdf = (m.file_name||'').toLowerCase().endsWith('.pdf') || m.file_url.startsWith('data:application/pdf');
+  if (isPdf) {
+    // Open PDF in new tab using blob URL
+    var byteStr = atob(m.file_url.split(',')[1]);
+    var ab = new ArrayBuffer(byteStr.length);
+    var ia = new Uint8Array(ab);
+    for (var i=0;i<byteStr.length;i++) ia[i]=byteStr.charCodeAt(i);
+    var blob = new Blob([ab],{type:'application/pdf'});
+    window.open(URL.createObjectURL(blob),'_blank');
+  } else {
+    // Show image in overlay
+    var ov = document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    ov.onclick=function(){ov.remove();};
+    var img=document.createElement('img');
+    img.src=m.file_url; img.style.cssText='max-width:90vw;max-height:90vh;border-radius:8px;box-shadow:0 4px 32px rgba(0,0,0,.5)';
+    ov.appendChild(img); document.body.appendChild(ov);
+  }
+}
+window.partsViewManual = partsViewManual;
+
+function partsDownloadManual(id) {
+  var m = (_partsData.manuals||[]).find(function(x){return x.id===id;});
+  if (!m || !m.file_url) return;
+  var a = document.createElement('a');
+  a.href = m.file_url;
+  a.download = m.file_name || (m.title||'manual').replace(/s+/g,'-') + (m.file_url.startsWith('data:application/pdf') ? '.pdf' : '.file');
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+window.partsDownloadManual = partsDownloadManual;
