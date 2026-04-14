@@ -917,6 +917,10 @@ function _partsToast(msg, bg) {
 async function partsGmailScanTracking() {
   const existing = document.getElementById('gmail-scan-modal');
   if (existing) existing.remove();
+  // Pre-fetch open orders so manual form is populated
+  const _tok2 = (JSON.parse(localStorage.getItem('potp_v2_session')||'{}').token)||'';
+  const _allOrds = await fetch('/api/parts?action=get_parts_orders',{headers:{'Authorization':'Bearer '+_tok2}}).then(r=>r.json()).catch(()=>[]);
+  const _openOrds = _allOrds.filter(o=>o.status!=='received');
   const modal = document.createElement('div');
   modal.id = 'gmail-scan-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box';
@@ -939,7 +943,7 @@ async function partsGmailScanTracking() {
             📧 Scan Gmail Inbox
           </button>
         </div>
-        ${_partsManualEntryForm([])}
+        ${_partsManualEntryForm(_openOrds)}
       </div>
     </div>
   `;
