@@ -585,27 +585,26 @@ function partsRenderManuals() {
     html += '<div style="text-align:center;padding:40px;color:#94a3b8">No manuals uploaded yet.</div>';
   } else {
     manuals.forEach(function(m){
-      html += '<div style="' + CARD + ';display:flex;justify-content:space-between;align-items:center">';
-      html += '<div>';
-      html += '<div style="font-weight:600;color:#1e293b">📖 ' + (m.title||'Untitled') + '</div>';
-  html += '<div style="font-size:.78rem;color:#64748b;margin-top:2px">' + [m.manufacturer, m.model ? 'Model: '+m.model : ''].filter(Boolean).join(' · ') + '</div>';
-  if (m.file_url) {
-    var isData = m.file_url.startsWith('data:');
-    var isPdf  = (m.file_name||m.file_url).toLowerCase().includes('.pdf') || m.file_url.startsWith('data:application/pdf');
-    if (isData) {
-      html += '<div style="margin-top:6px;display:flex;gap:6px">';
-      html += '<button onclick="partsViewManual(\''+m.id+'\')" style="padding:4px 10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer">👁 View</button>';
-      html += '<button onclick="partsDownloadManual(\''+m.id+'\')" style="padding:4px 10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer">⬇ Download</button>';
-      html += '</div>';
-    } else {
-      html += '<div style="margin-top:6px"><a href="'+m.file_url+'" target="_blank" style="padding:4px 10px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:.75rem;font-weight:600;text-decoration:none;display:inline-block">👁 Open PDF</a></div>';
-    }
-  }
-      html += '<div style="font-size:.73rem;color:#64748b;margin-top:2px">' + (m.manufacturer||'') + (m.model?' â Model: '+m.model:'') + '</div>';
-      html += '</div>';
+      var isData = m.file_url && m.file_url.startsWith('data:');
+      var isPdf  = m.file_url && ((m.file_name||'').toLowerCase().includes('.pdf') || m.file_url.startsWith('data:application/pdf'));
+      html += '<div style="' + CARD + ';margin-bottom:10px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+      html += '<div style="flex:1">';
+      html += '<div style="font-weight:600;color:#1e293b;font-size:.95rem">📖 ' + (m.title||'Untitled') + '</div>';
+      html += '<div style="font-size:.78rem;color:#64748b;margin-top:2px">' + [m.manufacturer, m.model?'Model: '+m.model:''].filter(Boolean).join(' · ') + '</div>';
       if (m.file_url) {
-        html += '<a href="' + m.file_url + '" target="_blank" style="' + BTN_INFO + ';text-decoration:none;font-size:.75rem">View PDF</a>';
+        html += '<div style="display:flex;gap:6px;margin-top:8px">';
+        if (isData) {
+          html += '<button onclick="partsViewManual(\'' + m.id + '\')" style="padding:4px 12px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">👁 View</button>';
+          html += '<button onclick="partsDownloadManual(\'' + m.id + '\')" style="padding:4px 12px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer">⬇ Download</button>';
+        } else {
+          html += '<a href="' + m.file_url + '" target="_blank" style="padding:4px 12px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:.78rem;font-weight:600;text-decoration:none">👁 Open PDF</a>';
+        }
+        html += '</div>';
       }
+      html += '</div>';
+      html += '<button onclick="partsDeleteManual(\'' + m.id + '\')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:0 4px;line-height:1;margin-left:8px;flex-shrink:0" title="Delete">🗑</button>';
+      html += '</div>';
       html += '</div>';
     });
   }
