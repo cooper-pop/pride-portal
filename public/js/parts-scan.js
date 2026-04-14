@@ -89,7 +89,7 @@ async function partsScanExtract() {
     document.getElementById('parts-scan-loading').style.display = 'none';
     partsScanShowResults(result);
 
-  } catch(err) {
+  } catch	err) {
     document.getElementById('parts-scan-loading').style.display = 'none';
     document.getElementById('parts-scan-results').innerHTML =
       '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;color:#dc2626">' +
@@ -217,7 +217,7 @@ async function partsScanAddToInventory() {
   }
 }
 
-async function partsScanSaveInvoice() {
+as function partsScanSaveInvoice() {
   var data = window._partsScanData || {};
   var items = partsScanGetSelectedItems();
   try {
@@ -234,41 +234,20 @@ async function partsScanSaveInvoice() {
   } catch(e) { alert('Error saving invoice: ' + e.message); }
 }
 
-async function partsScanBoth() {
+as function partsScanBoth() {
   await partsScanSaveInvoice();
   await partsScanAddToInventory();
 }
-
-// Fix garbled tab icons in parts widget (runs when parts-scan.js loads and on widget open)
 function partsFixTabIcons() {
-  var fixes = {'Inventory':'\u{1F4E6} Inventory','Invoices':'\u{1F9FE} Invoices','Manuals':'\u{1F4D6} Manuals','Cross-Ref':'\u{1F500} Cross-Ref','Orders':'\u{1F69A} Orders'};
+  var fixes = {'Inventory':'📦 Inventory','Invoices':'🧾 Invoices','Manuals':'📖 Manuals','Cross-Ref':'🔀 Cross-Ref','Orders':'🚚 Orders'};
   document.querySelectorAll('[onclick*="partsShowTab"]').forEach(function(tab) {
     var text = tab.textContent.trim();
     var key = Object.keys(fixes).find(function(k){return text.includes(k);});
-    if (key) {
-      var onclick = tab.getAttribute('onclick');
-      var cls = tab.className;
-      var style = tab.getAttribute('style');
-      tab.textContent = fixes[key];
-      if (onclick) tab.setAttribute('onclick', onclick);
-    }
+    if (key) { var onclick = tab.getAttribute('onclick'); tab.textContent = fixes[key]; if (onclick) tab.setAttribute('onclick', onclick); }
   });
 }
-
-// Patch partsShowTab to fix icons after each tab switch
+window.partsFixTabIcons = partsFixTabIcons;
 if (typeof partsShowTab === 'function') {
-  var _origPartsShowTab = partsShowTab;
-  partsShowTab = function(tab) {
-    _origPartsShowTab.apply(this, arguments);
-    setTimeout(partsFixTabIcons, 10);
-  };
-}
-
-// Also patch openWidget to fix icons when parts widget opens
-if (typeof openWidget === 'function') {
-  var _origOpenWidget = openWidget;
-  openWidget = function(id, title) {
-    _origOpenWidget.apply(this, arguments);
-    if (id === 'parts') setTimeout(partsFixTabIcons, 100);
-  };
+  var _origPST = partsShowTab;
+  partsShowTab = function(tab) { _origPST.apply(this, arguments); setTimeout(partsFixTabIcons, 20); };
 }
