@@ -82,9 +82,11 @@ module.exports = async function handler(req, res) {
     if (!entry_ids || !emp_number) return res.status(400).json({error:'entry_ids and emp_number required'});
     let count = 0;
     for (const eid of entry_ids) {
-      const updates = {emp_number};
-      if (full_name) updates.full_name = full_name;
-      await sql`UPDATE trimmer_entries SET emp_number=${emp_number}${full_name ? sql`, full_name=${full_name}` : sql``} WHERE id=${eid}`;
+      if (full_name) {
+        await sql`UPDATE trimmer_entries SET emp_number=${emp_number}, full_name=${full_name} WHERE id=${eid}`;
+      } else {
+        await sql`UPDATE trimmer_entries SET emp_number=${emp_number} WHERE id=${eid}`;
+      }
       count++;
     }
     return res.json({ok:true, fixed:count});
