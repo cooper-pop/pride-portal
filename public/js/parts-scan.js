@@ -238,3 +238,37 @@ async function partsScanBoth() {
   await partsScanSaveInvoice();
   await partsScanAddToInventory();
 }
+
+// Fix garbled tab icons in parts widget (runs when parts-scan.js loads and on widget open)
+function partsFixTabIcons() {
+  var fixes = {'Inventory':'\u{1F4E6} Inventory','Invoices':'\u{1F9FE} Invoices','Manuals':'\u{1F4D6} Manuals','Cross-Ref':'\u{1F500} Cross-Ref','Orders':'\u{1F69A} Orders'};
+  document.querySelectorAll('[onclick*="partsShowTab"]').forEach(function(tab) {
+    var text = tab.textContent.trim();
+    var key = Object.keys(fixes).find(function(k){return text.includes(k);});
+    if (key) {
+      var onclick = tab.getAttribute('onclick');
+      var cls = tab.className;
+      var style = tab.getAttribute('style');
+      tab.textContent = fixes[key];
+      if (onclick) tab.setAttribute('onclick', onclick);
+    }
+  });
+}
+
+// Patch partsShowTab to fix icons after each tab switch
+if (typeof partsShowTab === 'function') {
+  var _origPartsShowTab = partsShowTab;
+  partsShowTab = function(tab) {
+    _origPartsShowTab.apply(this, arguments);
+    setTimeout(partsFixTabIcons, 10);
+  };
+}
+
+// Also patch openWidget to fix icons when parts widget opens
+if (typeof openWidget === 'function') {
+  var _origOpenWidget = openWidget;
+  openWidget = function(id, title) {
+    _origOpenWidget.apply(this, arguments);
+    if (id === 'parts') setTimeout(partsFixTabIcons, 100);
+  };
+}
