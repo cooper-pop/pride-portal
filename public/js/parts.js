@@ -874,8 +874,8 @@ function _partsResultCard(s, tierColor, tierBg, tierBorder) {
       <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px">
         ${(s.where_to_buy||[]).map(sup => `<a href="${sup.url}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border:1px solid var(--color-border-primary);border-radius:20px;text-decoration:none;font-size:12px;font-weight:500;color:${color};background:var(--color-background-primary)">${sup.name} ↗</a>`).join('')}
       </div>
-      <button onclick="_partsOrderFromSearch(${JSON.stringify(JSON.stringify(s))})" style="width:100%;padding:10px;background:${color};color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.15s" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
-        📋 Create Order — $${(+s.est_price||0).toFixed(2)} from ${s.manufacturer}
+      <button data-supplier-json="${encodeURIComponent(JSON.stringify(s))}" onclick="_partsOrderFromSearch(decodeURIComponent(this.dataset.supplierJson))" style="width:100%;padding:10px;background:${color};color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.15s" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+        📋 Create Order — ${(+s.est_price||0).toFixed(2)} from ${s.manufacturer}
       </button>
     </div>
   </div>`;
