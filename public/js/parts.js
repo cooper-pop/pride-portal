@@ -72,7 +72,7 @@ function partsRenderInventory() {
   html += '<div><div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Inventory</div>';
   if (lowStock.length) html += '<div style="font-size:.72rem;color:#ef4444;margin-top:2px">â ï¸ ' + lowStock.length + ' part(s) below minimum stock</div>';
   html += '</div>';
-  html += '<button onclick="partsSmartSearch('','')" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.875rem;font-weight:600;margin-right:8px">🔎 Find Parts</button><button style="' + BTN_PRIMARY + '" onclick="partsSmartSearch('','')" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;margin-right:6px">🔍 Find Parts</button><button onclick="partsEditPart(null)">+ Add Part</button></div>';
+  html += '<button onclick="partsSmartSearch(\'\',\'\')" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;margin-right:6px">🔍 Find Parts</button><button onclick="partsEditPart(null)" style="' + BTN_PRIMARY + '">+ Add Part</button></div>';
 
   // Search
   html += '<input id="parts-search" placeholder="🔍 Search part number, description..." style="' + INPUT + ';margin-bottom:12px" oninput="partsFilterInventory()" />';
