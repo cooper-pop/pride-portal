@@ -16,6 +16,9 @@
   "functions": {
     "api/extract.js": {
       "maxDuration": 60
+    },
+    "api/parts.js": {
+      "maxDuration": 60
     }
   },
   "headers": [
