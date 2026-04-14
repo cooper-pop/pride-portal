@@ -103,7 +103,6 @@ function trimDeleteRow(i){ if(trimRows.length<=1){trimRows[0]=trimEmptyRow();tri
 
 function trimReset(){ trimRows=[trimEmptyRow()]; trimRenderForm(); }
 
-async 
 async function trimValidateAndSave() {
   // Load roster from API
   var token = (function(){ try { return JSON.parse(localStorage.getItem('potp_v2_session')).token; } catch(e){ return ''; } })();
