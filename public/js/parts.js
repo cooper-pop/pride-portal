@@ -11,7 +11,7 @@ function buildPartsWidget() {
   var wt = document.getElementById('widget-tabs');
   var wc = document.getElementById('widget-content');
   wt.innerHTML = ['inventory','invoices','manuals','crossref','orders'].map(function(t){
-    var labels = {inventory:'ð¦ Inventory',invoices:'ð§¾ Invoices',manuals:'ð Manuals',crossref:'ð Cross-Ref',orders:'ð Orders'};
+    var labels = {inventory:'📦 Inventory',invoices:'🧾 Invoices',manuals:'📖 Manuals',crossref:'🔄 Cross-Ref',orders:'🚚 Orders'};
     return '<button class="wtab" onclick="partsShowTab(\'' + t + '\')" id="ptab-' + t + '" style="padding:6px 14px;border:none;background:transparent;cursor:pointer;font-size:.8rem;border-bottom:2px solid transparent;color:#94a3b8">' + labels[t] + '</button>';
   }).join('');
   wc.innerHTML = '<div id="parts-panel" style="padding:0"></div>';
@@ -75,7 +75,7 @@ function partsRenderInventory() {
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsEditPart(null)">+ Add Part</button></div>';
 
   // Search
-  html += '<input id="parts-search" placeholder="ð Search part number, description..." style="' + INPUT + ';margin-bottom:12px" oninput="partsFilterInventory()" />';
+  html += '<input id="parts-search" placeholder="🔍 Search part number, description..." style="' + INPUT + ';margin-bottom:12px" oninput="partsFilterInventory()" />';
 
   // Table
   if (!inv.length) {
@@ -109,9 +109,9 @@ function partsInventoryTable(parts) {
     html += '<td style="padding:8px 10px;color:#64748b">' + (p.supplier||'') + '</td>';
     html += '<td style="padding:8px 10px;color:#64748b">' + (p.location||'') + '</td>';
     html += '<td style="padding:8px 10px;white-space:nowrap">';
-    html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsWebSearch(' + JSON.stringify(p.part_number) + ',' + JSON.stringify(p.description) + ')">ð Buy</button>';
-    html += '<button style="' + BTN_SECONDARY + ';margin-right:4px;padding:5px 8px;font-size:.75rem" onclick="partsEditPart(' + JSON.stringify(p.id) + ')">âï¸</button>';
-    html += '<button style="' + BTN_DANGER + '" onclick="partsDeletePart(' + JSON.stringify(p.id) + ')">ð</button>';
+    html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsWebSearch(' + JSON.stringify(p.part_number) + ',' + JSON.stringify(p.description) + ')">🔍 Buy</button>';
+    html += '<button style="' + BTN_SECONDARY + ';margin-right:4px;padding:5px 8px;font-size:.75rem" onclick="partsEditPart(' + JSON.stringify(p.id) + ')">✏️</button>';
+    html += '<button style="' + BTN_DANGER + '" onclick="partsDeletePart(' + JSON.stringify(p.id) + ')">🗑</button>';
     html += '</td></tr>';
   });
   html += '</tbody></table></div>';
@@ -196,7 +196,7 @@ function partsWebSearch(partNum, desc) {
   var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">';
   html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
-  html += '<h3 style="margin:0;font-size:1rem;color:#1e293b">ð Find Part: ' + partNum + '</h3>';
+  html += '<h3 style="margin:0;font-size:1rem;color:#1e293b">🔍 Find Part: ' + partNum + '</h3>';
   html += '<button style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#64748b" onclick="document.getElementById(\'parts-search-modal\').remove()">Ã</button></div>';
   
   // Search links
@@ -270,7 +270,7 @@ function partsRenderInvoices() {
       html += '<div><div style="font-weight:700;color:#1a3a6b">Invoice #' + (inv.invoice_number||'N/A') + '</div>';
       html += '<div style="font-size:.75rem;color:#64748b;margin-top:2px">' + (inv.supplier||'') + ' &bull; ' + (inv.invoice_date||'') + '</div></div>';
       html += '<div style="text-align:right"><div style="font-weight:700;font-size:1rem;color:#1e293b">$' + parseFloat(inv.total_amount||0).toFixed(2) + '</div>';
-      html += '<button style="' + BTN_INFO + ';margin-top:4px" onclick="partsEditInvoice(' + JSON.stringify(inv.id) + ')">âï¸ Edit</button></div></div>';
+      html += '<button style="' + BTN_INFO + ';margin-top:4px" onclick="partsEditInvoice(' + JSON.stringify(inv.id) + ')">✏️ Edit</button></div></div>';
       if (items.length) {
         html += '<div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:10px">';
         html += '<div style="font-size:.72rem;font-weight:600;color:#64748b;margin-bottom:6px">LINE ITEMS</div>';
@@ -379,7 +379,7 @@ function partsRenderCrossRef() {
   html += '<div><div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Cross-Reference</div>';
   html += '<div style="font-size:.72rem;color:#64748b;margin-top:2px">Map equivalent parts across manufacturers</div></div>';
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsEditRef(null)">+ Add Cross-Ref</button></div>';
-  html += '<input id="crossref-search" placeholder="ð Search part number or manufacturer..." style="' + INPUT + ';margin-bottom:12px" oninput="partsCrossRefFilter()" />';
+  html += '<input id="crossref-search" placeholder="🔍 Search part number or manufacturer..." style="' + INPUT + ';margin-bottom:12px" oninput="partsCrossRefFilter()" />';
   if (!refs.length) {
     html += '<div style="text-align:center;padding:40px;color:#94a3b8">No cross-references yet.</div>';
   } else {
@@ -406,7 +406,7 @@ function partsCrossRefTable(refs) {
     html += '<td style="padding:8px 10px;color:#64748b;font-size:.75rem">' + (ref.notes||'') + '</td>';
     html += '<td style="padding:8px 10px;white-space:nowrap">';
     html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsCrossRefSearch(' + JSON.stringify(ref) + ')">Compare Prices</button>';
-    html += '<button style="' + BTN_DANGER + '" onclick="partsDeleteRef(' + JSON.stringify(ref.id) + ')">ð</button>';
+    html += '<button style="' + BTN_DANGER + '" onclick="partsDeleteRef(' + JSON.stringify(ref.id) + ')">🗑</button>';
     html += '</td></tr>';
   });
   html += '</tbody></table>';
@@ -527,7 +527,7 @@ function partsRenderOrders() {
       html += '</div>';
       html += '<div style="font-size:.78rem;color:#64748b;margin-top:2px">' + (ord.description||'') + '</div>';
       html += '<div style="font-size:.72rem;color:#94a3b8;margin-top:2px">' + (ord.supplier||'') + ' &bull; Qty: ' + (ord.qty_ordered||1) + ' &bull; $' + parseFloat(ord.unit_cost||0).toFixed(2) + '/ea &bull; Total: $' + parseFloat(ord.total_cost||0).toFixed(2) + '</div>';
-      if (ord.tracking_number) html += '<div style="font-size:.72rem;color:#3b82f6;margin-top:2px">ð¦ Tracking: ' + ord.tracking_number + '</div>';
+      if (ord.tracking_number) html += '<div style="font-size:.72rem;color:#3b82f6;margin-top:2px">📦 Tracking: ' + ord.tracking_number + '</div>';
       html += '</div>';
       html += '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">';
       if (ord.status !== 'received') {
@@ -620,7 +620,7 @@ function partsRenderManuals() {
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsAddManual()">+ Upload Manual</button></div>';
   // Search in manuals
   html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
-  html += '<input id="manual-search" placeholder="ð Search part numbers in manuals..." style="' + INPUT + ';flex:1" />';
+  html += '<input id="manual-search" placeholder="🔍 Search part numbers in manuals..." style="' + INPUT + ';flex:1" />';
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsSearchManuals()">Search</button></div>';
   html += '<div id="manual-results"></div>';
   if (!manuals.length) {
@@ -629,7 +629,7 @@ function partsRenderManuals() {
     manuals.forEach(function(m){
       html += '<div style="' + CARD + ';display:flex;justify-content:space-between;align-items:center">';
       html += '<div>';
-      html += '<div style="font-weight:600;color:#1e293b">ð ' + (m.title||'Untitled') + '</div>';
+      html += '<div style="font-weight:600;color:#1e293b">📖 ' + (m.title||'Untitled') + '</div>';
       html += '<div style="font-size:.73rem;color:#64748b;margin-top:2px">' + (m.manufacturer||'') + (m.model?' â Model: '+m.model:'') + '</div>';
       html += '</div>';
       if (m.file_url) {
@@ -657,7 +657,7 @@ function partsSearchManuals() {
     results.innerHTML = '<div style="font-weight:600;font-size:.8rem;color:#1e293b;margin-bottom:8px">' + hits.length + ' result(s) found:</div>' +
       hits.map(function(h){
         return '<div style="' + CARD + ';font-size:.8rem">'
-          + '<div style="font-weight:600;color:#1a3a6b">ð ' + (h.title||'') + '</div>'
+          + '<div style="font-weight:600;color:#1a3a6b">📖 ' + (h.title||'') + '</div>'
           + (h.excerpt ? '<div style="color:#64748b;margin-top:4px;font-family:monospace;font-size:.75rem;background:#f8fafc;padding:6px;border-radius:4px">' + h.excerpt + '</div>' : '')
           + '</div>';
       }).join('');
