@@ -803,13 +803,14 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
   ]
 }`;
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const _aiTok = (JSON.parse(localStorage.getItem('potp_v2_session')||'{}').token)||'';
+    const resp = await fetch('/api/ai', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] })
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+_aiTok },
+      body: JSON.stringify({ query: prompt })
     });
     const data = await resp.json();
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const text = data.response || '';
     const match = text.match(/\{[\s\S]*\}/);
     if (match) results = JSON.parse(match[0]);
   } catch(e) { console.error('Smart search error:', e); }
@@ -955,29 +956,11 @@ async function _partsRunGmailScan() {
 
   let found = [];
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:3000,
-        mcp_servers:[{type:'url',url:'https://gmail.mcp.claude.com/mcp',name:'gmail'}],
-        messages:[{role:'user',content:`Search Gmail inbox for shipping confirmation emails from the last 30 days. Find emails from UPS, FedEx, USPS, DHL, or emails with subjects containing "shipped", "tracking", "your order has shipped", "delivery", "on its way".
-
-For each shipping email, extract the tracking number, carrier, sender/vendor, ship date, and any item descriptions.
-
-My open parts orders (to match against):
-${JSON.stringify(open.map(o=>({id:o.id,vendor:o.vendor,part:o.part_number,desc:o.description})))}
-
-Return ONLY a JSON array (no markdown):
-[{"tracking_number":"1Z...","carrier":"UPS","vendor":"Grainger","ship_date":"2026-04-12","items":"SKF-6205-2Z x12","subject":"Your order shipped","matched_order_id":null}]
-
-Set matched_order_id to the order id if vendor or items match an open order. If no emails found return [].
-`}]
-      })
-    });
+    const _gmTok = (JSON.parse(localStorage.getItem('potp_v2_session')||'{}').token)||'';
+    const gmailQ = 'Search my Gmail inbox for UPS FedEx USPS DHL shipping confirmation emails from the last 30 days. Extract tracking number carrier vendor ship_date items. Open orders: '+JSON.stringify(open.map(o=>({id:o.id,vendor:o.vendor,part:o.part_number})))+'. Return ONLY a JSON array: [{"tracking_number":"...","carrier":"UPS","vendor":"...","ship_date":"...","items":"...","matched_order_id":null}]. If none return [].';
+    const resp = await fetch('/api/ai', {method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+_gmTok},body:JSON.stringify({query:gmailQ})});
     const data = await resp.json();
-    const txt = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const txt = data.response || '';
     const m = txt.match(/\[[\s\S]*\]/);
     if (m) found = JSON.parse(m[0]);
   } catch(e) { console.error('Gmail scan error:',e); }
