@@ -70,6 +70,13 @@ module.exports = async function handler(req, res) {
     return res.json({ ok: true, updated: count });
   }
 
+  if (req.method === 'POST' && action === 'delete_roster_entry') {
+    const name = req.body && req.body.full_name;
+    if (!name) return res.status(400).json({ error: 'full_name required' });
+    await sql`DELETE FROM trimmer_roster WHERE full_name = ${name}`;
+    return res.json({ ok: true });
+  }
+
 
 
   try {
