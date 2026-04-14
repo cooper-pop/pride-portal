@@ -56,6 +56,21 @@ module.exports = async function handler(req, res) {
     return res.json({ ok: true });
   }
 
+  if (req.method === 'POST' && action === 'bulk_update_roster') {
+    const updates = (req.body && req.body.employees) ? req.body.employees : [];
+    let count = 0;
+    await sql`CREATE TABLE IF NOT EXISTS trimmer_roster (id SERIAL PRIMARY KEY, full_name TEXT UNIQUE NOT NULL, emp_number TEXT, trim_number TEXT, active BOOLEAN DEFAULT true)`;
+    for (const emp of updates) {
+      if (!emp.full_name || !emp.emp_number) continue;
+      await sql`INSERT INTO trimmer_roster (full_name, emp_number, trim_number)
+        VALUES (${emp.full_name}, ${emp.emp_number}, ${emp.trim_number || ''})
+        ON CONFLICT (full_name) DO UPDATE SET emp_number = EXCLUDED.emp_number`;
+      count++;
+    }
+    return res.json({ ok: true, updated: count });
+  }
+
+
 
   try {
     if (req.method === 'GET') {
@@ -110,20 +125,7 @@ module.exports = async function handler(req, res) {
         try { await sql`UPDATE trimmer_entries SET emp_number = '1242' WHERE id = 'ec4b5524-135e-43d1-afdd-5e7465d18f41'`; count++; } catch(e) {}
         return res.json({ ok: true, updated: count });
       }
-      if (action === 'bulk_update_roster') {
-        const updates = body.employees || [];
-        let count = 0;
-        for (const emp of updates) {
-          if (!emp.full_name || !emp.emp_number) continue;
-          await sql`INSERT INTO trimmer_roster (full_name, emp_number, trim_number)
-            VALUES (${emp.full_name}, ${emp.emp_number}, ${emp.trim_number||''})
-            ON CONFLICT (full_name) DO UPDATE SET emp_number = EXCLUDED.emp_number,
-            trim_number = COALESCE(NULLIF(EXCLUDED.trim_number,''), trimmer_roster.trim_number)`;
-          count++;
-        }
-        return res.json({ ok: true, updated: count });
-      }
-      if (action === 'get_roster') {
+if (action === 'get_roster') {
         await sql`CREATE TABLE IF NOT EXISTS trimmer_roster (id SERIAL PRIMARY KEY, full_name TEXT UNIQUE NOT NULL, emp_number TEXT NOT NULL, trim_number TEXT, company_id INTEGER DEFAULT 1, active BOOLEAN DEFAULT true, updated_at TIMESTAMPTZ DEFAULT NOW())`;
         const rows = await sql`SELECT full_name, emp_number, trim_number FROM trimmer_roster WHERE active = true ORDER BY full_name`;
         return res.json(rows);
