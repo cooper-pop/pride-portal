@@ -89,7 +89,7 @@ async function partsScanExtract() {
     document.getElementById('parts-scan-loading').style.display = 'none';
     partsScanShowResults(result);
 
-  } catch	err) {
+  } catch(err) {
     document.getElementById('parts-scan-loading').style.display = 'none';
     document.getElementById('parts-scan-results').innerHTML =
       '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;color:#dc2626">' +
@@ -217,7 +217,7 @@ async function partsScanAddToInventory() {
   }
 }
 
-as function partsScanSaveInvoice() {
+async function partsScanSaveInvoice() {
   var data = window._partsScanData || {};
   var items = partsScanGetSelectedItems();
   try {
@@ -234,7 +234,7 @@ as function partsScanSaveInvoice() {
   } catch(e) { alert('Error saving invoice: ' + e.message); }
 }
 
-as function partsScanBoth() {
+async function partsScanBoth() {
   await partsScanSaveInvoice();
   await partsScanAddToInventory();
 }
