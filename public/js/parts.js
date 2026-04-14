@@ -11,7 +11,7 @@ function buildPartsWidget() {
   var wt = document.getElementById('widget-tabs');
   var wc = document.getElementById('widget-content');
   wt.innerHTML = ['inventory','invoices','manuals','crossref','orders'].map(function(t){
-    var labels = {inventory:'ð¦ Inventory',invoices:'ð§¾ Invoices',manuals:'ð Manuals',crossref:'ð Cross-Ref',orders:'ð Orders'};
+    var labels = {inventory:'Ã°ÂÂÂ¦ Inventory',invoices:'Ã°ÂÂ§Â¾ Invoices',manuals:'Ã°ÂÂÂ Manuals',crossref:'Ã°ÂÂÂ Cross-Ref',orders:'Ã°ÂÂÂ Orders'};
     return '<button class="wtab" onclick="partsShowTab(\'' + t + '\')" id="ptab-' + t + '" style="padding:6px 14px;border:none;background:transparent;cursor:pointer;font-size:.8rem;border-bottom:2px solid transparent;color:#94a3b8">' + labels[t] + '</button>';
   }).join('');
   wc.innerHTML = '<div id="parts-panel" style="padding:0"></div>';
@@ -70,12 +70,12 @@ function partsRenderInventory() {
   // Header
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
   html += '<div><div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Inventory</div>';
-  if (lowStock.length) html += '<div style="font-size:.72rem;color:#ef4444;margin-top:2px">â ï¸ ' + lowStock.length + ' part(s) below minimum stock</div>';
+  if (lowStock.length) html += '<div style="font-size:.72rem;color:#ef4444;margin-top:2px">Ã¢ÂÂ Ã¯Â¸Â ' + lowStock.length + ' part(s) below minimum stock</div>';
   html += '</div>';
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsEditPart(null)">+ Add Part</button></div>';
 
   // Search
-  html += '<input id="parts-search" placeholder="ð Search part number, description..." style="' + INPUT + ';margin-bottom:12px" oninput="partsFilterInventory()" />';
+  html += '<input id="parts-search" placeholder="Ã°ÂÂÂ Search part number, description..." style="' + INPUT + ';margin-bottom:12px" oninput="partsFilterInventory()" />';
 
   // Table
   if (!inv.length) {
@@ -109,9 +109,9 @@ function partsInventoryTable(parts) {
     html += '<td style="padding:8px 10px;color:#64748b">' + (p.supplier||'') + '</td>';
     html += '<td style="padding:8px 10px;color:#64748b">' + (p.location||'') + '</td>';
     html += '<td style="padding:8px 10px;white-space:nowrap">';
-    html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsWebSearch(' + JSON.stringify(p.part_number) + ',' + JSON.stringify(p.description) + ')">ð Buy</button>';
-    html += '<button style="' + BTN_SECONDARY + ';margin-right:4px;padding:5px 8px;font-size:.75rem" onclick="partsEditPart(' + JSON.stringify(p.id) + ')">âï¸</button>';
-    html += '<button style="' + BTN_DANGER + '" onclick="partsDeletePart(' + JSON.stringify(p.id) + ')">ð</button>';
+    html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsWebSearch(' + JSON.stringify(p.part_number) + ',' + JSON.stringify(p.description) + ')">Ã°ÂÂÂ Buy</button>';
+    html += '<button style="' + BTN_SECONDARY + ';margin-right:4px;padding:5px 8px;font-size:.75rem" onclick="partsEditPart(' + JSON.stringify(p.id) + ')">Ã¢ÂÂÃ¯Â¸Â</button>';
+    html += '<button style="' + BTN_DANGER + '" onclick="partsDeletePart(' + JSON.stringify(p.id) + ')">Ã°ÂÂÂ</button>';
     html += '</td></tr>';
   });
   html += '</tbody></table></div>';
@@ -196,8 +196,8 @@ function partsWebSearch(partNum, desc) {
   var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">';
   html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
-  html += '<h3 style="margin:0;font-size:1rem;color:#1e293b">ð Find Part: ' + partNum + '</h3>';
-  html += '<button style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#64748b" onclick="document.getElementById(\'parts-search-modal\').remove()">Ã</button></div>';
+  html += '<h3 style="margin:0;font-size:1rem;color:#1e293b">Ã°ÂÂÂ Find Part: ' + partNum + '</h3>';
+  html += '<button style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#64748b" onclick="document.getElementById(\'parts-search-modal\').remove()">ÃÂ</button></div>';
   
   // Search links
   var suppliers = [
@@ -219,7 +219,7 @@ function partsWebSearch(partNum, desc) {
   
   // Quote request section
   html += '<div style="border-top:1px solid #f1f5f9;padding-top:14px">';
-  html += '<div style="font-weight:600;font-size:.85rem;color:#1e293b;margin-bottom:10px">ð§ Request Price Quotes</div>';
+  html += '<div style="font-weight:600;font-size:.85rem;color:#1e293b;margin-bottom:10px">Ã°ÂÂÂ§ Request Price Quotes</div>';
   html += '<div style="font-size:.78rem;color:#64748b;margin-bottom:8px">Send a quote request email to multiple suppliers for Part #' + partNum + '</div>';
   html += '<textarea id="quote-suppliers" rows="2" placeholder="Supplier emails (comma separated)" style="' + INPUT + ';margin-bottom:8px"></textarea>';
   html += '<button style="' + BTN_PRIMARY + ';width:100%" onclick="partsSendQuoteRequest(' + JSON.stringify(partNum) + ',' + JSON.stringify(desc||'') + ')">Send Quote Requests</button>';
@@ -260,7 +260,7 @@ function partsRenderInvoices() {
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
   html += '<div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Invoices</div>';
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsEditInvoice(null)">+ Add Invoice</button>
-      <button onclick="partsScanInvoice()" style="background:#0f7d3e;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:.85rem;cursor:pointer;font-weight:600;margin-left:8px">📷 Scan Invoice</button></div>';
+      <button onclick="partsScanInvoice()" style="background:#0f7d3e;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:.85rem;cursor:pointer;font-weight:600;margin-left:8px">ð· Scan Invoice</button></div>';
   if (!invs.length) {
     html += '<div style="text-align:center;padding:40px;color:#94a3b8">No invoices yet.</div>';
   } else {
@@ -271,13 +271,13 @@ function partsRenderInvoices() {
       html += '<div><div style="font-weight:700;color:#1a3a6b">Invoice #' + (inv.invoice_number||'N/A') + '</div>';
       html += '<div style="font-size:.75rem;color:#64748b;margin-top:2px">' + (inv.supplier||'') + ' &bull; ' + (inv.invoice_date||'') + '</div></div>';
       html += '<div style="text-align:right"><div style="font-weight:700;font-size:1rem;color:#1e293b">$' + parseFloat(inv.total_amount||0).toFixed(2) + '</div>';
-      html += '<button style="' + BTN_INFO + ';margin-top:4px" onclick="partsEditInvoice(' + JSON.stringify(inv.id) + ')">âï¸ Edit</button></div></div>';
+      html += '<button style="' + BTN_INFO + ';margin-top:4px" onclick="partsEditInvoice(' + JSON.stringify(inv.id) + ')">Ã¢ÂÂÃ¯Â¸Â Edit</button></div></div>';
       if (items.length) {
         html += '<div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:10px">';
         html += '<div style="font-size:.72rem;font-weight:600;color:#64748b;margin-bottom:6px">LINE ITEMS</div>';
         items.forEach(function(item){
           html += '<div style="display:flex;justify-content:space-between;font-size:.78rem;padding:3px 0;border-bottom:1px solid #f8fafc">';
-          html += '<span style="color:#1e293b"><strong>' + (item.part_number||'') + '</strong> â ' + (item.description||'') + '</span>';
+          html += '<span style="color:#1e293b"><strong>' + (item.part_number||'') + '</strong> Ã¢ÂÂ ' + (item.description||'') + '</span>';
           html += '<span style="color:#64748b">x' + (item.qty||1) + ' @ $' + parseFloat(item.unit_cost||0).toFixed(2) + '</span></div>';
         });
         html += '</div>';
@@ -328,7 +328,7 @@ function partsInvItemRow(item, i) {
     + '<input placeholder="Description" value="' + (item.description||'') + '" class="inv-item-desc" style="' + INPUT + '" />'
     + '<input placeholder="Qty" type="number" value="' + (item.qty||1) + '" class="inv-item-qty" style="' + INPUT + '" />'
     + '<input placeholder="Cost" type="number" step="0.01" value="' + (item.unit_cost||0) + '" class="inv-item-cost" style="' + INPUT + '" />'
-    + '<button style="' + BTN_DANGER + '" onclick="this.closest(\'[id^=inv-item]\').remove()">â</button></div>';
+    + '<button style="' + BTN_DANGER + '" onclick="this.closest(\'[id^=inv-item]\').remove()">Ã¢ÂÂ</button></div>';
 }
 
 function partsAddInvItem() {
@@ -380,7 +380,7 @@ function partsRenderCrossRef() {
   html += '<div><div style="font-weight:700;font-size:.95rem;color:#1e293b">Parts Cross-Reference</div>';
   html += '<div style="font-size:.72rem;color:#64748b;margin-top:2px">Map equivalent parts across manufacturers</div></div>';
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsEditRef(null)">+ Add Cross-Ref</button></div>';
-  html += '<input id="crossref-search" placeholder="ð Search part number or manufacturer..." style="' + INPUT + ';margin-bottom:12px" oninput="partsCrossRefFilter()" />';
+  html += '<input id="crossref-search" placeholder="Ã°ÂÂÂ Search part number or manufacturer..." style="' + INPUT + ';margin-bottom:12px" oninput="partsCrossRefFilter()" />';
   if (!refs.length) {
     html += '<div style="text-align:center;padding:40px;color:#94a3b8">No cross-references yet.</div>';
   } else {
@@ -393,7 +393,7 @@ function partsRenderCrossRef() {
 function partsCrossRefTable(refs) {
   var html = '<table style="width:100%;border-collapse:collapse;font-size:.8rem">';
   html += '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">';
-  ['Part A','Mfr A','â','Part B','Mfr B','Notes','Actions'].forEach(function(h){
+  ['Part A','Mfr A','Ã¢ÂÂ','Part B','Mfr B','Notes','Actions'].forEach(function(h){
     html += '<th style="padding:8px 10px;text-align:left;font-weight:600;color:#64748b">' + h + '</th>';
   });
   html += '</tr></thead><tbody>';
@@ -401,13 +401,13 @@ function partsCrossRefTable(refs) {
     html += '<tr style="border-bottom:1px solid #f1f5f9">';
     html += '<td style="padding:8px 10px;font-weight:600;color:#1a3a6b">' + (ref.part_number_a||'') + '</td>';
     html += '<td style="padding:8px 10px;color:#64748b">' + (ref.manufacturer_a||'') + '</td>';
-    html += '<td style="padding:8px 10px;color:#94a3b8;text-align:center">â</td>';
+    html += '<td style="padding:8px 10px;color:#94a3b8;text-align:center">Ã¢ÂÂ</td>';
     html += '<td style="padding:8px 10px;font-weight:600;color:#065f46">' + (ref.part_number_b||'') + '</td>';
     html += '<td style="padding:8px 10px;color:#64748b">' + (ref.manufacturer_b||'') + '</td>';
     html += '<td style="padding:8px 10px;color:#64748b;font-size:.75rem">' + (ref.notes||'') + '</td>';
     html += '<td style="padding:8px 10px;white-space:nowrap">';
     html += '<button style="' + BTN_INFO + ';margin-right:4px" onclick="partsCrossRefSearch(' + JSON.stringify(ref) + ')">Compare Prices</button>';
-    html += '<button style="' + BTN_DANGER + '" onclick="partsDeleteRef(' + JSON.stringify(ref.id) + ')">ð</button>';
+    html += '<button style="' + BTN_DANGER + '" onclick="partsDeleteRef(' + JSON.stringify(ref.id) + ')">Ã°ÂÂÂ</button>';
     html += '</td></tr>';
   });
   html += '</tbody></table>';
@@ -430,7 +430,7 @@ function partsCrossRefSearch(ref) {
   html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:520px;width:100%">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
   html += '<h3 style="margin:0;font-size:1rem">Compare Equivalent Parts</h3>';
-  html += '<button style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#64748b" onclick="document.getElementById(\'crossref-modal\').remove()">Ã</button></div>';
+  html += '<button style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#64748b" onclick="document.getElementById(\'crossref-modal\').remove()">ÃÂ</button></div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
   [
     {num:ref.part_number_a, mfr:ref.manufacturer_a, label:'Option A'},
@@ -442,12 +442,12 @@ function partsCrossRefSearch(ref) {
     html += '<div style="font-weight:700;color:#1e293b">' + (opt.num||'') + '</div>';
     html += '<div style="font-size:.75rem;color:#64748b;margin-bottom:10px">' + (opt.mfr||'') + '</div>';
     var q = encodeURIComponent((opt.num||'') + ' ' + (opt.mfr||'') + ' price');
-    html += '<a href="https://www.google.com/search?tbm=shop&q=' + q + '" target="_blank" style="display:block;text-align:center;padding:6px;background:' + color + ';color:#fff;border-radius:5px;text-decoration:none;font-size:.75rem;font-weight:600">Search Prices â</a>';
+    html += '<a href="https://www.google.com/search?tbm=shop&q=' + q + '" target="_blank" style="display:block;text-align:center;padding:6px;background:' + color + ';color:#fff;border-radius:5px;text-decoration:none;font-size:.75rem;font-weight:600">Search Prices Ã¢ÂÂ</a>';
     html += '</div>';
   });
   html += '</div>';
   html += '<div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:.78rem;color:#64748b">';
-  html += 'ð¡ <strong>Tip:</strong> Compare the search results from both options to determine the most cost-effective choice. Note lead times and shipping costs.';
+  html += 'Ã°ÂÂÂ¡ <strong>Tip:</strong> Compare the search results from both options to determine the most cost-effective choice. Note lead times and shipping costs.';
   html += '</div></div></div>';
   var modal = document.createElement('div');
   modal.id = 'crossref-modal';
@@ -462,7 +462,7 @@ function partsEditRef(id) {
   html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:440px;width:100%">';
   html += '<h3 style="margin:0 0 16px;font-size:1rem;color:#1e293b">Cross-Reference Parts</h3>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
-  html += '<div style="grid-column:1/-1;text-align:center;font-weight:600;color:#64748b;font-size:.8rem;padding:4px;background:#f8fafc;border-radius:6px">Part A â Part B (equivalent parts)</div>';
+  html += '<div style="grid-column:1/-1;text-align:center;font-weight:600;color:#64748b;font-size:.8rem;padding:4px;background:#f8fafc;border-radius:6px">Part A Ã¢ÂÂ Part B (equivalent parts)</div>';
   [['a','Part A'],['b','Part B']].forEach(function(side){
     var s = side[0], label = side[1];
     html += '<div><label style="' + LABEL + '">' + label + ' Part #</label><input id="ref-pn-' + s + '" value="' + (ref['part_number_'+s]||'') + '" style="' + INPUT + '" /></div>';
@@ -528,12 +528,12 @@ function partsRenderOrders() {
       html += '</div>';
       html += '<div style="font-size:.78rem;color:#64748b;margin-top:2px">' + (ord.description||'') + '</div>';
       html += '<div style="font-size:.72rem;color:#94a3b8;margin-top:2px">' + (ord.supplier||'') + ' &bull; Qty: ' + (ord.qty_ordered||1) + ' &bull; $' + parseFloat(ord.unit_cost||0).toFixed(2) + '/ea &bull; Total: $' + parseFloat(ord.total_cost||0).toFixed(2) + '</div>';
-      if (ord.tracking_number) html += '<div style="font-size:.72rem;color:#3b82f6;margin-top:2px">ð¦ Tracking: ' + ord.tracking_number + '</div>';
+      if (ord.tracking_number) html += '<div style="font-size:.72rem;color:#3b82f6;margin-top:2px">Ã°ÂÂÂ¦ Tracking: ' + ord.tracking_number + '</div>';
       html += '</div>';
       html += '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">';
       if (ord.status !== 'received') {
         html += '<button style="' + BTN_INFO + '" onclick="partsAddTracking(' + JSON.stringify(ord.id) + ')">Add Tracking</button>';
-        html += '<button style="' + BTN_SUCCESS + '" onclick="partsReceiveOrder(' + JSON.stringify(ord.id) + ',' + JSON.stringify(ord.qty_ordered) + ')">â Receive</button>';
+        html += '<button style="' + BTN_SUCCESS + '" onclick="partsReceiveOrder(' + JSON.stringify(ord.id) + ',' + JSON.stringify(ord.qty_ordered) + ')">Ã¢ÂÂ Receive</button>';
       }
       html += '</div></div></div>';
     });
@@ -621,7 +621,7 @@ function partsRenderManuals() {
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsAddManual()">+ Upload Manual</button></div>';
   // Search in manuals
   html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
-  html += '<input id="manual-search" placeholder="ð Search part numbers in manuals..." style="' + INPUT + ';flex:1" />';
+  html += '<input id="manual-search" placeholder="Ã°ÂÂÂ Search part numbers in manuals..." style="' + INPUT + ';flex:1" />';
   html += '<button style="' + BTN_PRIMARY + '" onclick="partsSearchManuals()">Search</button></div>';
   html += '<div id="manual-results"></div>';
   if (!manuals.length) {
@@ -630,8 +630,8 @@ function partsRenderManuals() {
     manuals.forEach(function(m){
       html += '<div style="' + CARD + ';display:flex;justify-content:space-between;align-items:center">';
       html += '<div>';
-      html += '<div style="font-weight:600;color:#1e293b">ð ' + (m.title||'Untitled') + '</div>';
-      html += '<div style="font-size:.73rem;color:#64748b;margin-top:2px">' + (m.manufacturer||'') + (m.model?' â Model: '+m.model:'') + '</div>';
+      html += '<div style="font-weight:600;color:#1e293b">Ã°ÂÂÂ ' + (m.title||'Untitled') + '</div>';
+      html += '<div style="font-size:.73rem;color:#64748b;margin-top:2px">' + (m.manufacturer||'') + (m.model?' Ã¢ÂÂ Model: '+m.model:'') + '</div>';
       html += '</div>';
       if (m.file_url) {
         html += '<a href="' + m.file_url + '" target="_blank" style="' + BTN_INFO + ';text-decoration:none;font-size:.75rem">View PDF</a>';
@@ -658,7 +658,7 @@ function partsSearchManuals() {
     results.innerHTML = '<div style="font-weight:600;font-size:.8rem;color:#1e293b;margin-bottom:8px">' + hits.length + ' result(s) found:</div>' +
       hits.map(function(h){
         return '<div style="' + CARD + ';font-size:.8rem">'
-          + '<div style="font-weight:600;color:#1a3a6b">ð ' + (h.title||'') + '</div>'
+          + '<div style="font-weight:600;color:#1a3a6b">Ã°ÂÂÂ ' + (h.title||'') + '</div>'
           + (h.excerpt ? '<div style="color:#64748b;margin-top:4px;font-family:monospace;font-size:.75rem;background:#f8fafc;padding:6px;border-radius:4px">' + h.excerpt + '</div>' : '')
           + '</div>';
       }).join('');
@@ -716,7 +716,7 @@ window.partsCheckLowStock = partsCheckLowStock;
 window.buildPartsWidget = buildPartsWidget;
 
 
-// ── INVOICE SCAN FEATURE ─────────────────────────────────────────────────────
+// ââ INVOICE SCAN FEATURE âââââââââââââââââââââââââââââââââââââââââââââââââââââ
 async function partsScanInvoice() {
   // Build the scan modal
   const overlay = document.createElement('div');
@@ -725,8 +725,8 @@ async function partsScanInvoice() {
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h3 style="margin:0;font-size:1.1rem;color:#1e3a5f">📷 Scan Invoice</h3>
-        <button onclick="document.getElementById('parts-scan-overlay').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#64748b">✕</button>
+        <h3 style="margin:0;font-size:1.1rem;color:#1e3a5f">ð· Scan Invoice</h3>
+        <button onclick="document.getElementById('parts-scan-overlay').remove()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#64748b">â</button>
       </div>
       <p style="font-size:.85rem;color:#64748b;margin:0 0 16px">Upload a photo or scan of your invoice. Claude AI will extract all part numbers, descriptions, quantities, and pricing automatically.</p>
       
@@ -734,14 +734,14 @@ async function partsScanInvoice() {
         <label style="flex:1;border:2px dashed #cbd5e1;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s" 
                onmouseover="this.style.borderColor='#1e3a5f'" onmouseout="this.style.borderColor='#cbd5e1'">
           <input type="file" accept="image/*" id="parts-scan-file" style="display:none" onchange="partsScanPreview(this)">
-          <div style="font-size:2rem">📁</div>
+          <div style="font-size:2rem">ð</div>
           <div style="font-size:.8rem;font-weight:600;color:#1e3a5f;margin-top:4px">Upload File</div>
           <div style="font-size:.75rem;color:#64748b">JPG, PNG, PDF photo</div>
         </label>
         <label style="flex:1;border:2px dashed #cbd5e1;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s"
                onmouseover="this.style.borderColor='#1e3a5f'" onmouseout="this.style.borderColor='#cbd5e1'">
           <input type="file" accept="image/*" capture="environment" id="parts-scan-camera" style="display:none" onchange="partsScanPreview(this)">
-          <div style="font-size:2rem">📷</div>
+          <div style="font-size:2rem">ð·</div>
           <div style="font-size:.8rem;font-weight:600;color:#1e3a5f;margin-top:4px">Take Photo</div>
           <div style="font-size:.75rem;color:#64748b">Use camera</div>
         </label>
@@ -751,13 +751,13 @@ async function partsScanInvoice() {
         <img id="parts-scan-img" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid #e2e8f0" />
         <div style="margin-top:8px">
           <button id="parts-scan-extract-btn" onclick="partsScanExtract()" style="background:#1e3a5f;color:#fff;border:none;border-radius:6px;padding:10px 24px;font-size:.9rem;cursor:pointer;font-weight:600">
-            🔍 Extract Invoice Data
+            ð Extract Invoice Data
           </button>
         </div>
       </div>
       
       <div id="parts-scan-loading" style="display:none;text-align:center;padding:24px">
-        <div style="font-size:2rem;animation:parts-spin 1s linear infinite;display:inline-block">⚙️</div>
+        <div style="font-size:2rem;animation:parts-spin 1s linear infinite;display:inline-block">âï¸</div>
         <div style="font-size:.9rem;color:#1e3a5f;font-weight:600;margin-top:8px">Claude is reading your invoice...</div>
         <div style="font-size:.8rem;color:#64748b;margin-top:4px">Extracting part numbers, quantities, and pricing</div>
       </div>
@@ -814,7 +814,7 @@ async function partsScanExtract() {
     document.getElementById('parts-scan-results').style.display = 'block';
     document.getElementById('parts-scan-results').innerHTML = `
       <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;color:#dc2626">
-        ❌ Error: ${err.message || 'Failed to extract invoice data'}
+        â Error: ${err.message || 'Failed to extract invoice data'}
       </div>
     `;
   }
@@ -828,12 +828,12 @@ function partsScanShowResults(data) {
   
   let html = `
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:16px">
-      <div style="font-weight:700;color:#166534;font-size:.9rem;margin-bottom:6px">✅ Invoice Extracted Successfully</div>
+      <div style="font-weight:700;color:#166534;font-size:.9rem;margin-bottom:6px">â Invoice Extracted Successfully</div>
       <div style="font-size:.8rem;color:#166534;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-        <span><strong>Vendor:</strong> ${data.vendor || '—'}</span>
-        <span><strong>Invoice #:</strong> ${data.invoice_number || '—'}</span>
-        <span><strong>Date:</strong> ${data.invoice_date || '—'}</span>
-        <span><strong>Total:</strong> ${data.total_amount ? '$'+Number(data.total_amount).toFixed(2) : '—'}</span>
+        <span><strong>Vendor:</strong> ${data.vendor || 'â'}</span>
+        <span><strong>Invoice #:</strong> ${data.invoice_number || 'â'}</span>
+        <span><strong>Date:</strong> ${data.invoice_date || 'â'}</span>
+        <span><strong>Total:</strong> ${data.total_amount ? '$'+Number(data.total_amount).toFixed(2) : 'â'}</span>
       </div>
     </div>
   `;
@@ -841,7 +841,7 @@ function partsScanShowResults(data) {
   if (items.length > 0) {
     html += `
       <div style="font-weight:600;font-size:.85rem;color:#1e3a5f;margin-bottom:8px">
-        Line Items Found (${items.length}) — Select items to add to inventory:
+        Line Items Found (${items.length}) â Select items to add to inventory:
       </div>
       <div style="overflow-x:auto;margin-bottom:12px">
         <table style="width:100%;border-collapse:collapse;font-size:.78rem">
@@ -894,15 +894,15 @@ function partsScanShowResults(data) {
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button onclick="partsScanSaveInvoice(${JSON.stringify(data).replace(/"/g,'&quot;')})" 
                 style="background:#1e3a5f;color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:.85rem;cursor:pointer;font-weight:600">
-          💾 Save Invoice Record
+          ð¾ Save Invoice Record
         </button>
         <button onclick="partsScanAddToInventory()" 
                 style="background:#0f7d3e;color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:.85rem;cursor:pointer;font-weight:600">
-          📦 Add Selected to Inventory
+          ð¦ Add Selected to Inventory
         </button>
         <button onclick="partsScanBoth(${JSON.stringify(data).replace(/"/g,'&quot;')})"
                 style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:.85rem;cursor:pointer;font-weight:600">
-          ✅ Save Invoice + Add to Inventory
+          â Save Invoice + Add to Inventory
         </button>
       </div>
     `;
@@ -977,7 +977,7 @@ async function partsScanAddToInventory() {
     } catch(e) { console.error('Error adding part:', item, e); }
   }
   
-  alert(`✅ Done! ${added} part(s) added to inventory, ${updated} updated.`);
+  alert(`â Done! ${added} part(s) added to inventory, ${updated} updated.`);
   document.getElementById('parts-scan-overlay')?.remove();
   partsShowTab('inventory');
 }
@@ -993,7 +993,7 @@ async function partsScanSaveInvoice(data) {
       notes: 'Scanned invoice',
       items: selected
     });
-    alert('✅ Invoice saved!');
+    alert('â Invoice saved!');
     partsShowTab('invoices');
   } catch(e) { alert('Error saving invoice: ' + e.message); }
 }
