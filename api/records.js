@@ -92,6 +92,17 @@ module.exports = async function handler(req, res) {
     return res.json({ok:true, fixed:count});
   }
 
+  if (req.method === 'POST' && action === 'remap_import_categories') {
+    const {updates} = req.body || {};
+    if (!updates || !updates.length) return res.status(400).json({error:'updates required'});
+    let fixed = 0;
+    for (const u of updates) {
+      await sql`UPDATE injection_records SET category=${u.cat}, item=${u.item} WHERE id=${u.id}`;
+      fixed++;
+    }
+    return res.json({ok:true, fixed});
+  }
+
   if (req.method === 'POST' && action === 'bulk_fix_imports') {
     // Fix excel imports: set category to item value, clear item and notes
     const {ids} = req.body || {};
