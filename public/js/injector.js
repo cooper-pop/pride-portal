@@ -4,8 +4,9 @@ function buildInjectionWidget(){document.getElementById('widget-tabs').innerHTML
 
 function injShowTab(idx){
   const isAdmin = (typeof currentUser!=='undefined' && currentUser?.role==='admin');
-  // Block non-admins from Batch Log (1) and Analytics (2)
-  if((idx===1||idx===2) && !isAdmin){
+  var canView = typeof currentUser!=='undefined' && (currentUser?.role==='admin'||currentUser?.role==='manager');
+  // Block non-managers/admins from Batch Log (1) and Analytics (2)
+  if((idx===1||idx===2) && !canView){
     document.getElementById('widget-content').innerHTML='<div style="padding:40px;text-align:center;color:#888"><div style="font-size:2rem;margin-bottom:12px">🔒</div><div style="font-size:1rem;font-weight:600;color:#1a3a6b">Admin Access Only</div><div style="font-size:.85rem;margin-top:6px">Batch Log and Analytics are restricted to administrators.</div></div>';
     // Still update tab highlight
     document.querySelectorAll('.widget-tab').forEach(function(t,i){t.classList.toggle('active',i===idx);});
