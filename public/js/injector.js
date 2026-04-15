@@ -432,44 +432,68 @@ function injShowReviewTable(raw, mapping, filename) {
     function get(field) { return mapping[field] && row[mapping[field]] !== undefined ? String(row[mapping[field]]).trim() : ""; }
     return { _idx:i, _include:true, record_date:get("record_date"), record_time:get("record_time"), shift:get("shift")||"AM", category:get("category"), item:get("item"), pre_injection_lbs:get("pre_injection_lbs"), post_injection_lbs:get("post_injection_lbs"), brine_pct:get("brine_pct"), total_lbs:get("total_lbs"), steps:get("steps"), notes:get("notes") };
   });
+  window._injHiddenCols = {};
   body.innerHTML = "";
-  // Info banner
   var banner = document.createElement("div");
   banner.style.cssText = "margin-bottom:12px;padding:12px 16px;background:#f0fdf4;border-radius:8px;border-left:3px solid #16a34a;font-size:.85rem;color:#166534";
-  banner.innerHTML = "✅ <strong>" + raw.length + " rows</strong> read from <strong>" + filename + "</strong>. Claude mapped the columns — review, edit, uncheck rows to skip, then submit.";
+  banner.innerHTML = "✅ <strong>" + raw.length + " rows</strong> read from <strong>" + filename + "</strong>. Claude mapped the columns — review, edit, delete rows/columns, then submit.";
   body.appendChild(banner);
-  // Top submit bar
   var bar = document.createElement("div");
   bar.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px";
-  bar.innerHTML = "<span style=\"font-size:.8rem;color:#64748b\">Uncheck rows to skip · All fields editable</span><span style=\"flex:1\"></span>";
+  bar.innerHTML = "<span style=\"font-size:.8rem;color:#64748b\">✕ on column header to hide it · 🗑 on row to delete it</span><span style=\"flex:1\"></span>";
   var submitBtn = document.createElement("button");
   submitBtn.textContent = "💾 Submit All Checked";
   submitBtn.style.cssText = "padding:9px 20px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer";
   submitBtn.onclick = injImportSubmit;
   bar.appendChild(submitBtn);
   body.appendChild(bar);
-  // Scroll container
   var scroll = document.createElement("div");
   scroll.style.cssText = "overflow-x:auto";
   var table = document.createElement("table");
   table.id = "inj-import-table";
   table.style.cssText = "width:100%;border-collapse:collapse;font-size:.78rem";
-  // Header
   var thead = document.createElement("thead");
   var hrow = document.createElement("tr");
   hrow.style.background = "#f1f5f9";
-  ["✓","#"].concat(INJ_IMPORT_FIELDS.map(function(f){return INJ_IMPORT_LABELS[f];})).forEach(function(h, ci) {
+  // ✓ and # headers
+  ["✓","#"].forEach(function(h) {
     var th = document.createElement("th");
     th.textContent = h;
-    th.style.cssText = "padding:6px 8px;border:1px solid #e2e8f0;text-align:left;white-space:nowrap;min-width:" + (ci<2?"30":"70") + "px";
+    th.style.cssText = "padding:6px 8px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap;min-width:30px";
     hrow.appendChild(th);
   });
+  // Field headers with delete-column button
+  INJ_IMPORT_FIELDS.forEach(function(field) {
+    var th = document.createElement("th");
+    th.style.cssText = "padding:4px 6px;border:1px solid #e2e8f0;text-align:left;white-space:nowrap;min-width:70px;position:relative";
+    th.dataset.col = field;
+    var label = document.createElement("span");
+    label.textContent = INJ_IMPORT_LABELS[field];
+    label.style.cssText = "font-size:.78rem;margin-right:4px";
+    var delCol = document.createElement("button");
+    delCol.textContent = "✕";
+    delCol.title = "Hide this column";
+    delCol.style.cssText = "background:#fee2e2;color:#dc2626;border:none;border-radius:3px;cursor:pointer;font-size:.65rem;padding:0 3px;line-height:1.4;margin-left:2px;vertical-align:middle";
+    delCol.dataset.col = field;
+    delCol.addEventListener("click", function() {
+      window._injHiddenCols[this.dataset.col] = true;
+      injRenderImportRows();
+      // Hide the header
+      var allTh = document.querySelectorAll('#inj-import-table th[data-col="'+this.dataset.col+'"]');
+      allTh.forEach(function(t){t.style.display='none';});
+    });
+    th.appendChild(label); th.appendChild(delCol);
+    hrow.appendChild(th);
+  });
+  // Delete-row column header
+  var thDel = document.createElement("th");
+  thDel.style.cssText = "padding:6px 8px;border:1px solid #e2e8f0;text-align:center;white-space:nowrap;width:32px";
+  thDel.textContent = "🗑";
+  hrow.appendChild(thDel);
   thead.appendChild(hrow); table.appendChild(thead);
-  // Body
   var tbody = document.createElement("tbody");
   tbody.id = "inj-import-tbody";
   table.appendChild(tbody); scroll.appendChild(table); body.appendChild(scroll);
-  // Bottom submit
   var bar2 = document.createElement("div");
   bar2.style.cssText = "margin-top:10px;text-align:right";
   var submitBtn2 = document.createElement("button");
@@ -479,11 +503,11 @@ function injShowReviewTable(raw, mapping, filename) {
   bar2.appendChild(submitBtn2); body.appendChild(bar2);
   injRenderImportRows();
 }
-
 function injRenderImportRows() {
   var tbody = document.getElementById("inj-import-tbody");
   if (!tbody) return;
   var rows = window._injImportRows || [];
+  var hidden = window._injHiddenCols || {};
   tbody.innerHTML = "";
   var IS = "width:100%;padding:3px 5px;border:1px solid #e2e8f0;border-radius:3px;font-size:.75rem;box-sizing:border-box";
   rows.forEach(function(row, i) {
@@ -509,6 +533,8 @@ function injRenderImportRows() {
     INJ_IMPORT_FIELDS.forEach(function(field) {
       var td = document.createElement("td");
       td.style.cssText = "padding:2px 4px;border:1px solid #e2e8f0";
+      td.dataset.col = field;
+      if (hidden[field]) { td.style.display = "none"; tr.appendChild(td); return; }
       if (field === "shift") {
         var sel = document.createElement("select");
         sel.style.cssText = IS; sel.dataset.rowIdx = i; sel.dataset.field = field;
@@ -530,10 +556,22 @@ function injRenderImportRows() {
       }
       tr.appendChild(td);
     });
+    // Delete row button
+    var tdDel = document.createElement("td");
+    tdDel.style.cssText = "padding:2px 4px;border:1px solid #e2e8f0;text-align:center";
+    var delBtn = document.createElement("button");
+    delBtn.textContent = "🗑";
+    delBtn.title = "Delete this row";
+    delBtn.style.cssText = "background:none;border:none;cursor:pointer;font-size:.85rem;padding:2px 4px;color:#ef4444;border-radius:3px";
+    delBtn.dataset.rowIdx = i;
+    delBtn.addEventListener("click", function() {
+      window._injImportRows.splice(parseInt(this.dataset.rowIdx), 1);
+      injRenderImportRows();
+    });
+    tdDel.appendChild(delBtn); tr.appendChild(tdDel);
     tbody.appendChild(tr);
   });
 }
-
 async function injImportSubmit() {
   var rows = (window._injImportRows||[]).filter(function(r){return r._include && r.record_date;});
   if (!rows.length) { alert("No rows checked with a date. Fill in dates or check at least one row."); return; }
