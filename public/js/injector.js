@@ -75,7 +75,7 @@ async function injRenderLog(){
       });
     }
     document.getElementById('widget-content').innerHTML=html;
-    if(!isAdmin){ document.querySelectorAll('.wbtn-danger').forEach(function(b){b.style.display='none';}); }
+    var _isAdm=(typeof currentUser!=='undefined'&&currentUser?.role==='admin'); if(!_isAdm){ document.querySelectorAll('.wbtn-danger').forEach(function(b){b.style.display='none';}); }
   } catch(e){ document.getElementById('widget-content').innerHTML='<div class="log-empty">⚠️ '+e.message+'</div>'; }
 }
 
