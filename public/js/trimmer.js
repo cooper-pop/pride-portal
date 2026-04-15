@@ -251,6 +251,7 @@ async function trimDeleteReport(reportId) {
 
 async function trimRenderHistory() {
     const isAdmin = currentUser && currentUser.role === 'admin';
+  var canView = currentUser && (currentUser.role==='admin'||currentUser.role==='manager');
     const wc = document.getElementById('widget-content');
     wc.innerHTML = '<div style="padding:8px"><div id="trim-history-wrap"><div class="spinner-wrap"><div class="spinner"></div><div>Loading history…</div></div></div></div>';
     let reports = [];
