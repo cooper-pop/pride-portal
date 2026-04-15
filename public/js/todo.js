@@ -70,6 +70,7 @@ async function todoRender() {
   if(!wc) return;
   try { await apiCall('POST','/api/tasks?action=spawn_instances',{}); } catch(e){}
   var isAdmin = currentUser&&currentUser.role==='admin';
+  var canView = currentUser&&(currentUser.role==='admin'||currentUser.role==='manager');
   var tabs = ['📋 My Tasks','📅 Schedule','💬 Messages','📊 Grades'];
   if(isAdmin) tabs.push('⚙️ Manage');
   var tabBar = '<div style="display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;white-space:nowrap">';
