@@ -297,3 +297,182 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .modal-content{margin:10px;max-width:none;max-height:90vh}
 .flavor-legend{justify-content:center;gap:15px}
 }
+
+/* === LIVE FISH SCHEDULING STYLES === */
+.fish-container{display:flex;flex-direction:column;height:100%}
+
+/* Controls */
+.fish-controls{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:15px}
+.fish-nav{display:flex;align-items:center;gap:15px}
+.fish-nav h3{margin:0;font-size:1.3rem;color:var(--text);min-width:250px;text-align:center}
+.fish-actions{display:flex;gap:10px}
+
+/* Weekly Schedule Grid */
+.fish-weekly-grid{flex:1;overflow:auto;border:1px solid #e5e7eb;border-radius:12px;background:#fff}
+.week-header{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#f8fafc;padding:0}
+.day-header{padding:12px 8px;text-align:center;background:#fff;border-right:1px solid #e5e7eb}
+.day-header:last-child{border-right:none}
+.day-name{font-weight:600;color:var(--text);margin-bottom:2px}
+.day-date{font-size:0.8rem;color:var(--sub)}
+
+.week-content{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#f8fafc;min-height:400px}
+.day-column{background:#fff;padding:8px;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;gap:6px}
+.day-column:last-child{border-right:none}
+
+.day-summary{background:#f8fafc;padding:6px;border-radius:6px;font-size:0.8rem;color:var(--sub);text-align:center}
+.delivery-count{display:block;font-weight:600}
+.total-tons{font-size:0.75rem}
+
+/* Delivery Cards */
+.delivery-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;cursor:pointer;transition:all 0.2s;position:relative}
+.delivery-card:hover{border-color:var(--blue);box-shadow:0 2px 8px rgba(59,130,246,0.15)}
+.delivery-card.scheduled{border-left:4px solid #3b82f6}
+.delivery-card.en_route{border-left:4px solid #f59e0b}
+.delivery-card.arrived{border-left:4px solid #8b5cf6}
+.delivery-card.completed{border-left:4px solid #22c55e}
+
+.delivery-producer{font-weight:600;color:var(--text);font-size:0.85rem;margin-bottom:4px}
+.delivery-details{display:flex;justify-content:space-between;font-size:0.75rem;color:var(--sub);margin-bottom:6px}
+.delivery-status-badge{font-size:0.7rem;padding:2px 6px;border-radius:10px;background:#f1f5f9;color:var(--sub)}
+.delivery-status-badge.scheduled{background:#dbeafe;color:#1e40af}
+.delivery-status-badge.en_route{background:#fef3c7;color:#92400e}
+.delivery-status-badge.arrived{background:#ede9fe;color:#6b46c1}
+.delivery-status-badge.completed{background:#dcfce7;color:#166534}
+
+.add-delivery-btn{width:100%;padding:8px;border:1px dashed #d1d5db;background:transparent;border-radius:6px;color:var(--sub);font-size:0.8rem;cursor:pointer;margin-top:auto}
+.add-delivery-btn:hover{background:#f9fafb;border-color:var(--blue);color:var(--blue)}
+
+/* Vat Status Grid */
+.vats-controls{display:flex;gap:12px;margin-bottom:20px}
+.vats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.vat-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s}
+.vat-card:hover{border-color:var(--blue);box-shadow:0 4px 12px rgba(59,130,246,0.1)}
+.vat-card.available{border-left:4px solid #22c55e}
+.vat-card.loading{border-left:4px solid #f59e0b}
+.vat-card.processing{border-left:4px solid #3b82f6}
+.vat-card.cleaning{border-left:4px solid #8b5cf6}
+.vat-card.maintenance{border-left:4px solid #ef4444}
+
+.vat-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.vat-number{font-weight:700;font-size:1.1rem;color:var(--text)}
+.vat-status{font-size:0.8rem;font-weight:600;text-transform:uppercase}
+
+.vat-capacity{margin-bottom:12px}
+.capacity-bar{height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;margin-bottom:4px}
+.capacity-fill{height:100%;background:linear-gradient(90deg,#22c55e 0%,#f59e0b 70%,#ef4444 90%);transition:width 0.3s}
+.capacity-text{font-size:0.8rem;color:var(--sub)}
+
+.vat-metrics{display:flex;gap:12px;font-size:0.8rem;color:var(--sub);flex-wrap:wrap}
+.vat-notes{margin-top:8px;font-size:0.8rem;color:var(--sub);font-style:italic}
+
+/* Producers List */
+.producers-controls{display:flex;gap:12px;margin-bottom:20px}
+.producers-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px}
+.producer-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px}
+.producer-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.producer-header h4{margin:0;color:var(--text)}
+.producer-rating{color:#fbbf24}
+.star-rating{font-size:0.9rem}
+
+.producer-details{margin-bottom:12px}
+.producer-contact,.producer-schedule,.producer-stats{margin-bottom:8px;font-size:0.9rem}
+.producer-stats{display:flex;gap:16px;flex-wrap:wrap}
+.producer-stats span{color:var(--sub)}
+.producer-actions{display:flex;gap:8px}
+
+/* Coordination Hub */
+.coordination-header{text-align:center;margin-bottom:20px;padding:16px;background:linear-gradient(135deg,#059669,#0d9488);color:white;border-radius:12px}
+.coordination-header h3{margin:0;margin-bottom:4px}
+.coordination-date{font-size:0.9rem;opacity:0.9}
+
+.coordination-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.coord-section{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px}
+.coord-section h4{margin:0 0 12px 0;color:var(--text);font-size:1rem}
+
+.coord-delivery{border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px}
+.coord-delivery.en_route{background:#fef3c7}
+.coord-delivery.arrived{background:#ede9fe}
+.coord-delivery-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.coord-producer{font-weight:600;color:var(--text)}
+.coord-time{color:var(--sub);font-size:0.9rem}
+.coord-status{padding:2px 8px;border-radius:12px;font-size:0.8rem;font-weight:600}
+.coord-status.scheduled{background:#dbeafe;color:#1e40af}
+.coord-status.en_route{background:#fbbf24;color:#fff}
+.coord-status.arrived{background:#8b5cf6;color:#fff}
+
+.coord-delivery-details{font-size:0.85rem;color:var(--sub);margin-bottom:8px}
+.coord-actions{display:flex;gap:4px}
+.status-btn{padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:0.75rem;cursor:pointer}
+.status-btn:hover{background:#f3f4f6}
+
+.contact-entry{display:flex;gap:8px;margin-bottom:12px;align-items:center}
+.contact-entry input{flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:0.85rem}
+.contact-logged{border-left:3px solid #22c55e;padding:8px 12px;margin:8px 0;background:#f0fdf4;border-radius:4px}
+.contact-logged-header{display:flex;justify-content:space-between;font-weight:600;margin-bottom:4px}
+.contact-logged-notes{font-size:0.85rem;color:var(--sub)}
+
+.vat-assignment{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.vat-assignment:last-child{border-bottom:none}
+.vat-number{font-weight:600;color:var(--text)}
+
+.alert-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;margin-bottom:6px}
+.alert-item.warning{background:#fef3c7;color:#92400e}
+.alert-item.info{background:#dbeafe;color:#1e40af}
+.alert-icon{font-size:1rem}
+
+.no-deliveries{text-align:center;color:var(--sub);padding:20px;font-style:italic}
+
+/* Fish Modal Styles */
+.fish-modal{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
+.fish-modal .modal-content{background:#fff;border-radius:16px;width:100%;max-width:800px;max-height:80vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+
+.quick-schedule-options{display:grid;gap:12px}
+.template-btn{padding:16px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;text-align:left;cursor:pointer;transition:all 0.2s}
+.template-btn:hover{border-color:var(--blue);background:#f8fafc}
+.template-btn small{display:block;color:var(--sub);font-size:0.8rem;margin-top:4px}
+
+.form-row{display:flex;gap:16px;margin-bottom:16px}
+.form-row .form-group{flex:1}
+
+.capacity-modal .modal-content{max-width:1000px}
+.capacity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.capacity-vat{border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#fff}
+.capacity-vat.available{border-left:4px solid #22c55e}
+.capacity-vat.loading{border-left:4px solid #f59e0b}
+.capacity-vat.processing{border-left:4px solid #3b82f6}
+.capacity-vat.cleaning{border-left:4px solid #8b5cf6}
+.capacity-vat.maintenance{border-left:4px solid #ef4444}
+
+.capacity-vat-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.capacity-bars{margin-bottom:8px}
+.capacity-bars .capacity-bar{height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden;position:relative}
+.bar-segment{height:100%;position:absolute;top:0}
+.bar-segment.current{background:#3b82f6;z-index:1}
+.bar-segment.scheduled{background:#f59e0b;z-index:2;left:0}
+.capacity-details{font-size:0.8rem;color:var(--sub)}
+.capacity-details div{margin-bottom:2px}
+
+.capacity-legend{display:flex;justify-content:center;gap:20px}
+.capacity-legend span{display:flex;align-items:center;gap:6px;font-size:0.8rem}
+.legend-bar{width:16px;height:6px;border-radius:3px}
+.legend-bar.current{background:#3b82f6}
+.legend-bar.scheduled{background:#f59e0b}
+.legend-bar.available{background:#f1f5f9;border:1px solid #d1d5db}
+
+/* Responsive */
+@media (max-width:768px){
+.fish-controls{flex-direction:column;align-items:stretch}
+.fish-nav{justify-content:center}
+.fish-actions{justify-content:center}
+.week-header,.week-content{grid-template-columns:repeat(7,1fr)}
+.day-column{padding:4px;font-size:0.8rem}
+.delivery-card{padding:6px}
+.delivery-details{flex-direction:column;gap:2px}
+.vats-grid{grid-template-columns:1fr}
+.producers-list{grid-template-columns:1fr}
+.coordination-grid{grid-template-columns:1fr;gap:12px}
+.form-row{flex-direction:column;gap:12px}
+.capacity-grid{grid-template-columns:repeat(2,1fr)}
+.coord-actions{flex-wrap:wrap}
+.contact-entry{flex-wrap:wrap}
+}
