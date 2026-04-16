@@ -95,14 +95,26 @@ function buildFlavorWidget() {
 function flavorShowTab(tabId) {
   // Update tab buttons
   document.querySelectorAll('.widget-tab').forEach(tab => tab.classList.remove('active'));
-  event.target.classList.add('active');
+  // Find and activate the clicked tab
+  const activeTab = document.querySelector(`[onclick="flavorShowTab('${tabId}')"]`);
+  if (activeTab) {
+    activeTab.classList.add('active');
+  }
   
   // Update tab panels
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
-  document.getElementById(`flavor-tab-${tabId}`).classList.add('active');
+  const targetPanel = document.getElementById(`flavor-tab-${tabId}`);
+  if (targetPanel) {
+    targetPanel.classList.add('active');
+  }
   
-  if (tabId === 'manage' && currentUser.role === 'admin') {
+  // Load appropriate content for each tab
+  if (tabId === 'calendar') {
+    flavorLoadCalendar();
+  } else if (tabId === 'manage' && currentUser.role === 'admin') {
     flavorLoadManageView();
+  } else if (tabId === 'bulk') {
+    flavorLoadBulkActions();
   }
 }
 
@@ -131,6 +143,11 @@ function flavorLoadProducers() {
       select.innerHTML = '<option value="">All Producers</option>' + options;
     }
   }).catch(err => console.error('Error loading producers:', err));
+}
+
+function flavorLoadBulkActions() {
+  // Bulk actions tab doesn't need additional loading - it's static content
+  console.log('Bulk actions tab loaded');
 }
 
 function flavorLoadCalendar() {
