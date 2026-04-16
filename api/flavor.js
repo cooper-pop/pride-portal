@@ -174,8 +174,15 @@ export default async function handler(req, res) {
       
       if (action === 'calendar') {
         const { month, year } = req.query;
-        const startDate = `${year}-${month.padStart(2, '0')}-01`;
-        const endDate = `${year}-${month.padStart(2, '0')}-31`;
+        
+        if (!month || !year) {
+          return res.status(400).json({ error: 'Month and year are required' });
+        }
+        
+        const monthStr = month.toString().padStart(2, '0');
+        const yearStr = year.toString();
+        const startDate = `${yearStr}-${monthStr}-01`;
+        const endDate = `${yearStr}-${monthStr}-31`;
         
         const samples = await sql`
           SELECT s.sample_date, s.pond_id, s.sample_status, s.truck_status, 
