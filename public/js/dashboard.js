@@ -32,7 +32,8 @@ function buildDash() {
       { id:'ai',        label:'AI Analysis',   icon:'🤖',    color:'#8e44ad' },
       { id:'todo',      label:'To-Do List',    icon:'📋',    color:'#1a3a6b' },
       { id:'parts',     label:'Parts',          icon:'⚙️', color:'#7c3aed' },
-      { id:'flavor',    label:'Flavor Samples', icon:'🎣',   color:'#0891b2' }
+      { id:'flavor',    label:'Flavor Samples', icon:'🎣',   color:'#0891b2' },
+      { id:'fishschedule', label:'Fish Schedule', icon:'🐟', color:'#059669' }
     ];
   } else {
     apps = [{ id:'coming', label:'Coming Soon', icon:'🚧', color:'#5a6a85' }];
@@ -65,6 +66,7 @@ function openWidget(id, label) {
   else if (id === 'todo') todoRender();
   else if (id === 'parts') buildPartsWidget();
   else if (id === 'flavor') buildFlavorWidget();
+  else if (id === 'fishschedule') buildFishScheduleWidget();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
 
