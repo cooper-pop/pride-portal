@@ -321,7 +321,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 .day-summary{background:#f8fafc;padding:6px;border-radius:6px;font-size:0.8rem;color:var(--sub);text-align:center}
 .delivery-count{display:block;font-weight:600}
-.total-tons{font-size:0.75rem}
+.total-weight{font-size:0.75rem}
 
 /* Delivery Cards */
 .delivery-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px;cursor:pointer;transition:all 0.2s;position:relative}
