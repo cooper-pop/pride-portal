@@ -277,13 +277,13 @@ export default async function handler(req, res) {
         
         // Initialize producers from your schedule
         const producers = [
-          { name: 'RIPPLING WATER', delivery_days: ['monday', 'friday'], typical_load: 25, contact: 'Contact TBD' },
-          { name: 'WCC', delivery_days: ['tuesday', 'friday'], typical_load: 25, contact: 'Contact TBD' },
-          { name: 'BEN SAUL/SHIRK', delivery_days: ['tuesday', 'wednesday', 'friday'], typical_load: 30, contact: 'Contact TBD' },
-          { name: 'GIESBRECHT', delivery_days: ['wednesday'], typical_load: 25, contact: 'Contact TBD' },
-          { name: 'CATFISH ENTERPRISE', delivery_days: ['friday'], typical_load: 25, contact: 'Contact TBD' },
-          { name: 'SCHMIDT', delivery_days: ['friday'], typical_load: 25, contact: 'Contact TBD' },
-          { name: 'BATTLE FISH NORTH', delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], typical_load: 50, contact: 'Cooper Battle' }
+          { name: 'RIPPLING WATER', delivery_days: ['monday', 'friday'], typical_load: 25000, contact: 'Contact TBD' },
+          { name: 'WCC', delivery_days: ['tuesday', 'friday'], typical_load: 25000, contact: 'Contact TBD' },
+          { name: 'BEN SAUL/SHIRK', delivery_days: ['tuesday', 'wednesday', 'friday'], typical_load: 30000, contact: 'Contact TBD' },
+          { name: 'GIESBRECHT', delivery_days: ['wednesday'], typical_load: 25000, contact: 'Contact TBD' },
+          { name: 'CATFISH ENTERPRISE', delivery_days: ['friday'], typical_load: 25000, contact: 'Contact TBD' },
+          { name: 'SCHMIDT', delivery_days: ['friday'], typical_load: 25000, contact: 'Contact TBD' },
+          { name: 'BATTLE FISH NORTH', delivery_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], typical_load: 50000, contact: 'Cooper Battle' }
         ];
         
         let inserted = 0;
@@ -291,7 +291,7 @@ export default async function handler(req, res) {
           try {
             await sql`
               INSERT INTO fish_producers (producer_name, delivery_days, typical_load_size, contact_person, quality_rating)
-              VALUES (${producer.name}, ${producer.delivery_days}, ${producer.typical_load * 1000}, ${producer.contact}, 4)
+              VALUES (${producer.name}, ${producer.delivery_days}, ${producer.typical_load}, ${producer.contact}, 4)
               ON CONFLICT (producer_name) DO NOTHING
             `;
             inserted++;

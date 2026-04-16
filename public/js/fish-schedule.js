@@ -168,20 +168,20 @@ function fishLoadWeeklySchedule() {
     gridHtml += '<div class="week-content">';
     weekDates.forEach((dateStr, dayIndex) => {
       const dayDeliveries = deliveries.filter(d => d.delivery_date === dateStr);
-      const totalTons = dayDeliveries.reduce((sum, d) => sum + (d.estimated_lbs || 0), 0) / 1000;
+      const totalLbs = dayDeliveries.reduce((sum, d) => sum + (d.estimated_lbs || 0), 0);
       
       gridHtml += `
         <div class="day-column" data-date="${dateStr}">
           <div class="day-summary">
             <span class="delivery-count">${dayDeliveries.length} deliveries</span>
-            <span class="total-tons">${totalTons.toFixed(1)} tons</span>
+            <span class="total-weight">${totalLbs.toLocaleString()} lbs</span>
           </div>
           ${dayDeliveries.map(delivery => `
             <div class="delivery-card ${delivery.delivery_status}" onclick="fishEditDelivery('${delivery.delivery_id}')">
               <div class="delivery-producer">${delivery.producer_name}</div>
               <div class="delivery-details">
                 <span class="delivery-time">${delivery.scheduled_time || '—'}</span>
-                <span class="delivery-weight">${(delivery.estimated_lbs / 1000).toFixed(1)}t</span>
+                <span class="delivery-weight">${(delivery.estimated_lbs || 0).toLocaleString()} lbs</span>
                 <span class="delivery-vat">Vat ${delivery.vat_number || '?'}</span>
               </div>
               <div class="delivery-status-badge ${delivery.delivery_status}">${getStatusLabel(delivery.delivery_status)}</div>
@@ -263,9 +263,9 @@ function fishLoadProducers() {
             <strong>Delivery Days:</strong> ${(producer.delivery_days || []).join(', ')}
           </div>
           <div class="producer-stats">
-            <span><strong>Typical Load:</strong> ${(producer.typical_load_size / 1000).toFixed(0)} tons</span>
+            <span><strong>Typical Load:</strong> ${(producer.typical_load_size || 0).toLocaleString()} lbs</span>
             <span><strong>Total Deliveries:</strong> ${producer.total_deliveries || 0}</span>
-            ${producer.avg_delivery_size ? `<span><strong>Avg Size:</strong> ${(producer.avg_delivery_size / 1000).toFixed(1)}t</span>` : ''}
+            ${producer.avg_delivery_size ? `<span><strong>Avg Size:</strong> ${(producer.avg_delivery_size || 0).toLocaleString()} lbs</span>` : ''}
           </div>
         </div>
         <div class="producer-actions">
@@ -303,7 +303,7 @@ function fishLoadCoordination() {
           <span class="coord-status ${delivery.delivery_status}">${getStatusLabel(delivery.delivery_status)}</span>
         </div>
         <div class="coord-delivery-details">
-          Vat ${delivery.vat_number || '?'} • ${(delivery.estimated_lbs / 1000).toFixed(1)} tons
+          Vat ${delivery.vat_number || '?'} • ${(delivery.estimated_lbs || 0).toLocaleString()} lbs
           ${delivery.truck_driver ? ` • Driver: ${delivery.truck_driver}` : ''}
         </div>
         <div class="coord-actions">
@@ -384,8 +384,8 @@ function fishAddDelivery(targetDate = null) {
                 <input type="time" id="delivery-time">
               </div>
               <div class="form-group">
-                <label>Estimated Weight (tons):</label>
-                <input type="number" id="delivery-weight" step="0.1" min="0">
+                <label>Estimated Weight (lbs):</label>
+                <input type="number" id="delivery-weight" step="100" min="0" placeholder="e.g., 25000">
               </div>
             </div>
             <div class="form-row">
@@ -429,7 +429,7 @@ function fishSubmitDelivery(event) {
     producer_id: document.getElementById('delivery-producer').value,
     delivery_date: document.getElementById('delivery-date').value,
     scheduled_time: document.getElementById('delivery-time').value || null,
-    estimated_lbs: document.getElementById('delivery-weight').value * 1000,
+    estimated_lbs: document.getElementById('delivery-weight').value || 0,
     vat_number: document.getElementById('delivery-vat').value || null,
     truck_driver: document.getElementById('delivery-driver').value || null,
     coordinated_by: document.getElementById('delivery-coordinator').value,
