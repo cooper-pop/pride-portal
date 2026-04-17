@@ -8,7 +8,7 @@ function buildFlavorWidget() {
   window.flavorCurrentYear = now.getFullYear();
   
   const tabs = [
-    { id: 'calendar', label: '📅 Sample Calendar', active: true },
+    { id: 'harvest', label: '🎣 Harvest Readiness', active: true },
     { id: 'manage', label: '🎣 Manage Ponds', active: false },
     { id: 'bulk', label: '⚡ Bulk Actions', active: false }
   ];
