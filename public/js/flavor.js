@@ -22,34 +22,62 @@ function buildFlavorWidget() {
   
   const content = `
     <div class="flavor-container">
-      <!-- Calendar Tab -->
+      <!-- Calendar Tab - Now Harvest Readiness Dashboard -->
       <div id="flavor-tab-calendar" class="tab-panel active">
-        <div class="flavor-controls">
-          <div class="flavor-nav">
-            <button onclick="flavorChangeMonth(-1)" class="nav-btn">‹</button>
-            <h3 id="flavor-month-title">${getMonthName(window.flavorCurrentMonth)} ${window.flavorCurrentYear}</h3>
-            <button onclick="flavorChangeMonth(1)" class="nav-btn">›</button>
+        <div class="harvest-dashboard">
+          <div class="dashboard-header">
+            <h3>🎣 Harvest Readiness Dashboard</h3>
+            <div class="dashboard-controls">
+              <button onclick="flavorLoadHarvestReadiness()" class="btn-refresh">↻ Refresh</button>
+              <button onclick="flavorAddSampleModal()" class="btn-primary">+ Add Sample</button>
+            </div>
           </div>
-          <div class="flavor-filters">
-            <select id="flavor-producer-filter" onchange="flavorLoadCalendar()">
-              <option value="">All Producers</option>
-            </select>
-            <select id="flavor-status-filter" onchange="flavorLoadCalendar()">
-              <option value="">All Status</option>
-              <option value="pending">🟡 Pending</option>
-              <option value="completed">🟢 Completed</option>
-              <option value="partial">🟠 Partial</option>
-            </select>
+          
+          <div class="readiness-summary">
+            <div class="summary-card good-to-go">
+              <h4>🟢 Good to Go</h4>
+              <span id="summary-good-count">-</span>
+              <p>Ready for Harvest</p>
+            </div>
+            <div class="summary-card approaching">
+              <h4>🟡 Approaching Flavor</h4>
+              <span id="summary-approaching-count">-</span>
+              <p>Off 1-3 (Getting Close)</p>
+            </div>
+            <div class="summary-card needs-attention">
+              <h4>🔴 Needs Attention</h4>
+              <span id="summary-alerts-count">-</span>
+              <p>Expiring Soon</p>
+            </div>
           </div>
-        </div>
-        <div id="flavor-calendar" class="flavor-calendar">
-          <div class="calendar-loading">Loading calendar...</div>
-        </div>
-        <div class="flavor-legend">
-          <span><div class="legend-dot completed"></div>Fully Complete</span>
-          <span><div class="legend-dot partial"></div>Partial Complete</span>
-          <span><div class="legend-dot pending"></div>Pending</span>
-          <span><div class="legend-dot teresa"></div>Teresa Review</span>
+          
+          <div id="harvest-alerts" class="alerts-section" style="display: none;">
+            <h4>⚠️ Urgent Alerts</h4>
+            <div id="alerts-list"></div>
+          </div>
+          
+          <div class="pond-sections">
+            <div class="pond-section">
+              <h4>🟢 Good to Go Ponds</h4>
+              <div id="good-to-go-ponds" class="pond-grid">
+                <div class="loading">Loading...</div>
+              </div>
+            </div>
+            
+            <div class="pond-section">
+              <h4>🟡 Approaching Flavor (Off 1-3)</h4>
+              <div id="approaching-ponds" class="pond-grid">
+                <div class="loading">Loading...</div>
+              </div>
+            </div>
+            
+            <div class="pond-section">
+              <h4>🔴 Needs Attention</h4>
+              <div id="attention-ponds" class="pond-grid">
+                <div class="loading">Loading...</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -86,7 +114,7 @@ function buildFlavorWidget() {
   
   // Load initial data
   flavorLoadProducers();
-  flavorLoadCalendar();
+  flavorLoadHarvestReadiness();
   if (currentUser.role === 'admin') {
     flavorLoadManageView();
   }
@@ -110,7 +138,7 @@ function flavorShowTab(tabId) {
   
   // Load appropriate content for each tab
   if (tabId === 'calendar') {
-    flavorLoadCalendar();
+    flavorLoadHarvestReadiness(); // Use the new harvest readiness function
   } else if (tabId === 'manage' && currentUser.role === 'admin') {
     flavorLoadManageView();
   } else if (tabId === 'bulk') {
@@ -130,7 +158,7 @@ function flavorChangeMonth(delta) {
   
   document.getElementById('flavor-month-title').textContent = 
     `${getMonthName(window.flavorCurrentMonth)} ${window.flavorCurrentYear}`;
-  flavorLoadCalendar();
+  flavorLoadFarmerTracking();
 }
 
 function flavorLoadProducers() {
@@ -150,375 +178,488 @@ function flavorLoadBulkActions() {
   console.log('Bulk actions tab loaded');
 }
 
-function flavorLoadCalendar() {
-  const producer = document.getElementById('flavor-producer-filter')?.value || '';
-  const status = document.getElementById('flavor-status-filter')?.value || '';
-  
-  const params = new URLSearchParams({
-    action: 'calendar',
-    month: window.flavorCurrentMonth.toString(),
-    year: window.flavorCurrentYear.toString()
-  });
-  
-  if (producer) params.append('producer', producer);
-  
-  apiCall('GET', `/api/flavor?${params}`).then(samples => {
-    const calendarEl = document.getElementById('flavor-calendar');
-    if (!calendarEl) return;
+function flavorLoadHarvestReadiness() {
+  apiCall('GET', '/api/flavor?action=harvest_readiness').then(data => {
+    // Update summary cards
+    document.getElementById('summary-good-count').textContent = data.summary.good_to_go;
+    document.getElementById('summary-approaching-count').textContent = data.summary.approaching_flavor;
+    document.getElementById('summary-alerts-count').textContent = data.summary.needs_attention;
     
-    // Create calendar grid
-    const daysInMonth = new Date(window.flavorCurrentYear, window.flavorCurrentMonth, 0).getDate();
-    const firstDay = new Date(window.flavorCurrentYear, window.flavorCurrentMonth - 1, 1).getDay();
-    
-    let calendarHtml = '<div class="calendar-grid">';
-    
-    // Week headers
-    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    calendarHtml += weekDays.map(day => `<div class="calendar-header">${day}</div>`).join('');
-    
-    // Empty cells for days before month starts
-    for (let i = 0; i < firstDay; i++) {
-      calendarHtml += '<div class="calendar-day empty"></div>';
+    // Show alerts if any
+    if (data.alerts && data.alerts.length > 0) {
+      const alertsSection = document.getElementById('harvest-alerts');
+      const alertsList = document.getElementById('alerts-list');
+      
+      let alertsHtml = '';
+      data.alerts.forEach(pond => {
+        const daysLeft = 30 - pond.days_since_sample;
+        alertsHtml += `
+          <div class="alert-item urgent">
+            <div class="alert-content">
+              <strong>${pond.producer_name} - ${pond.pond_name}</strong>
+              <p>⏰ ${daysLeft} days left in harvest window! Last sampled ${pond.days_since_sample} days ago.</p>
+            </div>
+            <button onclick="flavorScheduleHarvest('${pond.pond_id}')" class="btn-urgent">Schedule Harvest</button>
+          </div>
+        `;
+      });
+      
+      alertsList.innerHTML = alertsHtml;
+      alertsSection.style.display = 'block';
+    } else {
+      document.getElementById('harvest-alerts').style.display = 'none';
     }
     
-    // Days of month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${window.flavorCurrentYear}-${window.flavorCurrentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      const daySamples = samples.filter(s => s.sample_date === dateStr);
-      
-      let statusClass = '';
-      let statusIcon = '';
-      if (daySamples.length > 0) {
-        const allComplete = daySamples.every(s => 
-          s.sample_status === 'completed' && 
-          s.truck_status === 'completed' && 
-          s.teresa_status === 'completed' && 
-          s.logged_status === 'completed'
-        );
-        const someComplete = daySamples.some(s => 
-          s.sample_status === 'completed' || 
-          s.truck_status === 'completed' || 
-          s.teresa_status === 'completed' || 
-          s.logged_status === 'completed'
-        );
+    // Populate Good to Go ponds
+    const goodToGoEl = document.getElementById('good-to-go-ponds');
+    if (data.ponds.good_to_go.length === 0) {
+      goodToGoEl.innerHTML = '<div class="empty-state">No ponds ready for harvest</div>';
+    } else {
+      let goodHtml = '';
+      data.ponds.good_to_go.forEach(pond => {
+        const daysLeft = 30 - pond.days_since_sample;
+        const urgency = daysLeft <= 5 ? 'urgent' : daysLeft <= 10 ? 'warning' : '';
         
-        if (allComplete) {
-          statusClass = 'completed';
-          statusIcon = '✓';
-        } else if (someComplete) {
-          statusClass = 'partial';
-          statusIcon = '◐';
-        } else {
-          statusClass = 'pending';
-          statusIcon = '○';
-        }
-      }
-      
-      // Apply status filter
-      let showDay = true;
-      if (status) {
-        if (status === 'completed' && statusClass !== 'completed') showDay = false;
-        if (status === 'pending' && statusClass !== 'pending') showDay = false;
-        if (status === 'partial' && statusClass !== 'partial') showDay = false;
-      }
-      
-      calendarHtml += `
-        <div class="calendar-day ${statusClass} ${!showDay ? 'filtered' : ''}" onclick="flavorOpenDay('${dateStr}')" ${daySamples.length > 0 ? 'data-has-samples="true"' : ''}>
-          <div class="day-number">${day}</div>
-          ${statusIcon ? `<div class="day-status">${statusIcon}</div>` : ''}
-          ${daySamples.length > 0 ? `<div class="day-count">${daySamples.length}</div>` : ''}
-        </div>
-      `;
+        goodHtml += `
+          <div class="pond-card good-to-go ${urgency}" onclick="flavorOpenPondDetails('${pond.pond_id}', '${pond.pond_name}', '${pond.producer_name}')">
+            <div class="pond-header">
+              <h5>${pond.producer_name}</h5>
+              <span class="pond-name">${pond.pond_name}</span>
+            </div>
+            <div class="pond-status">
+              <span class="result-badge good">${formatResult(pond.pond_sample_result)}</span>
+              <span class="days-indicator">${pond.days_since_sample}d ago</span>
+            </div>
+            <div class="pond-actions">
+              <span class="harvest-window">${daysLeft} days left</span>
+              <button onclick="event.stopPropagation(); flavorScheduleHarvest('${pond.pond_id}')" class="btn-harvest">Schedule Harvest</button>
+            </div>
+          </div>
+        `;
+      });
+      goodToGoEl.innerHTML = goodHtml;
     }
     
-    calendarHtml += '</div>';
-    calendarEl.innerHTML = calendarHtml;
+    // Populate Approaching Flavor ponds
+    const approachingEl = document.getElementById('approaching-ponds');
+    if (data.ponds.approaching_flavor.length === 0) {
+      approachingEl.innerHTML = '<div class="empty-state">No ponds approaching flavor readiness</div>';
+    } else {
+      let approachingHtml = '';
+      data.ponds.approaching_flavor.forEach(pond => {
+        const resultClass = pond.pond_sample_result.replace('_', '-');
+        const closeness = {
+          'off_1': 'Very Close',
+          'off_2': 'Close', 
+          'off_3': 'Moderate'
+        };
+        
+        approachingHtml += `
+          <div class="pond-card approaching ${resultClass}" onclick="flavorOpenPondDetails('${pond.pond_id}', '${pond.pond_name}', '${pond.producer_name}')">
+            <div class="pond-header">
+              <h5>${pond.producer_name}</h5>
+              <span class="pond-name">${pond.pond_name}</span>
+            </div>
+            <div class="pond-status">
+              <span class="result-badge ${resultClass}">${formatResult(pond.pond_sample_result)}</span>
+              <span class="closeness-indicator">${closeness[pond.pond_sample_result]}</span>
+            </div>
+            <div class="pond-actions">
+              <span class="days-indicator">${pond.days_since_sample}d ago</span>
+              <button onclick="event.stopPropagation(); flavorAddSampleForPond('${pond.pond_id}', '${pond.pond_name}', '${pond.producer_name}')" class="btn-resample">Resample</button>
+            </div>
+          </div>
+        `;
+      });
+      approachingEl.innerHTML = approachingHtml;
+    }
+    
+    // Populate Needs Attention ponds
+    const attentionEl = document.getElementById('attention-ponds');
+    if (data.ponds.needs_attention.length === 0) {
+      attentionEl.innerHTML = '<div class="empty-state">No ponds need immediate attention</div>';
+    } else {
+      let attentionHtml = '';
+      data.ponds.needs_attention.forEach(pond => {
+        const isExpired = pond.days_since_sample > 30;
+        
+        attentionHtml += `
+          <div class="pond-card attention ${isExpired ? 'expired' : 'warning'}" onclick="flavorOpenPondDetails('${pond.pond_id}', '${pond.pond_name}', '${pond.producer_name}')">
+            <div class="pond-header">
+              <h5>${pond.producer_name}</h5>
+              <span class="pond-name">${pond.pond_name}</span>
+            </div>
+            <div class="pond-status">
+              <span class="result-badge ${pond.pond_sample_result.replace('_', '-')}">${formatResult(pond.pond_sample_result)}</span>
+              <span class="status-indicator ${isExpired ? 'expired' : 'expiring'}">${isExpired ? 'Expired' : 'Expiring Soon'}</span>
+            </div>
+            <div class="pond-actions">
+              <span class="days-indicator">${pond.days_since_sample}d ago</span>
+              <button onclick="event.stopPropagation(); flavorAddSampleForPond('${pond.pond_id}', '${pond.pond_name}', '${pond.producer_name}')" class="btn-urgent">Resample Now</button>
+            </div>
+          </div>
+        `;
+      });
+      attentionEl.innerHTML = attentionHtml;
+    }
     
   }).catch(err => {
-    console.error('Error loading calendar:', err);
-    document.getElementById('flavor-calendar').innerHTML = '<div class="error">Error loading calendar data</div>';
+    console.error('Error loading harvest readiness:', err);
+    document.getElementById('good-to-go-ponds').innerHTML = '<div class="error">Error loading harvest data</div>';
+    document.getElementById('approaching-ponds').innerHTML = '<div class="error">Error loading harvest data</div>';
+    document.getElementById('attention-ponds').innerHTML = '<div class="error">Error loading harvest data</div>';
   });
 }
 
-function flavorOpenDay(dateStr) {
+function flavorScheduleHarvest(pondId) {
+  // This would integrate with the Fish Schedule widget
+  showToast('🚛 Harvest scheduling integration coming soon', 'info');
+  // TODO: Open Fish Schedule widget with pre-filled pond information
+}
+
+function flavorAddSampleForPond(pondId, pondName, producerName) {
   const modal = document.createElement('div');
   modal.className = 'flavor-modal';
   modal.innerHTML = `
     <div class="modal-content">
       <div class="modal-header">
-        <h3>🗓️ Samples for ${new Date(dateStr).toLocaleDateString()}</h3>
+        <h3>📝 Add Sample - ${producerName}: ${pondName}</h3>
         <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
       </div>
       <div class="modal-body">
-        <div class="loading">Loading samples...</div>
+        <form onsubmit="flavorSubmitSampleForPond(event, '${pondId}')">
+          <div class="form-group">
+            <label>Sample Date:</label>
+            <input type="date" name="sample_date" value="${new Date().toISOString().split('T')[0]}" required>
+          </div>
+          <div class="form-group">
+            <label>Pond Sample Result:</label>
+            <select name="pond_sample_result" required>
+              <option value="">Select result...</option>
+              <option value="good">Good</option>
+              <option value="good_for_resample">Good for Resample</option>
+              <option value="off_1">Off 1 (Very Close)</option>
+              <option value="off_2">Off 2 (Close)</option>
+              <option value="off_3">Off 3 (Moderate)</option>
+              <option value="off_4">Off 4 (Distant)</option>
+              <option value="off_5">Off 5 (Very Distant)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Truck Sample Result:</label>
+            <select name="truck_sample_result">
+              <option value="">Not tested</option>
+              <option value="pass">Pass</option>
+              <option value="fail">Fail</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sampled By:</label>
+            <input type="text" name="sampled_by" value="${currentUser.name}" required>
+          </div>
+          <div class="form-group">
+            <label>Notes:</label>
+            <textarea name="notes" rows="3" placeholder="Sample observations..."></textarea>
+          </div>
+          <button type="submit" class="btn-primary">Add Sample</button>
+        </form>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
-  
-  // Load samples for this date
-  apiCall('GET', `/api/flavor?action=samples&start_date=${dateStr}&end_date=${dateStr}`).then(samples => {
-    const modalBody = modal.querySelector('.modal-body');
-    
-    if (samples.length === 0) {
-      modalBody.innerHTML = `
-        <div class="no-samples">
-          <p>No samples recorded for this date.</p>
-          <button onclick="flavorAddSample('${dateStr}')" class="btn-primary">+ Add Sample</button>
-        </div>
-      `;
-      return;
-    }
-    
-    const samplesHtml = samples.map(sample => {
-      const getStatusIcon = (status) => {
-        switch(status) {
-          case 'completed': return '✅';
-          case 'failed': return '❌';
-          case 'n/a': return '➖';
-          default: return '⏳';
-        }
-      };
-      
-      return `
-        <div class="sample-card">
-          <div class="sample-header">
-            <strong>${sample.producer_name} - ${sample.pond_name}</strong>
-            <div class="sample-actions">
-              <button onclick="flavorEditSample('${sample.sample_id}')" class="btn-sm">Edit</button>
-            </div>
-          </div>
-          <div class="sample-status-grid">
-            <div class="status-item ${sample.sample_status}">
-              <span>Pond Sample</span>
-              <span>${getStatusIcon(sample.sample_status)}</span>
-            </div>
-            <div class="status-item ${sample.truck_status}">
-              <span>Truck Sample</span>
-              <span>${getStatusIcon(sample.truck_status)}</span>
-            </div>
-            <div class="status-item ${sample.teresa_status}">
-              <span>Teresa Review</span>
-              <span>${getStatusIcon(sample.teresa_status)}</span>
-            </div>
-            <div class="status-item ${sample.logged_status}">
-              <span>Mary Logged</span>
-              <span>${getStatusIcon(sample.logged_status)}</span>
-            </div>
-          </div>
-          ${sample.notes ? `<div class="sample-notes">Notes: ${sample.notes}</div>` : ''}
-        </div>
-      `;
-    }).join('');
-    
-    modalBody.innerHTML = `
-      ${samplesHtml}
-      <div class="modal-footer">
-        <button onclick="flavorAddSample('${dateStr}')" class="btn-secondary">+ Add Another Sample</button>
-      </div>
-    `;
-    
-  }).catch(err => {
-    modal.querySelector('.modal-body').innerHTML = '<div class="error">Error loading samples</div>';
-  });
 }
 
-function flavorAddSample(dateStr) {
-  // Load available ponds
-  apiCall('GET', `/api/flavor?action=ponds`).then(ponds => {
-    const modal = document.createElement('div');
-    modal.className = 'flavor-modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>➕ Add Sample for ${new Date(dateStr).toLocaleDateString()}</h3>
-          <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <form onsubmit="flavorSubmitSample(event, '${dateStr}')">
-            <div class="form-group">
-              <label>Producer/Pond:</label>
-              <select id="sample-pond-select" required>
-                <option value="">Select pond...</option>
-                ${ponds.map(p => `<option value="${p.pond_id}">${p.producer_name} - ${p.pond_name}</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Notes (optional):</label>
-              <textarea id="sample-notes" rows="3" placeholder="Any additional notes..."></textarea>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn-primary">Add Sample</button>
-              <button type="button" onclick="this.closest('.flavor-modal').remove()" class="btn-secondary">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  });
-}
-
-function flavorSubmitSample(event, dateStr) {
+function flavorSubmitSampleForPond(event, pondId) {
   event.preventDefault();
-  const pondId = document.getElementById('sample-pond-select').value;
-  const notes = document.getElementById('sample-notes').value;
+  const form = event.target;
+  const formData = new FormData(form);
   
-  apiCall('POST', '/api/flavor', {
+  const sampleData = {
     action: 'create_sample',
     pond_id: pondId,
-    sample_date: dateStr,
-    sampled_by: currentUser.username,
-    notes: notes || null
-  }).then(() => {
-    document.querySelector('.flavor-modal').remove();
-    flavorLoadCalendar();
-    showToast('✅ Sample added successfully!');
+    sample_date: formData.get('sample_date'),
+    pond_sample_result: formData.get('pond_sample_result'),
+    truck_sample_result: formData.get('truck_sample_result') || null,
+    sampled_by: formData.get('sampled_by'),
+    notes: formData.get('notes')
+  };
+  
+  apiCall('POST', '/api/flavor', sampleData).then(response => {
+    showToast('✅ Sample added successfully', 'success');
+    form.closest('.flavor-modal').remove();
+    flavorLoadHarvestReadiness(); // Refresh the dashboard
   }).catch(err => {
     showToast('❌ Error adding sample: ' + err.message, 'error');
   });
 }
 
-// Bulk action functions
-function flavorBulkSample() {
-  flavorShowBulkDialog('sample', 'Pond Samples', '📝');
+function formatResult(result) {
+  if (!result || result === 'pending') return 'Pending';
+  const resultMap = {
+    'good_for_resample': 'Good for Resample',
+    'good': 'Good',
+    'off_1': 'Off 1',
+    'off_2': 'Off 2', 
+    'off_3': 'Off 3',
+    'off_4': 'Off 4',
+    'off_5': 'Off 5',
+    'pass': 'Pass',
+    'fail': 'Fail'
+  };
+  return resultMap[result] || result;
 }
 
-function flavorBulkTruck() {
-  flavorShowBulkDialog('truck', 'Truck Samples', '🚛');
+function formatStatus(status) {
+  if (!status || status === 'pending') return 'Pending';
+  if (status === 'completed') return 'Complete';
+  return status;
 }
 
-function flavorBulkTeresa() {
-  flavorShowBulkDialog('teresa', 'Teresa Review', '👩‍🔬');
+function flavorLoadManageView() {
+  apiCall('GET', '/api/flavor?action=producers').then(producers => {
+    const listEl = document.getElementById('flavor-producers-list');
+    if (!listEl) return;
+    
+    let producersHtml = '<div class="producers-grid">';
+    
+    producers.forEach(producer => {
+      producersHtml += `
+        <div class="producer-card" data-producer="${producer.producer_name}">
+          <div class="producer-header">
+            <input type="text" value="${producer.producer_name}" onchange="flavorUpdateProducerName(this, '${producer.producer_name}')" class="producer-name-input">
+            <div class="producer-actions">
+              <span class="pond-count">${producer.pond_count} ponds</span>
+              <button onclick="flavorAddPondToProducer('${producer.producer_name}')" class="btn-small">+ Pond</button>
+              <button onclick="flavorDeleteProducer('${producer.producer_name}')" class="btn-danger-small">🗑️</button>
+            </div>
+          </div>
+          <div class="ponds-list" id="ponds-${producer.producer_name.replace(/\s+/g, '-')}">
+            <div class="loading-small">Loading ponds...</div>
+          </div>
+        </div>
+      `;
+    });
+    
+    producersHtml += '</div>';
+    listEl.innerHTML = producersHtml;
+    
+    // Load ponds for each producer
+    producers.forEach(producer => {
+      flavorLoadProducerPonds(producer.producer_name);
+    });
+    
+  }).catch(err => {
+    console.error('Error loading producers:', err);
+    document.getElementById('flavor-producers-list').innerHTML = '<div class="error">Error loading producers</div>';
+  });
 }
 
-function flavorBulkLogged() {
-  flavorShowBulkDialog('logged', 'Mary Logging', '📊');
-}
-
-function flavorShowBulkDialog(statusType, label, icon) {
-  const dateStr = `${window.flavorCurrentYear}-${window.flavorCurrentMonth.toString().padStart(2, '0')}`;
-  
-  apiCall('GET', `/api/flavor?action=samples&start_date=${dateStr}-01&end_date=${dateStr}-31&status_type=${statusType}&status=pending`).then(samples => {
-    if (samples.length === 0) {
-      showToast(`No pending ${label.toLowerCase()} found for this month.`);
+function flavorLoadProducerPonds(producerName) {
+  apiCall('GET', `/api/flavor?action=ponds&producer=${encodeURIComponent(producerName)}`).then(ponds => {
+    const pondsEl = document.getElementById(`ponds-${producerName.replace(/\s+/g, '-')}`);
+    if (!pondsEl) return;
+    
+    if (ponds.length === 0) {
+      pondsEl.innerHTML = '<div class="empty-ponds">No ponds yet</div>';
       return;
     }
     
-    const modal = document.createElement('div');
-    modal.className = 'flavor-modal';
-    modal.innerHTML = `
-      <div class="modal-content bulk-modal">
-        <div class="modal-header">
-          <h3>${icon} Bulk Update: ${label}</h3>
-          <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <p>Mark ${samples.length} pending ${label.toLowerCase()} as complete for ${getMonthName(window.flavorCurrentMonth)} ${window.flavorCurrentYear}?</p>
-          <div class="bulk-preview">
-            ${samples.slice(0, 5).map(s => `<div class="bulk-item">${s.producer_name} - ${s.pond_name} (${s.sample_date})</div>`).join('')}
-            ${samples.length > 5 ? `<div class="bulk-more">...and ${samples.length - 5} more</div>` : ''}
-          </div>
-          <div class="form-actions">
-            <button onclick="flavorExecuteBulk('${statusType}', ${JSON.stringify(samples.map(s => s.sample_id)).replace(/"/g, '&quot;')})" class="btn-primary">
-              ✅ Mark ${samples.length} Complete
-            </button>
-            <button onclick="this.closest('.flavor-modal').remove()" class="btn-secondary">Cancel</button>
+    let pondsHtml = '';
+    ponds.forEach(pond => {
+      pondsHtml += `
+        <div class="pond-item editable" data-pond-id="${pond.pond_id}">
+          <input type="text" value="${pond.pond_name}" onchange="flavorUpdatePondName(this, '${pond.pond_id}')" class="pond-name-input">
+          <div class="pond-actions">
+            <button onclick="flavorViewPondHistory('${pond.pond_id}', '${pond.pond_name}', '${producerName}')" class="btn-small">📊 History</button>
+            <button onclick="flavorDeletePond('${pond.pond_id}', '${pond.pond_name}')" class="btn-danger-small">🗑️</button>
           </div>
         </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  });
-}
-
-function flavorExecuteBulk(statusType, sampleIds) {
-  apiCall('POST', '/api/flavor', {
-    action: 'bulk_update',
-    sample_ids: sampleIds,
-    status_type: statusType,
-    status: 'completed',
-    updated_by: currentUser.username
-  }).then(result => {
-    document.querySelector('.flavor-modal').remove();
-    flavorLoadCalendar();
-    showToast(`✅ ${result.updated} ${statusType} samples updated!`);
+      `;
+    });
+    
+    pondsEl.innerHTML = pondsHtml;
   }).catch(err => {
-    showToast('❌ Error updating samples: ' + err.message, 'error');
+    console.error('Error loading ponds for', producerName, err);
   });
 }
 
-// Admin pond management
-function flavorLoadManageView() {
-  const container = document.getElementById('flavor-producers-list');
-  if (!container) return;
-  
-  apiCall('GET', '/api/flavor?action=producers').then(producers => {
-    container.innerHTML = producers.map(producer => `
-      <div class="producer-card">
-        <div class="producer-header">
-          <h4>${producer.producer_name}</h4>
-          <span class="pond-count">${producer.pond_count} ponds</span>
-        </div>
-        <div class="producer-actions">
-          <button onclick="flavorViewProducerPonds('${producer.producer_name}')" class="btn-sm">View Ponds</button>
-        </div>
+function flavorShowAddPond() {
+  const modal = document.createElement('div');
+  modal.className = 'flavor-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>➕ Add Producer/Pond</h3>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
       </div>
-    `).join('');
-  });
-}
-
-function flavorSeedData() {
-  if (!confirm('Initialize flavor sample data? This will set up all producer/pond combinations.')) return;
-  
-  apiCall('GET', '/api/flavor?action=seed_initial').then(result => {
-    showToast('✅ ' + result.message);
-    flavorLoadManageView();
-    flavorLoadProducers();
-  }).catch(err => {
-    showToast('❌ Error initializing data: ' + err.message, 'error');
-  });
-}
-
-// Utility functions
-function getMonthName(month) {
-  const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                 'July', 'August', 'September', 'October', 'November', 'December'];
-  return months[month - 1];
-}
-
-function showToast(message, type = 'success') {
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed; top: 20px; right: 20px; z-index: 10000;
-    padding: 12px 20px; border-radius: 8px; color: white;
-    background: ${type === 'error' ? '#ef4444' : '#10b981'};
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    transform: translateX(100%); transition: transform 0.3s ease;
+      <div class="modal-body">
+        <form onsubmit="flavorSubmitNewPond(event)">
+          <div class="form-group">
+            <label>Producer Name:</label>
+            <input type="text" name="producer_name" placeholder="Enter producer name..." required>
+            <small>Enter existing producer name to add pond, or new name to create producer</small>
+          </div>
+          <div class="form-group">
+            <label>Pond Name:</label>
+            <input type="text" name="pond_name" placeholder="Enter pond name..." required>
+          </div>
+          <div class="form-group">
+            <label>Notes (Optional):</label>
+            <textarea name="notes" rows="2" placeholder="Additional information..."></textarea>
+          </div>
+          <button type="submit" class="btn-primary">Add Pond</button>
+        </form>
+      </div>
+    </div>
   `;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.style.transform = 'translateX(0)', 100);
-  setTimeout(() => {
-    toast.style.transform = 'translateX(100%)';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  document.body.appendChild(modal);
 }
 
-// Export functions to global scope
-window.buildFlavorWidget = buildFlavorWidget;
-window.flavorShowTab = flavorShowTab;
-window.flavorChangeMonth = flavorChangeMonth;
-window.flavorLoadCalendar = flavorLoadCalendar;
-window.flavorOpenDay = flavorOpenDay;
-window.flavorAddSample = flavorAddSample;
-window.flavorSubmitSample = flavorSubmitSample;
-window.flavorBulkSample = flavorBulkSample;
-window.flavorBulkTruck = flavorBulkTruck;
-window.flavorBulkTeresa = flavorBulkTeresa;
-window.flavorBulkLogged = flavorBulkLogged;
-window.flavorShowBulkDialog = flavorShowBulkDialog;
-window.flavorExecuteBulk = flavorExecuteBulk;
-window.flavorLoadManageView = flavorLoadManageView;
-window.flavorSeedData = flavorSeedData;
+function flavorOpenPondDetails(pondId, pondName, farmerName) {
+  const modal = document.createElement('div');
+  modal.className = 'flavor-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🎣 ${farmerName} - ${pondName}</h3>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="loading">Loading pond details...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  // Load pond sample history
+  apiCall('GET', `/api/flavor?action=samples&pond_id=${pondId}`).then(samples => {
+    const modalBody = modal.querySelector('.modal-body');
+    let detailsHtml = `
+      <div class="pond-details">
+        <h4>Sample History</h4>
+        <button onclick="flavorAddSampleForPond('${pondId}', '${pondName}', '${farmerName}')" class="btn-primary">+ Add Sample</button>
+        <div class="sample-list">
+    `;
+    
+    if (samples.length === 0) {
+      detailsHtml += '<p>No samples recorded for this pond.</p>';
+    } else {
+      samples.forEach(sample => {
+        const sampleDate = new Date(sample.sample_date).toLocaleDateString();
+        detailsHtml += `
+          <div class="sample-item">
+            <div class="sample-date">${sampleDate}</div>
+            <div class="sample-results">
+              <span class="result-label">Pond Result:</span>
+              <select onchange="flavorUpdateSampleResult('${sample.sample_id}', 'pond_sample_result', this.value)">
+                <option value="">Select...</option>
+                <option value="good_for_resample" ${sample.pond_sample_result === 'good_for_resample' ? 'selected' : ''}>Good for Resample</option>
+                <option value="good" ${sample.pond_sample_result === 'good' ? 'selected' : ''}>Good</option>
+                <option value="off_1" ${sample.pond_sample_result === 'off_1' ? 'selected' : ''}>Off 1</option>
+                <option value="off_2" ${sample.pond_sample_result === 'off_2' ? 'selected' : ''}>Off 2</option>
+                <option value="off_3" ${sample.pond_sample_result === 'off_3' ? 'selected' : ''}>Off 3</option>
+                <option value="off_4" ${sample.pond_sample_result === 'off_4' ? 'selected' : ''}>Off 4</option>
+                <option value="off_5" ${sample.pond_sample_result === 'off_5' ? 'selected' : ''}>Off 5</option>
+              </select>
+            </div>
+            <div class="sample-results">
+              <span class="result-label">Truck Result:</span>
+              <select onchange="flavorUpdateSampleResult('${sample.sample_id}', 'truck_sample_result', this.value)">
+                <option value="">Select...</option>
+                <option value="pass" ${sample.truck_sample_result === 'pass' ? 'selected' : ''}>Pass</option>
+                <option value="fail" ${sample.truck_sample_result === 'fail' ? 'selected' : ''}>Fail</option>
+              </select>
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    detailsHtml += '</div></div>';
+    modalBody.innerHTML = detailsHtml;
+  }).catch(err => {
+    modal.querySelector('.modal-body').innerHTML = '<div class="error">Error loading pond details</div>';
+  });
+}
+
+function flavorAddSampleModal() {
+  const modal = document.createElement('div');
+  modal.className = 'flavor-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📝 Add New Sample</h3>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="loading">Loading ponds...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  // Load available ponds
+  apiCall('GET', `/api/flavor?action=ponds`).then(ponds => {
+    const modalBody = modal.querySelector('.modal-body');
+    let formHtml = `
+      <form onsubmit="flavorSubmitSample(event)">
+        <div class="form-group">
+          <label>Select Pond:</label>
+          <select name="pond_id" required>
+            <option value="">Choose pond...</option>
+    `;
+    
+    ponds.forEach(pond => {
+      formHtml += `<option value="${pond.pond_id}">${pond.producer_name} - ${pond.pond_name}</option>`;
+    });
+    
+    formHtml += `
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Sample Date:</label>
+          <input type="date" name="sample_date" value="${new Date().toISOString().split('T')[0]}" required>
+        </div>
+        <div class="form-group">
+          <label>Sampled By:</label>
+          <input type="text" name="sampled_by" value="${currentUser.name}" required>
+        </div>
+        <div class="form-group">
+          <label>Notes:</label>
+          <textarea name="notes" rows="3"></textarea>
+        </div>
+        <button type="submit" class="btn-primary">Add Sample</button>
+      </form>
+    `;
+    
+    modalBody.innerHTML = formHtml;
+  }).catch(err => {
+    modal.querySelector('.modal-body').innerHTML = '<div class="error">Error loading ponds</div>';
+  });
+}
+
+function flavorUpdateSampleResult(sampleId, field, value) {
+  apiCall('POST', '/api/flavor', {
+    action: 'update_sample_result',
+    sample_id: sampleId,
+    field: field,
+    value: value,
+    updated_by: currentUser.name
+  }).then(() => {
+    showToast('✅ Sample result updated', 'success');
+    flavorLoadFarmerTracking(); // Refresh the view
+  }).catch(err => {
+    showToast('❌ Error updating sample: ' + err.message, 'error');
+  });
+}
+
+// Export functions
+window.flavorLoadHarvestReadiness = flavorLoadHarvestReadiness;
+window.flavorScheduleHarvest = flavorScheduleHarvest;
+window.flavorAddSampleForPond = flavorAddSampleForPond;
+window.flavorSubmitSampleForPond = flavorSubmitSampleForPond;
+window.formatResult = formatResult;
+window.formatStatus = formatStatus;
+window.flavorOpenPondDetails = flavorOpenPondDetails;
+window.flavorAddSampleModal = flavorAddSampleModal;
+window.flavorUpdateSampleResult = flavorUpdateSampleResult;

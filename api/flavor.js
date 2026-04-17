@@ -22,8 +22,10 @@ export default async function handler(req, res) {
       sample_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       pond_id UUID NOT NULL REFERENCES flavor_ponds(pond_id),
       sample_date DATE NOT NULL,
-      sample_status TEXT DEFAULT 'pending' CHECK (sample_status IN ('pending', 'completed', 'failed')),
-      truck_status TEXT DEFAULT 'pending' CHECK (truck_status IN ('pending', 'completed', 'failed', 'n/a')),
+      pond_sample_status TEXT DEFAULT 'pending' CHECK (pond_sample_status IN ('pending', 'completed', 'failed')),
+      pond_sample_result TEXT CHECK (pond_sample_result IN ('good_for_resample', 'good', 'off_1', 'off_2', 'off_3', 'off_4', 'off_5')),
+      truck_sample_status TEXT DEFAULT 'pending' CHECK (truck_sample_status IN ('pending', 'completed', 'failed', 'n/a')),
+      truck_sample_result TEXT CHECK (truck_sample_result IN ('pass', 'fail')),
       teresa_status TEXT DEFAULT 'pending' CHECK (teresa_status IN ('pending', 'completed', 'failed', 'n/a')),
       logged_status TEXT DEFAULT 'pending' CHECK (logged_status IN ('pending', 'completed', 'failed', 'n/a')),
       sampled_by TEXT,
@@ -185,8 +187,9 @@ export default async function handler(req, res) {
         const endDate = `${yearStr}-${monthStr}-31`;
         
         const samples = await sql`
-          SELECT s.sample_date, s.pond_id, s.sample_status, s.truck_status, 
-                 s.teresa_status, s.logged_status, p.producer_name, p.pond_name
+          SELECT s.sample_date, s.pond_id, s.pond_sample_status, s.pond_sample_result, 
+                 s.truck_sample_status, s.truck_sample_result, s.teresa_status, s.logged_status, 
+                 p.producer_name, p.pond_name, s.sampled_by, s.sampled_at, s.notes
           FROM flavor_samples s
           JOIN flavor_ponds p ON s.pond_id = p.pond_id
           WHERE s.sample_date >= ${startDate} AND s.sample_date <= ${endDate}
@@ -194,17 +197,172 @@ export default async function handler(req, res) {
         `;
         return res.json(samples);
       }
+      
+      if (action === 'farmer_tracking') {
+        const { start_date, end_date } = req.query;
+        
+        // Get all farmers with their ponds and latest sample data
+        const farmerData = await sql`
+          SELECT 
+            p.producer_name,
+            p.pond_name,
+            p.pond_id,
+            s.sample_date,
+            s.pond_sample_status,
+            s.pond_sample_result,
+            s.truck_sample_status,
+            s.truck_sample_result,
+            s.teresa_status,
+            s.logged_status,
+            s.sampled_by,
+            s.notes
+          FROM flavor_ponds p
+          LEFT JOIN (
+            SELECT DISTINCT ON (pond_id) 
+              pond_id, sample_date, pond_sample_status, pond_sample_result,
+              truck_sample_status, truck_sample_result, teresa_status, logged_status,
+              sampled_by, notes
+            FROM flavor_samples 
+            ${start_date && end_date ? sql`WHERE sample_date BETWEEN ${start_date} AND ${end_date}` : sql``}
+            ORDER BY pond_id, sample_date DESC
+          ) s ON p.pond_id = s.pond_id
+          ORDER BY p.producer_name, p.pond_name
+        `;
+        
+        // Group by farmer
+        const grouped = {};
+        farmerData.forEach(row => {
+          if (!grouped[row.producer_name]) {
+            grouped[row.producer_name] = [];
+          }
+          grouped[row.producer_name].push({
+            pond_id: row.pond_id,
+            pond_name: row.pond_name,
+            sample_date: row.sample_date,
+            pond_sample_status: row.pond_sample_status,
+            pond_sample_result: row.pond_sample_result,
+            truck_sample_status: row.truck_sample_status,
+            truck_sample_result: row.truck_sample_result,
+            teresa_status: row.teresa_status,
+            logged_status: row.logged_status,
+            sampled_by: row.sampled_by,
+            notes: row.notes
+          });
+        });
+        
+        return res.json(grouped);
+      }
+      
+      if (action === 'harvest_readiness') {
+        // Get ponds ranked by harvest readiness and quality status
+        const readinessData = await sql`
+          WITH latest_samples AS (
+            SELECT DISTINCT ON (p.pond_id) 
+              p.pond_id,
+              p.producer_name,
+              p.pond_name,
+              s.sample_date,
+              s.pond_sample_result,
+              s.truck_sample_result,
+              s.notes,
+              s.sampled_by,
+              EXTRACT(DAY FROM NOW() - s.sample_date) as days_since_sample
+            FROM flavor_ponds p
+            LEFT JOIN flavor_samples s ON p.pond_id = s.pond_id
+            WHERE s.pond_sample_result IS NOT NULL
+            ORDER BY p.pond_id, s.sample_date DESC
+          )
+          SELECT 
+            *,
+            CASE 
+              WHEN pond_sample_result IN ('good_for_resample', 'good') AND days_since_sample <= 30 THEN 'good_to_go'
+              WHEN pond_sample_result = 'off_1' AND days_since_sample <= 30 THEN 'very_close'
+              WHEN pond_sample_result = 'off_2' AND days_since_sample <= 30 THEN 'close'
+              WHEN pond_sample_result = 'off_3' AND days_since_sample <= 30 THEN 'moderate'
+              WHEN pond_sample_result = 'off_4' AND days_since_sample <= 30 THEN 'distant'
+              WHEN pond_sample_result = 'off_5' AND days_since_sample <= 30 THEN 'very_distant'
+              WHEN days_since_sample > 30 THEN 'expired'
+              ELSE 'needs_sample'
+            END as readiness_status,
+            CASE 
+              WHEN pond_sample_result IN ('good_for_resample', 'good') AND days_since_sample > 25 AND days_since_sample <= 30 THEN true
+              ELSE false
+            END as needs_alert
+          FROM latest_samples
+          ORDER BY 
+            CASE pond_sample_result
+              WHEN 'good' THEN 1
+              WHEN 'good_for_resample' THEN 2
+              WHEN 'off_1' THEN 3
+              WHEN 'off_2' THEN 4
+              WHEN 'off_3' THEN 5
+              WHEN 'off_4' THEN 6
+              WHEN 'off_5' THEN 7
+              ELSE 8
+            END,
+            days_since_sample ASC
+        `;
+        
+        // Group by readiness status for dashboard display
+        const grouped = {
+          good_to_go: [],
+          approaching_flavor: [],
+          needs_attention: [],
+          expired: []
+        };
+        
+        readinessData.forEach(pond => {
+          if (pond.readiness_status === 'good_to_go') {
+            grouped.good_to_go.push(pond);
+          } else if (['very_close', 'close', 'moderate'].includes(pond.readiness_status)) {
+            grouped.approaching_flavor.push(pond);
+          } else if (pond.needs_alert || pond.readiness_status === 'expired') {
+            grouped.needs_attention.push(pond);
+          }
+        });
+        
+        return res.json({
+          summary: {
+            good_to_go: grouped.good_to_go.length,
+            approaching_flavor: grouped.approaching_flavor.length,
+            needs_attention: grouped.needs_attention.length,
+            total_tracked: readinessData.length
+          },
+          ponds: grouped,
+          alerts: readinessData.filter(pond => pond.needs_alert)
+        });
+      }
     }
     
     if (method === 'POST') {
       const { action } = req.body;
       
       if (action === 'create_sample') {
-        const { pond_id, sample_date, sampled_by } = req.body;
+        const { pond_id, sample_date, pond_sample_result, truck_sample_result, sampled_by, notes } = req.body;
         
         const [sample] = await sql`
-          INSERT INTO flavor_samples (pond_id, sample_date, sample_status, sampled_by, sampled_at)
-          VALUES (${pond_id}, ${sample_date}, 'completed', ${sampled_by}, NOW())
+          INSERT INTO flavor_samples (
+            pond_id, 
+            sample_date, 
+            pond_sample_status,
+            pond_sample_result,
+            truck_sample_status,
+            truck_sample_result,
+            sampled_by, 
+            sampled_at,
+            notes
+          )
+          VALUES (
+            ${pond_id}, 
+            ${sample_date}, 
+            'completed',
+            ${pond_sample_result},
+            ${truck_sample_result ? 'completed' : 'pending'},
+            ${truck_sample_result},
+            ${sampled_by}, 
+            NOW(),
+            ${notes}
+          )
           RETURNING *
         `;
         return res.json(sample);
@@ -225,6 +383,27 @@ export default async function handler(req, res) {
           WHERE sample_id = ${sample_id}
           RETURNING *
         `;
+        return res.json(sample);
+      }
+      
+      if (action === 'update_sample_result') {
+        const { sample_id, field, value, updated_by } = req.body;
+        
+        // Validate field name for security
+        const allowedFields = ['pond_sample_result', 'truck_sample_result', 'pond_sample_status', 'truck_sample_status', 'teresa_status', 'logged_status'];
+        if (!allowedFields.includes(field)) {
+          return res.status(400).json({ error: 'Invalid field name' });
+        }
+        
+        const updateQuery = `
+          UPDATE flavor_samples 
+          SET ${field} = $1,
+              updated_at = NOW()
+          WHERE sample_id = $2
+          RETURNING *
+        `;
+        
+        const [sample] = await sql(updateQuery, [value, sample_id]);
         return res.json(sample);
       }
       
