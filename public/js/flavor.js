@@ -1,4 +1,6 @@
 // flavor.js - Flavor Sample Tracker Widget
+
+// DEPLOYMENT FIX: Force cache refresh - Apr 17 2026
 function buildFlavorWidget() {
   // Initialize with current month/year
   const now = new Date();
