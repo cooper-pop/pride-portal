@@ -140,7 +140,7 @@ function flavorShowTab(tabId) {
   }
   
   // Load appropriate content for each tab
-  if (tabId === 'calendar') {
+  if (tabId === 'harvest') {
     flavorLoadHarvestReadiness(); // Use the new harvest readiness function
   } else if (tabId === 'manage' && currentUser.role === 'admin') {
     flavorLoadManageView();
