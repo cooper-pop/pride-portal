@@ -54,7 +54,19 @@ function buildFlavorWidget() {
             </div>
           </div>
           
-          <div id="harvest-alerts" class="alerts-section" style="display: none;">
+          <div id="harvest-alerts" class="alerts-section" style="h style="display: none;"  
+          h<div class="loading">Loading...</div>  <div class="pond-list">
+                        <div class="pond-item">
+                                        <strong>Pond A-7:</strong> 45 days • 2,500 fish • Ready for Harvest
+                                                      </div>
+                                                                    <div class="pond-item">
+                                                                                    <strong>Pond B-3:</strong> 42 days • 3,200 fish • Ready for Harvest
+                                                                                                  </div>
+                                                                                                                <div class="pond-item">
+                                                                                                                                <strong>Pond C-1:</strong> 38 days • 1,800 fish • Ready for Harvest
+                                                                                                                                              </div>
+                                                                                                                                                          </div>
+                                                                                                                                                          none;">
             <h4>⚠️ Urgent Alerts</h4>
             <div id="alerts-list"></div>
           </div>
