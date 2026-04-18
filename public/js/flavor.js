@@ -25,7 +25,7 @@ function buildFlavorWidget() {
   const content = `
     <div class="flavor-container">
       <!-- Calendar Tab - Now Harvest Readiness Dashboard -->
-      <div id="flavor-tab-calendar" hflavor-tab-calendar  flavor-tab-harvest
+  			<div id="flavor-tab-harvest" class="tab-panel active">
       ="tab-panel active">
         <div class="harvest-dashboard">
           <div class="dashboard-header">
