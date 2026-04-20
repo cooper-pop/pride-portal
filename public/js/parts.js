@@ -191,5 +191,97 @@ function partsRunScan(input) {
     reader.onload = function(e) {
           var b64full = e.target.result;
           var b64 = b64full.split(',')[1];
-          var mime = file.type||'image/jpeg';
-          document.getEl
+
+        function partsRunScan(input) {
+              if (!input.files||!input.files[0]) return;
+              var file = input.files[0];
+              var reader = new FileReader();
+              reader.onload = function(e) {
+                      var b64full = e.target.result;
+                      var b64 = b64full.split(',')[1];
+                      var mime = file.type||'image/jpeg';
+                      document.getElementById('scan-preview').style.display='block';
+                      document.getElementById('scan-img').src = b64full;
+                      document.getElementById('scan-status').textContent = 'AI scanning invoice...';
+                      fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+                                model:'claude-sonnet-4-20250514',max_tokens:1000,
+                                messages:[{role:'user',content:[
+                                    {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+                                    {type:'text',text:'This is a parts invoice. Respond ONLY with valid JSON, no markdown:\n{"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}\nExtract every line item with its description, quantity, and unit cost.'}
+                                          ]}]
+                      })}).then(function(r){return r.json();}).then(function(d){
+                                var txt='';
+                                if(d.content&&d.content[0]&&d.content[0].text) txt=d.content[0].text;
+                                try {
+                                            var parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
+                                            document.getElementById('scan-status').textContent='Scan complete! Review below.';
+                                            document.getElementById('scan-results').style.display='block';
+                                            document.getElementById('sc-vendor').value=parsed.vendor||'';
+                                            document.getElementById('sc-invnum').value=parsed.invoice_number||'';
+                                            document.getElementById('sc-date').value=parsed.date||'';
+                                            var lines=parsed.line_items||[];
+                                            lines.forEach(function(li){partsAddScanLine(li.item,li.qty,li.cost);});
+                                            if(!lines.length) partsAddScanLine('','','');
+                                } catch(err) {
+                                            document.getElementById('scan-status').textContent='Could not parse. Enter manually.';
+                                            document.getElementById('scan-results').style.display='block';
+                                            partsAddScanLine('','','');
+                                }
+                      }).catch(function(){
+                                document.getElementById('scan-status').textContent='Scan error. Enter manually.';
+                                document.getElementById('scan-results').style.display='block';
+                                partsAddScanLine('','','');
+                      });
+              };
+              reader.readAsDataURL(file);
+        }
+
+        function partsAddScanLine(item,qty,cost) {
+              var id='sl'+(++_scanLineCount);
+              var container=document.getElementById('scan-lines');
+              if(!container) return;
+              var div=document.createElement('div');
+              div.id=id;
+              div.style.cssText='display:flex;gap:5px;margin-bottom:5px;align-items:center';
+              div.innerHTML='<input type="text" placeholder="Item / Part Name" style="flex:3;padding:6px;border:1px solid #e2e8f0;border-radius:5px;font-size:.78rem" value="'+(item||'')+'"><input type="number" placeholder="Qty" style="flex:1;padding:6px;border:1px solid #e2e8f0;border-radius:5px;font-size:.78rem" value="'+(qty||'')+'"><input type="number" placeholder="$/unit" step="0.01" style="flex:1;padding:6px;border:1px solid #e2e8f0;border-radius:5px;font-size:.78rem" value="'+(cost||'')+'"><button onclick="this.parentElement.remove()" style="padding:4px 7px;border-radius:5px;border:none;cursor:pointer;font-size:.73rem;background:#fee2e2;color:#b91c1c">x</button>';
+              container.appendChild(div);
+        }
+
+        function partsScanLinesData() {
+              var lines=[];
+              var rows=document.getElementById('scan-lines').children;
+              for(var i=0;i<rows.length;i++){
+                      var ins=rows[i].querySelectorAll('input');
+                      if(ins[0]&&ins[0].value.trim()) lines.push({item:ins[0].value,qty:parseFloat(ins[1].value||0),cost:parseFloat(ins[2].value||0)});
+              }
+              return lines;
+        }
+
+        function partsSaveScanInvoice() {
+              var lines=partsScanLinesData();
+              var total=lines.reduce(function(s,l){return s+(l.qty*l.cost);},0);
+              var data={vendor:document.getElementById('sc-vendor').value,invoice_number:document.getElementById('sc-invnum').value,date:document.getElementById('sc-date').value,line_items:lines,total:total};
+              apiCall('POST','/api/parts?action=add_invoice',data).then(function(){partsShowTab('invoices');}).catch(function(){alert('Error saving invoice');});
+        }
+
+        function partsInvoiceForm(editIdx) {
+              _scanLineCount=0;
+              var inv=editIdx>=0?_partsData.invoices[editIdx]:{};
+              var isEdit=editIdx>=0;
+              document.getElementById('parts-panel').innerHTML='<div style="padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button style="padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600;background:#f1f5f9;color:#334155" onclick="partsShowTab(\'invoices\')">Back</button><span style="font-weight:700;font-size:.95rem">'+(isEdit?'Edit':'Add')+' Invoice</span></div><label style="font-size:.75rem;color:#64748b">Vendor</label><input type="text" id="sc-vendor" style="'+INP+'" value="'+(inv.vendor||'')+'"><label style="font-size:.75rem;color:#64748b">Invoice #</label><input type="text" id="sc-invnum" style="'+INP+'" value="'+(inv.invoice_number||'')+'"><label style="font-size:.75rem;color:#64748b">Date</label><input type="date" id="sc-date" style="'+INP+'" value="'+(inv.date||'')+'"><div style="font-weight:600;font-size:.82rem;margin-bottom:6px;color:#334155">Line Items <button style="padding:3px 8px;border-radius:5px;border:none;cursor:pointer;font-size:.72rem;background:#f1f5f9;color:#334155;font-weight:600" onclick="partsAddScanLine(\'\',\'\',\'\')">+ Add Row</button></div><div id="scan-lines"></div><button style="padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600;background:#1a3a6b;color:#fff;width:100%;margin-top:8px" onclick="partsSaveInvoiceEdit('+editIdx+')">Save Invoice</button></div>';
+              var lines=inv.line_items||[];
+              lines.forEach(function(li){partsAddScanLine(li.item,li.qty,li.cost);});
+              if(!lines.length) partsAddScanLine('','','');
+        }
+
+        function partsSaveInvoiceEdit(editIdx) {
+              var lines=partsScanLinesData();
+              var total=lines.reduce(function(s,l){return s+(l.qty*l.cost);},0);
+              var data={vendor:document.getElementById('sc-vendor').value,invoice_number:document.getElementById('sc-invnum').value,date:document.getElementById('sc-date').value,line_items:lines,total:total};
+              var action=editIdx>=0?'update_invoice':'add_invoice';
+              if(editIdx>=0) data.id=_partsData.invoices[editIdx].id;
+              apiCall('POST','/api/parts?action='+action,data).then(function(){partsShowTab('invoices');}).catch(function(){alert('Error');});
+        }
+
+        function partsDelInvoice(i) {
+              if(!confirm('Delete this invoice?
