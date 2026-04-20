@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
   }
 
   const sql = neon(process.env.DATABASE_URL);
-  const action = req.query.action;
+  let action = req.query.action;
   const body = req.body || {};
 
   try {
