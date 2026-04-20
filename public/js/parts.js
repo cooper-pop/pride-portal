@@ -61,7 +61,7 @@ function partsScanInvoice(){_scanLineCount=0;document.getElementById('parts-pane
       .then(function(d){
         var txt=d.response||'';
         try{
-          var parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
+          var parsed=JSON.parse(txt.split('```json').join('').split('```').join('').trim());
           showResult(parsed);
         }catch(err){
           statusEl.textContent='Could not parse response. Enter manually.';
