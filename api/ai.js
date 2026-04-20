@@ -95,7 +95,7 @@ ${JSON.stringify(trimmerData)}`;
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: systemPrompt,
-      messages: [{ role: 'user', content: image ? [{ type: 'image', source: { type: 'base64', media_type: image_mime||'image/jpeg', data: image } }, { type: 'text', text: query||'Extract all invoice data as JSON only: {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}' }] : query }]
+      messages: [{ role: 'user', content: image ? (image_mime==='application/pdf' ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image } }, { type: 'text', text: query||'Extract all invoice data as JSON only: {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}' }] : [{ type: 'image', source: { type: 'base64', media_type: image_mime||'image/jpeg', data: image } }, { type: 'text', text: query||'Extract all invoice data as JSON only: {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}' }]) : query }]
     });
 
     return res.json({ response: message.content[0].text });
