@@ -19,6 +19,10 @@
     },
     "api/parts.js": {
       "maxDuration": 60
+    },
+    "api/ai.js": {
+      "maxDuration": 60,
+      "memory": 1024
     }
   },
   "headers": [
