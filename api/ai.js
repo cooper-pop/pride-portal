@@ -18,8 +18,8 @@ module.exports = async function handler(req, res) {
   let user;
   try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' }); }
 
-  const { query } = req.body;
-  if (!query) return res.status(400).json({ error: 'Missing query' });
+  const { query, image, image_mime } = req.body;
+  if (!query && !image) return res.status(400).json({ error: 'Missing query or image' });
 
   const sql = neon(process.env.DATABASE_URL);
 
@@ -95,7 +95,7 @@ ${JSON.stringify(trimmerData)}`;
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: systemPrompt,
-      messages: [{ role: 'user', content: query }]
+      messages: [{ role: 'user', content: image ? [{ type: 'image', source: { type: 'base64', media_type: image_mime||'image/jpeg', data: image } }, { type: 'text', text: query||'Extract all invoice data as JSON only: {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}' }] : query }]
     });
 
     return res.json({ response: message.content[0].text });
