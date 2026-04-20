@@ -25,13 +25,30 @@ module.exports = async function handler(req, res) {
 
   try {
     // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ INIT / MIGRATE ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
+    // Aliases used by parts.js frontend
+    if (action === 'add_invoice') action = 'save_invoice';
+    if (action === 'update_invoice') action = 'save_invoice';
+    if (action === 'add_part') action = 'save_part';
+    if (action === 'update_part') action = 'save_part';
+    if (action === 'add_cross_ref') action = 'save_cross_ref';
+    if (action === 'update_cross_ref') action = 'save_cross_ref';
+    if (action === 'add_manual') action = 'save_manual';
+    if (action === 'update_manual') action = 'save_manual';
+    if (action === 'add_parts_order') action = 'save_parts_order';
+    if (action === 'update_parts_order') action = 'save_parts_order';
+    if (action === 'delete_cross_ref') {}
+  
     if (action === 'init_parts_db') {
+    // Add new columns if they don't exist
+    await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS machine_tag TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS supplier TEXT DEFAULT ''`;
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company_id INT, part_number TEXT DEFAULT '', description TEXT DEFAULT '',
         manufacturer TEXT DEFAULT '', category TEXT DEFAULT '',
         quantity INT DEFAULT 0, min_quantity INT DEFAULT 1,
         unit_cost NUMERIC(10,2) DEFAULT 0, location TEXT DEFAULT '',
+        machine_tag TEXT DEFAULT '', supplier TEXT DEFAULT '',
         notes TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )`;
@@ -82,6 +99,7 @@ module.exports = async function handler(req, res) {
         manufacturer TEXT DEFAULT '', category TEXT DEFAULT '',
         quantity INT DEFAULT 0, min_quantity INT DEFAULT 1,
         unit_cost NUMERIC(10,2) DEFAULT 0, location TEXT DEFAULT '',
+        machine_tag TEXT DEFAULT '', supplier TEXT DEFAULT '',
         notes TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )`;
