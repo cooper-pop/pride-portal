@@ -42,6 +42,8 @@ module.exports = async function handler(req, res) {
     // Add new columns if they don't exist
     await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS machine_tag TEXT DEFAULT ''`;
     await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS supplier TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_invoices ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_invoices ADD COLUMN IF NOT EXISTS machine_tag TEXT DEFAULT ''`;
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company_id INT, part_number TEXT DEFAULT '', description TEXT DEFAULT '',
@@ -219,16 +221,16 @@ module.exports = async function handler(req, res) {
           vendor = ${inv.vendor || ''},
           invoice_number = ${inv.invoice_number || ''},
           invoice_date = ${inv.invoice_date || null},
-          total_amount = ${inv.total_amount || 0},
+          total_amount = ${inv.total_amount || 0}, tags = ${inv.tags || ''}, machine_tag = ${inv.machine_tag || ''},
           notes = ${inv.notes || ''},
           items = ${JSON.stringify(inv.items || [])},
           updated_at = NOW()
           WHERE id = ${inv.id} RETURNING *`;
       } else {
         rows = await sql`INSERT INTO parts_invoices
-          (vendor, invoice_number, invoice_date, total_amount, notes, items, company_id)
+          (vendor, invoice_number, invoice_date, total_amount, notes, items, tags, machine_tag, company_id)
           VALUES (${inv.vendor || ''}, ${inv.invoice_number || ''}, ${inv.invoice_date || null},
-          ${inv.total_amount || 0}, ${inv.notes || ''}, ${JSON.stringify(inv.items || [])}, ${company_id})
+          ${inv.total_amount || 0}, ${inv.notes || ''}, ${JSON.stringify(inv.items || [])}, ${inv.tags || ''}, ${inv.machine_tag || ''}, ${company_id})
           RETURNING *`;
       }
       return res.json({ ok: true, invoice: rows[0] });
