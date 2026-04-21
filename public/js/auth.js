@@ -154,20 +154,27 @@ window.submitPasswordChange = submitPasswordChange;
 // ── SIGN OUT BUTTON ──
 // ── COMPANY CARD RENDERING ──
 function renderCompanyCards() {
-  var el=document.querySelector('.portal-cards');
-  if(!el)return;
+  var container = document.querySelector('.portal-cards');
+  if (!container) return;
   fetch('/api/auth?action=get_companies')
-    .then(function(r){return r.json();})
-    .then(function(d){
-      if(!d.ok||!d.companies)return;
-      el.innerHTML=d.companies.map(function(c){
-        var fn='selectCompany('+c.id+','''+c.slug+''','''+c.name+''')';
-        return '<div class="portal-card" onclick="'+fn+'">'
-          +'<div style="font-size:2.5rem">🐟</div>'
-          +'<div style="font-weight:700;margin-top:8px;font-size:.95rem">'+c.name+'</div>'
-          +'</div>';
-      }).join('');
-    }).catch(function(e){console.warn('company cards:',e);});
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok || !data.companies || !data.companies.length) return;
+      container.innerHTML = '';
+      data.companies.forEach(function(c) {
+        var div = document.createElement('div');
+        div.className = 'portal-card';
+        div.innerHTML = '<div style="font-size:2.5rem">🐟</div><div style="font-weight:700;margin-top:8px;font-size:.95rem">' + c.name + '</div>';
+        div.style.cursor = 'pointer';
+        div.setAttribute('data-id', c.id);
+        div.setAttribute('data-slug', c.slug);
+        div.setAttribute('data-name', c.name);
+        div.addEventListener('click', function() {
+          selectCompany(c.slug || c.id);
+        });
+        container.appendChild(div);
+      });
+    }).catch(function(e) { console.warn('Company cards error:', e); });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
