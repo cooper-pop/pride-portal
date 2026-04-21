@@ -1,4 +1,4 @@
-const { sql } = require('@vercel/postgres');
+const { neon } = require('@neondatabase/serverless');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,25 +6,21 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const sql = neon(process.env.DATABASE_URL);
   const action = req.query.action;
 
   if (action === 'get_companies') {
     try {
-      const { rows } = await sql`SELECT id, name, logo_url FROM companies ORDER BY name`;
+      const rows = await sql`SELECT id, name, slug FROM companies ORDER BY name`;
       return res.json({ ok: true, companies: rows });
     } catch (e) {
-      try {
-        const { rows } = await sql`SELECT id, name FROM companies ORDER BY name`;
-        return res.json({ ok: true, companies: rows });
-      } catch (e2) {
-        return res.status(500).json({ error: e2.message });
-      }
+      return res.status(500).json({ error: e.message });
     }
   }
 
   if (action === 'get_company') {
     try {
-      const { rows } = await sql`SELECT * FROM companies WHERE id = ${req.query.id} LIMIT 1`;
+      const rows = await sql`SELECT * FROM companies WHERE id = ${req.query.id} LIMIT 1`;
       return res.json({ ok: true, company: rows[0] || null });
     } catch (e) {
       return res.status(500).json({ error: e.message });
