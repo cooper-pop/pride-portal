@@ -413,22 +413,47 @@ module.exports = async function handler(req, res) {
 
     if (action === 'receive_part') {
       const { order_id, task_id, parts } = body;
-      if (order_id) {
-        await sql`UPDATE parts_orders SET status = 'received', received_at = NOW(), updated_at = NOW() WHERE id = ${order_id}`;
-      }
+      let receivedCount = 0;
       for (const p of (parts || [])) {
-        const ex = await sql`SELECT id FROM parts_inventory WHERE part_number = ${p.part_number} AND company_id = ${company_id} LIMIT 1`;
-        if (ex.length > 0) {
-          await sql`UPDATE parts_inventory SET quantity = quantity + ${p.quantity || 1}, updated_at = NOW() WHERE id = ${ex[0].id}`;
+        const pn = String(p.part_number || '').trim();
+        if (!pn) continue;
+        const desc = String(p.description || '').trim();
+        const qty = parseInt(p.quantity) || 0;
+        if (qty <= 0) continue;
+        const cost = parseFloat(p.unit_cost) || 0;
+        const existing = await sql`SELECT id, quantity, avg_cost FROM parts_inventory
+          WHERE part_number = ${pn} AND company_id = ${company_id} LIMIT 1`;
+        if (existing.length > 0) {
+          const old = existing[0];
+          const oldQty = parseInt(old.quantity) || 0;
+          const oldAvg = parseFloat(old.avg_cost) || 0;
+          const newQty = oldQty + qty;
+          const newAvg = newQty > 0 ? ((oldQty * oldAvg) + (qty * cost)) / newQty : cost;
+          const totalVal = newQty * newAvg;
+          await sql`UPDATE parts_inventory SET
+            quantity = ${newQty}, avg_cost = ${newAvg}, unit_cost = ${cost}, total_value = ${totalVal},
+            updated_at = NOW() WHERE id = ${old.id}`;
+          await sql`INSERT INTO parts_adjustments (part_id, company_id, delta, new_quantity, reason, notes, user_id)
+            VALUES (${old.id}, ${company_id}, ${qty}, ${newQty}, 'received', ${'Order receipt (+' + qty + ')'}, ${user_id})`;
         } else {
-          await sql`INSERT INTO parts_inventory (part_number, description, manufacturer, quantity, unit_cost, company_id)
-            VALUES (${p.part_number}, ${p.description || ''}, ${p.manufacturer || ''}, ${p.quantity || 1}, ${p.unit_cost || 0}, ${company_id})`;
+          const totalVal = qty * cost;
+          const inserted = await sql`INSERT INTO parts_inventory
+            (part_number, description, manufacturer, quantity, unit_cost, avg_cost, total_value, company_id)
+            VALUES (${pn}, ${desc}, ${p.manufacturer || ''}, ${qty}, ${cost}, ${cost}, ${totalVal}, ${company_id})
+            RETURNING id`;
+          await sql`INSERT INTO parts_adjustments (part_id, company_id, delta, new_quantity, reason, notes, user_id)
+            VALUES (${inserted[0].id}, ${company_id}, ${qty}, ${qty}, 'received', ${'Order receipt (+' + qty + ', new part)'}, ${user_id})`;
         }
+        receivedCount += qty;
+      }
+      if (order_id) {
+        await sql`UPDATE parts_orders SET status = 'received', received_at = NOW(), updated_at = NOW()
+          WHERE id = ${order_id} AND company_id = ${company_id}`;
       }
       if (task_id) {
         await sql`UPDATE tasks SET status = 'in_progress', updated_at = NOW() WHERE id = ${task_id}`;
       }
-      return res.json({ ok: true });
+      return res.json({ ok: true, received_count: receivedCount });
     }
 
     // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ MANUALS CRUD ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
