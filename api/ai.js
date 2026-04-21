@@ -21,6 +21,31 @@ module.exports = async function handler(req, res) {
   const { query, image, image_mime } = req.body;
   if (!query && !image) return res.status(400).json({ error: 'Missing query or image' });
 
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Image scan path — skip DB queries and analyst prompt. This endpoint is also
+  // used for invoice OCR; loading 300 yield + 300 injection + 200 trimmer rows
+  // for a scan both wastes tokens and can push the request past Anthropic's
+  // context limits on large images.
+  if (image) {
+    const isPdf = image_mime === 'application/pdf';
+    const scanPrompt = query || 'Extract invoice data as JSON only (no markdown, no commentary): {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}';
+    const content = isPdf
+      ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image } }, { type: 'text', text: scanPrompt }]
+      : [{ type: 'image', source: { type: 'base64', media_type: image_mime || 'image/jpeg', data: image } }, { type: 'text', text: scanPrompt }];
+    try {
+      const msg = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content }]
+      });
+      return res.json({ response: msg.content[0].text });
+    } catch (err) {
+      console.error('AI scan error:', err);
+      return res.status(500).json({ error: 'Scan failed: ' + err.message });
+    }
+  }
+
   const sql = neon(process.env.DATABASE_URL);
 
   try {
@@ -90,12 +115,11 @@ ${JSON.stringify(injectionRecords)}
 === TRIMMER DATA (${trimmerData.length} shift reports) ===
 ${JSON.stringify(trimmerData)}`;
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: systemPrompt,
-      messages: [{ role: 'user', content: image ? (image_mime==='application/pdf' ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image } }, { type: 'text', text: query||'Extract all invoice data as JSON only: {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}' }] : [{ type: 'image', source: { type: 'base64', media_type: image_mime||'image/jpeg', data: image } }, { type: 'text', text: query||'Extract all invoice data as JSON only: {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}' }]) : query }]
+      messages: [{ role: 'user', content: query }]
     });
 
     return res.json({ response: message.content[0].text });
