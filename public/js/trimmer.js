@@ -57,7 +57,7 @@ async function trimHandleFile(input) {
     var mediaType=file.type==="application/pdf"?"application/pdf":(file.type||"image/jpeg");
     var result=await apiCall("POST","/api/extract",{image_base64:base64,media_type:mediaType});
     var entries=result.entries||[]; var flagCount=result.flag_count||0;
-    trimRows=entries.map(function(e){ return {emp_number:e.emp_number||"",full_name:e.full_name||"",trim_number:e.trim_number||"",minutes_worked:e.total_minutes||e.minutes_worked||"",incoming_lbs:e.incoming_lbs||"",fillet_lbs:e.fillet_lbs||"",nugget_lbs:e.nugget_lbs||"",misccut_lbs:e.misccut_lbs||"",fillet_yield_pct:e.fillet_yield_pct||"",nugget_yield_pct:e.nugget_yield_pct||"",misccut_yield_pct:e.misccut_yield_pct||"",total_yield_pct:e.total_yield_pct||"",realtime_lbs_per_hour:e.realtime_lbs_per_hour||"",eighthour_lbs_per_hour:e.eighthour_lbs_per_hour||"",hours_worked:e.hours_worked||"",flagged:e.flagged||false,validation_flags:e.validation_flags||[]}; });
+    trimRows=entries.map(function(e){ return {full_name:e.full_name||"",minutes_worked:e.total_minutes||e.minutes_worked||"",incoming_lbs:e.incoming_lbs||"",fillet_lbs:e.fillet_lbs||"",nugget_lbs:e.nugget_lbs||"",misccut_lbs:e.misccut_lbs||"",fillet_yield_pct:e.fillet_yield_pct||"",nugget_yield_pct:e.nugget_yield_pct||"",misccut_yield_pct:e.misccut_yield_pct||"",total_yield_pct:e.total_yield_pct||"",realtime_lbs_per_hour:e.realtime_lbs_per_hour||"",eighthour_lbs_per_hour:e.eighthour_lbs_per_hour||"",hours_worked:e.hours_worked||"",flagged:e.flagged||false,validation_flags:e.validation_flags||[]}; });
     if(!trimRows.length)trimRows=[trimEmptyRow()];
     var fm=flagCount>0?' - <span style="color:var(--gold)">&#x26A0; '+flagCount+' row'+(flagCount>1?'s':'')+' flagged</span>':"";
     statusEl.innerHTML='<div style="background:#e8f5e9;border-radius:8px;padding:10px 14px;font-size:0.85rem;color:#1b5e20;font-weight:600">&#x2705; Extracted '+entries.length+' trimmers from '+(result.report_date||'report')+fm+'</div>';
@@ -65,7 +65,7 @@ async function trimHandleFile(input) {
   } catch(err){ statusEl.innerHTML='<div style="background:#fef0f0;border-radius:8px;padding:10px 14px;font-size:0.85rem;color:var(--red)">&#x26A0; Extraction failed: '+err.message+'</div>'; }
 }
 
-function trimEmptyRow(){ return {emp_number:"",full_name:"",trim_number:"",minutes_worked:"",incoming_lbs:"",fillet_lbs:"",nugget_lbs:"",misccut_lbs:"",flagged:false,validation_flags:[],total_lbs:''}; }
+function trimEmptyRow(){ return {full_name:"",minutes_worked:"",incoming_lbs:"",fillet_lbs:"",nugget_lbs:"",misccut_lbs:"",flagged:false,validation_flags:[],total_lbs:''}; }
 
 function trimRenderForm() {
   var nd=new Date(); var _ed=document.getElementById('trim-date')?.value; if(_ed) nd=new Date(_ed+'T12:00:00'); var hf=trimRows.some(function(r){return r.flagged;});
@@ -74,9 +74,8 @@ function trimRenderForm() {
     var lph=r.realtime_lbs_per_hour||(mins>0&&inc>0?(inc/(mins/60)).toFixed(1):"-");
     var bg=r.flagged?'style="background:#fffbe6"':'';
     var tip=r.flagged&&r.validation_flags&&r.validation_flags[0]?'<div style="font-size:0.65rem;color:var(--gold);margin-top:2px">&#x26A0; '+r.validation_flags[0].message+'</div>':"";
-    return '<tr '+bg+'><td><input type="text" value="'+(r.emp_number||'')+'" readonly disabled style="width:52px;padding:3px 4px;border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#475569;font-size:.8rem;text-align:center;cursor:default" title="Employee number is locked" </td>'+
-      '<td><div><input type="text" value="'+(r.full_name||'')+'" oninput="trimUpdate('+i+',\'full_name\',this.value)" placeholder="Name" style="width:110px"/>'+tip+'</div></td>'+
-      '<td><input type="text" value="'+(r.trim_number||'')+'" oninput="trimUpdate('+i+',\'trim_number\',this.value)" placeholder="Code" style="width:60px"/></td>'+
+    return '<tr '+bg+'>'+
+      '<td><div><input type="text" value="'+(r.full_name||'')+'" oninput="trimUpdate('+i+',\'full_name\',this.value)" placeholder="Name" style="width:140px"/>'+tip+'</div></td>'+
       '<td><input type="number" value="'+(r.minutes_worked||'')+'" oninput="trimUpdate('+i+',\'minutes_worked\',this.value)" step="1" style="width:58px"/></td>'+
       '<td><input type="number" value="'+(r.incoming_lbs||'')+'" oninput="trimUpdate('+i+',\'incoming_lbs\',this.value)" step="0.1" style="width:70px"/></td>'+
       '<td><input type="number" value="'+(r.fillet_lbs||'')+'" oninput="trimUpdate('+i+',\'fillet_lbs\',this.value)" step="0.1" style="width:70px"/></td>'+
@@ -90,12 +89,12 @@ function trimRenderForm() {
   document.getElementById("widget-content").innerHTML=fb+
     '<div class="wcard"><h3>&#x1F4C5; Report Info</h3><div class="wrow"><div class="wfield"><label>Date</label><input type="date" id="trim-date" value="'+nd.toISOString().split("T")[0]+'"/></div><div class="wfield"><label>Shift</label><select id="trim-shift"><option>AM</option><option>PM</option></select></div></div><div class="wfield"><label>Notes</label><input type="text" id="trim-notes" placeholder="Any observations..."/></div></div>'+
     '<div class="wcard"><h3>&#x2702;&#xFE0F; Trimmer Entries <span style="font-size:0.75rem;font-weight:400;color:var(--sub)">'+trimRows.length+' rows</span></h3>'+
-    '<div class="trim-table-wrap"><table class="trim-table"><thead><tr><th>Emp#</th><th>Name</th><th>Code</th><th>Min</th><th>In lbs</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Total lbs</th><th>Total %</th><th>Lbs/Hr</th><th></th></tr></thead><tbody id="trim-tbody">'+tr2+'</tbody></table></div>'+
+    '<div class="trim-table-wrap"><table class="trim-table"><thead><tr><th>Name</th><th>Min</th><th>In lbs</th><th>Fillet</th><th>Nugget</th><th>Misc-cut</th><th>Total lbs</th><th>Lbs/Hr</th><th></th></tr></thead><tbody id="trim-tbody">'+tr2+'</tbody></table></div>'+
     '<div class="wbtn-row" style="margin-top:10px"><button class="wbtn wbtn-outline" onclick="trimAddRow()">+ Add Row</button></div></div>'+
-    '<div class="wbtn-row"><button class="wbtn wbtn-green" onclick="trimValidateAndSave()">&#x1F4BE; Save Report</button><button class="wbtn wbtn-danger" onclick="trimReset()">Clear All</button></div>';
+    '<div class="wbtn-row"><button class="wbtn wbtn-green" onclick="trimSave()">&#x1F4BE; Save Report</button><button class="wbtn wbtn-danger" onclick="trimReset()">Clear All</button></div>';
 }
 
-function trimUpdate(i,field,val){ trimRows[i][field]=val; var m=parseFloat(trimRows[i].minutes_worked)||0,n=parseFloat(trimRows[i].incoming_lbs)||0; var tb=document.getElementById("trim-tbody"); if(!tb)return; var rw=tb.rows[i]; if(rw)rw.cells[10].textContent=m>0&&n>0?(n/(m/60)).toFixed(1):"-"; }
+function trimUpdate(i,field,val){ trimRows[i][field]=val; var m=parseFloat(trimRows[i].minutes_worked)||0,n=parseFloat(trimRows[i].incoming_lbs)||0; var tb=document.getElementById("trim-tbody"); if(!tb)return; var rw=tb.rows[i]; if(rw)rw.cells[7].textContent=m>0&&n>0?(n/(m/60)).toFixed(1):"-"; }
 
 function trimAddRow(){ trimRows.push(trimEmptyRow()); trimRenderForm(); }
 
@@ -103,98 +102,10 @@ function trimDeleteRow(i){ if(trimRows.length<=1){trimRows[0]=trimEmptyRow();tri
 
 function trimReset(){ trimRows=[trimEmptyRow()]; trimRenderForm(); }
 
-async function trimValidateAndSave() {
-  // Load roster from API
-  var token = (function(){ try { return JSON.parse(localStorage.getItem('potp_v2_session')).token; } catch(e){ return ''; } })();
-  var rosterMap = {};
-  try {
-    var rr = await apiCall('GET', '/api/records?action=get_roster');
-    var roster = Array.isArray(rr) ? rr : [];
-    roster.forEach(function(e){ rosterMap[e.full_name.trim().toLowerCase()] = e; });
-  } catch(e) { rosterMap = {}; }
-
-  // Check trimRows for mismatches
-  var mismatches = [];
-  var unknowns = [];
-  (window.trimRows || []).forEach(function(row, idx) {
-    if (!row.full_name || !row.emp_number) return;
-    var key = row.full_name.trim().toLowerCase();
-    var canonical = rosterMap[key];
-    if (!canonical) {
-      unknowns.push({ idx: idx, full_name: row.full_name, emp_number: row.emp_number });
-    } else if (canonical.emp_number !== String(row.emp_number)) {
-      mismatches.push({ idx: idx, full_name: row.full_name, found: row.emp_number, correct: canonical.emp_number });
-    }
-  });
-
-  if (mismatches.length === 0 && unknowns.length === 0) {
-    // All good — proceed with save
-    trimSave();
-    return;
-  }
-
-  // Build warning dialog
-  var msg = '';
-  if (mismatches.length > 0) {
-    msg += '<div style="margin-bottom:12px"><strong style="color:#ef4444">⚠️ Employee Number Mismatches Found:</strong><br>';
-    msg += '<div style="font-size:.8rem;color:#64748b;margin-top:4px">These employees have different numbers than what is on record:</div>';
-    msg += '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:.8rem">';
-    msg += '<tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">Name</th><th style="padding:4px 8px;text-align:left">Submitted #</th><th style="padding:4px 8px;text-align:left">Correct #</th></tr>';
-    mismatches.forEach(function(m) {
-      msg += '<tr style="border-top:1px solid #e2e8f0">';
-      msg += '<td style="padding:4px 8px">' + m.full_name + '</td>';
-      msg += '<td style="padding:4px 8px;color:#ef4444;font-weight:600">' + m.found + '</td>';
-      msg += '<td style="padding:4px 8px;color:#16a34a;font-weight:600">' + m.correct + '</td></tr>';
-    });
-    msg += '</table></div>';
-  }
-  if (unknowns.length > 0) {
-    msg += '<div style="margin-bottom:12px"><strong style="color:#f59e0b">ℹ️ New Employees (not in roster):</strong><br>';
-    msg += '<div style="font-size:.8rem;color:#64748b;margin-top:4px">These employees will be added to the roster:</div>';
-    unknowns.forEach(function(u) {
-      msg += '<div style="font-size:.8rem;padding:2px 8px">' + u.full_name + ' #' + u.emp_number + '</div>';
-    });
-    msg += '</div>';
-  }
-
-  // Show modal
-  var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:24px;max-width:520px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
-    + '<h3 style="margin:0 0 16px;font-size:1rem;color:#1e293b">Review Before Submitting</h3>'
-    + msg
-    + '<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">'
-    + '<button id="trim-fix-cancel" style="padding:8px 18px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:.85rem">Cancel &amp; Fix</button>'
-    + '<button id="trim-fix-autocorrect" style="padding:8px 18px;border:none;border-radius:6px;background:#3b82f6;color:#fff;cursor:pointer;font-size:.85rem">Auto-Correct &amp; Save</button>'
-    + (mismatches.length === 0 ? '<button id="trim-fix-proceed" style="padding:8px 18px;border:none;border-radius:6px;background:#16a34a;color:#fff;cursor:pointer;font-size:.85rem">Save Anyway</button>' : '')
-    + '</div></div>';
-  document.body.appendChild(overlay);
-
-  // Cancel
-  overlay.querySelector('#trim-fix-cancel').onclick = function() { document.body.removeChild(overlay); };
-
-  // Auto-correct mismatches then save
-  overlay.querySelector('#trim-fix-autocorrect').onclick = function() {
-    mismatches.forEach(function(m) {
-      if (window.trimRows[m.idx]) window.trimRows[m.idx].emp_number = m.correct;
-      // Also update the input field if visible
-      var inputs = document.querySelectorAll('[data-row-idx="' + m.idx + '"] .emp-number-input, input[data-emp-idx="' + m.idx + '"]');
-      inputs.forEach(function(inp) { inp.value = m.correct; });
-    });
-    document.body.removeChild(overlay);
-    trimSave();
-  };
-
-  // Proceed anyway (only for unknowns case)
-  var proceedBtn = overlay.querySelector('#trim-fix-proceed');
-  if (proceedBtn) proceedBtn.onclick = function() { document.body.removeChild(overlay); trimSave(); };
-}
-window.trimValidateAndSave = trimValidateAndSave;
-
 async function trimSave() {
   var date=document.getElementById("trim-date").value, shift=document.getElementById("trim-shift").value;
   if(!date){toast("Set the date.");return;}
-  var vr=trimRows.filter(function(r){return r.full_name||r.emp_number;});
+  var vr=trimRows.filter(function(r){return r.full_name;});
   if(!vr.length){toast("Add at least one entry.");return;}
   var fr=vr.filter(function(r){return r.flagged;});
   if(fr.length&&!confirm(fr.length+" row"+(fr.length>1?"s are":" is")+" flagged. Save anyway?"))return;
@@ -275,15 +186,13 @@ async function trimRenderHistory() {
       html += '</div>';
       if (isAdmin) html += '<div style="font-size:0.7rem;color:var(--sub);margin-bottom:4px">✏️ Click any value to edit — saves automatically.</div>';
       html += '<div style="overflow-x:auto"><table class="trim-table" style="width:100%;font-size:0.76rem"><thead><tr>';
-      ['Emp#','Name','Code','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>'+h+'</th>'; });
+      ['Name','Min','In Lbs','Fillet','F%','Nugget','N%','MiscCut','MC%','Tot Lbs','Tot%','Lbs/Hr',''].forEach(h => { html += '<th>'+h+'</th>'; });
       html += '</tr></thead><tbody>';
       entries.filter(e => !trimDeletedIds.has(e.id)).forEach(e => {
         const ei = (id,field,val,w) => '<td><input class="hist-edit" data-id="'+id+'" data-field="'+field+'" value="'+(val||'')+'" style="width:'+w+'px;font-size:0.74rem;border:none;border-bottom:1px solid #e2e8f0;background:transparent;text-align:center;padding:2px" onchange="trimSaveCell(this)"/></td>';
         html += '<tr>';
         if (isAdmin) {
-          html += ei(e.id,'emp_number',e.emp_number,44);
-          html += ei(e.id,'full_name',e.full_name,110);
-          html += ei(e.id,'trim_number',e.trim_number,54);
+          html += ei(e.id,'full_name',e.full_name,140);
           html += ei(e.id,'minutes_worked',e.minutes_worked,38);
           html += ei(e.id,'incoming_lbs',e.incoming_lbs,50);
           html += ei(e.id,'fillet_lbs',e.fillet_lbs,46);
@@ -297,7 +206,7 @@ async function trimRenderHistory() {
           html += '<td>'+(parseFloat(e.realtime_lbs_per_hour)||0).toFixed(1)+'</td>';
           html += '<td><button onclick="trimDeleteEntry(\''+e.id+'\',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0 4px">✕</button></td>';
         } else {
-          html += '<td>'+(e.emp_number||'')+'</td><td>'+(e.full_name||'')+'</td><td>'+(e.trim_number||'')+'</td>';
+          html += '<td>'+(e.full_name||'')+'</td>';
           html += '<td>'+(e.minutes_worked||0)+'</td><td>'+(e.incoming_lbs||0)+'</td>';
           html += '<td>'+(e.fillet_lbs||0)+'</td><td>'+(parseFloat(e.fillet_yield_pct)||0).toFixed(1)+'%</td>';
           html += '<td>'+(e.nugget_lbs||0)+'</td><td>'+(parseFloat(e.nugget_yield_pct)||0).toFixed(1)+'%</td>';
