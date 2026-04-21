@@ -49,7 +49,7 @@ module.exports = async function handler(req, res) {
     if (action === 'get_manual_parts') {
       const { manual_id } = body;
       if (!manual_id) return res.status(400).json({ error: 'Missing manual_id' });
-      const rows = await sql`SELECT id, part_number, description, machine_tag
+      const rows = await sql`SELECT id, part_number, description, machine_tag, page_number
         FROM manual_part_index
         WHERE manual_id = ${manual_id} AND company_id = ${company_id}
         ORDER BY part_number`;
@@ -99,7 +99,7 @@ module.exports = async function handler(req, res) {
         const buffer = Buffer.from(await fetchResp.arrayBuffer());
         const b64 = buffer.toString('base64');
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const prompt = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:\n{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown"}]}\n\nRules:\n- Only extract part numbers from the parts list / bill of materials / exploded diagram section\n- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers\n- Do NOT invent or guess part numbers\n- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled\n- Description is optional — use the label/name next to the part number, keep it under 60 chars\n- If this document has no parts list, return {"parts":[]}\n- Return every unique part number (deduplicate identical ones)`;
+        const prompt = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:\n{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown","page_number":5}]}\n\nRules:\n- Only extract part numbers from the parts list / bill of materials / exploded diagram section\n- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers\n- Do NOT invent or guess part numbers\n- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled\n- Description is optional — use the label/name next to the part number, keep it under 60 chars\n- page_number is the 1-indexed PDF page where the part's exploded diagram / picture / primary listing appears. If a part appears on multiple pages, pick the page that shows its picture. Use null if you cannot determine a page.\n- If this document has no parts list, return {"parts":[]}\n- Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
         const msg = await client.messages.create({
           model: 'claude-sonnet-4-6',
           max_tokens: 8000,
@@ -126,8 +126,9 @@ module.exports = async function handler(req, res) {
           if (seen.has(key)) continue;
           seen.add(key);
           const desc = String(p.description || '').trim().slice(0, 200);
-          await sql`INSERT INTO manual_part_index (manual_id, company_id, part_number, description, machine_tag)
-            VALUES (${manual.id}, ${company_id}, ${pn}, ${desc}, ${machine_tag || ''})`;
+          const pg = Number.isFinite(parseInt(p.page_number)) ? parseInt(p.page_number) : null;
+          await sql`INSERT INTO manual_part_index (manual_id, company_id, part_number, description, machine_tag, page_number)
+            VALUES (${manual.id}, ${company_id}, ${pn}, ${desc}, ${machine_tag || ''}, ${pg})`;
         }
         await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${manual.id}`;
       }
@@ -138,6 +139,55 @@ module.exports = async function handler(req, res) {
         extracted_count: extractedParts.length,
         extraction_error: extractionError
       });
+    }
+
+    if (action === 'reindex_manual') {
+      const { id } = body;
+      if (!id) return res.status(400).json({ error: 'Missing id' });
+      const rows = await sql`SELECT id, title, machine_tag, file_url FROM parts_manuals WHERE id = ${id} AND company_id = ${company_id} LIMIT 1`;
+      if (!rows.length) return res.status(404).json({ error: 'Manual not found' });
+      const manual = rows[0];
+      if (!manual.file_url) return res.status(400).json({ error: 'Manual has no stored file to re-extract' });
+
+      let extractedParts = [];
+      try {
+        const fetchResp = await fetch(manual.file_url);
+        if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
+        const buffer = Buffer.from(await fetchResp.arrayBuffer());
+        const b64 = buffer.toString('base64');
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const prompt = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:\n{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown","page_number":5}]}\n\nRules:\n- Only extract part numbers from the parts list / bill of materials / exploded diagram section\n- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers\n- Do NOT invent or guess part numbers\n- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled\n- Description is optional — use the label/name next to the part number, keep it under 60 chars\n- page_number is the 1-indexed PDF page where the part's exploded diagram / picture / primary listing appears. If a part appears on multiple pages, pick the page that shows its picture. Use null if you cannot determine a page.\n- If this document has no parts list, return {"parts":[]}\n- Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
+        const msg = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{ role: 'user', content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: prompt }
+          ]}]
+        });
+        const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+        const parsed = JSON.parse(raw);
+        extractedParts = Array.isArray(parsed.parts) ? parsed.parts : [];
+      } catch (err) {
+        console.error('Reindex extract error:', err);
+        return res.status(500).json({ error: 'Reindex failed: ' + err.message });
+      }
+
+      await sql`DELETE FROM manual_part_index WHERE manual_id = ${id} AND company_id = ${company_id}`;
+      const seen = new Set();
+      for (const p of extractedParts) {
+        const pn = String(p.part_number || '').trim();
+        if (!pn) continue;
+        const key = pn.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const desc = String(p.description || '').trim().slice(0, 200);
+        const pg = Number.isFinite(parseInt(p.page_number)) ? parseInt(p.page_number) : null;
+        await sql`INSERT INTO manual_part_index (manual_id, company_id, part_number, description, machine_tag, page_number)
+          VALUES (${id}, ${company_id}, ${pn}, ${desc}, ${manual.machine_tag || ''}, ${pg})`;
+      }
+      await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${id}`;
+      return res.json({ ok: true, extracted_count: seen.size });
     }
 
     if (action === 'save_manual_metadata') {
@@ -196,8 +246,9 @@ module.exports = async function handler(req, res) {
       if (!q) return res.json({ matches: [] });
       const like = '%' + q + '%';
       const rows = await sql`
-        SELECT mpi.part_number, mpi.description, mpi.machine_tag,
-               mpi.manual_id, pm.title AS manual_title
+        SELECT mpi.part_number, mpi.description, mpi.machine_tag, mpi.page_number,
+               mpi.manual_id, pm.title AS manual_title,
+               pm.file_url, pm.cloudinary_public_id
         FROM manual_part_index mpi
         LEFT JOIN parts_manuals pm ON pm.id = mpi.manual_id
         WHERE mpi.company_id = ${company_id}

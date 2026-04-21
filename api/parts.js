@@ -67,6 +67,7 @@ module.exports = async function handler(req, res) {
       part_number TEXT NOT NULL, description TEXT DEFAULT '',
       machine_tag TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW()
     )`;
+    await sql`ALTER TABLE manual_part_index ADD COLUMN IF NOT EXISTS page_number INT`;
     await sql`CREATE INDEX IF NOT EXISTS idx_manual_part_num ON manual_part_index(company_id, LOWER(part_number))`;
     await sql`CREATE INDEX IF NOT EXISTS idx_manual_part_manual ON manual_part_index(manual_id)`;
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
