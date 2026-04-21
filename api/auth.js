@@ -1,6 +1,6 @@
-import { sql } from '@vercel/postgres';
+const { sql } = require('@vercel/postgres');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -16,7 +16,9 @@ export default async function handler(req, res) {
       try {
         const { rows } = await sql`SELECT id, name FROM companies ORDER BY name`;
         return res.json({ ok: true, companies: rows });
-      } catch (e2) { return res.status(500).json({ error: e2.message }); }
+      } catch (e2) {
+        return res.status(500).json({ error: e2.message });
+      }
     }
   }
 
@@ -24,8 +26,10 @@ export default async function handler(req, res) {
     try {
       const { rows } = await sql`SELECT * FROM companies WHERE id = ${req.query.id} LIMIT 1`;
       return res.json({ ok: true, company: rows[0] || null });
-    } catch (e) { return res.status(500).json({ error: e.message }); }
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   return res.status(400).json({ error: 'Unknown action' });
-}
+};
