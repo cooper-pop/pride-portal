@@ -167,33 +167,46 @@ function renderCompanyCards() {
         var co = (typeof COMPANIES!=='undefined'&&COMPANIES[key])||{};
         var coName = co.name || c.name;
         var coColor = co.color || '#1a3a6b';
+        var initials = coName.split(' ').map(function(w){return w[0];}).join('').substring(0,3);
+
         var card = document.createElement('div');
-        card.className = 'portal-card';
+        card.className = 'portal-card ' + key + '-card';
+
+        var header = document.createElement('div');
+        header.className = 'pc-header';
+        card.appendChild(header);
+
+        function makeFallbackLogo() {
+          var fb = document.createElement('div');
+          fb.className = 'pc-logo';
+          fb.style.cssText = 'background:'+coColor+';display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.4rem;font-weight:700;';
+          fb.textContent = initials;
+          return fb;
+        }
+
         if (co.logo) {
           var img = document.createElement('img');
-          img.className = 'portal-card-logo';
+          img.className = 'pc-logo';
           img.src = co.logo;
           img.alt = coName;
           img.onerror = function() {
-            var fb = document.createElement('div');
-            fb.style.cssText = 'width:80px;height:80px;border-radius:50%;background:'+coColor+';display:flex;align-items:center;justify-content:center;margin:0 auto 10px;';
-            fb.style.color = '#fff';
-            fb.style.fontSize = '1.6rem';
-            fb.style.fontWeight = '700';
-            fb.textContent = coName.split(' ').map(function(w){return w[0];}).join('').substring(0,3);
-            img.parentNode.replaceChild(fb, img);
+            img.parentNode.replaceChild(makeFallbackLogo(), img);
           };
-          card.appendChild(img);
+          header.appendChild(img);
         } else {
-          var fb2 = document.createElement('div');
-          fb2.style.cssText = 'width:80px;height:80px;border-radius:50%;background:'+coColor+';display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-size:1.6rem;font-weight:700;color:#fff;';
-          fb2.textContent = coName.split(' ').map(function(w){return w[0];}).join('').substring(0,3);
-          card.appendChild(fb2);
+          header.appendChild(makeFallbackLogo());
         }
+
         var nm = document.createElement('div');
-        nm.className = 'portal-card-name';
+        nm.className = 'pc-name';
         nm.textContent = coName;
-        card.appendChild(nm);
+        header.appendChild(nm);
+
+        var footer = document.createElement('div');
+        footer.className = 'pc-footer';
+        footer.textContent = 'Sign in →';
+        card.appendChild(footer);
+
         card.addEventListener('click', function() { selectCompany(key); });
         container.appendChild(card);
       });

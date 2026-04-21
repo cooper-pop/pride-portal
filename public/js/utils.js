@@ -7,7 +7,7 @@ var currentCompany = null; // 'potp' | 'bfn'
 var aiHistory = [];
 
 var COMPANIES = {
-  bfn: { name:'Battle Fish North', slug:'battle-fish-north', logo:'https://i.postimg.cc/HnB7Ymsh/Battle-Fish-North.png', color:'#8b1a1a' },
+  bfn: { name:'Battle Fish North', slug:'battle-fish-north', logo:'/images/bfn-logo.jpg', color:'#1a3a5c' },
   potp: { name:'Pride of the Pond', slug:'pride-of-the-pond', logo:'https://i.postimg.cc/jjT8VwcZ/Pride-of-the-Pond-New.jpg', color:'#1a3a6b' },
 };
 
