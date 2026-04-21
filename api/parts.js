@@ -482,6 +482,43 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    if (action === 'search_vendor_prices') {
+      const pn = String(body.part_number || '').trim();
+      const desc = String(body.description || '').trim();
+      if (!pn) return res.status(400).json({ error: 'Part number required' });
+      const Anthropic = require('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const prompt = `You are a parts procurement assistant for Pride of the Pond, a catfish processing facility. Search the web to find vendors selling this exact industrial part, then draft a quote-request email tailored to each vendor.\n\nPart Number: ${pn}\nDescription: ${desc || '(not provided)'}\n\nFor up to 5 vendors you find on the open web, extract or research:\n1. vendor — company name\n2. price — unit price in USD (number, omit field if not shown or not certain)\n3. url — direct product page URL (must match this specific part; do not guess)\n4. available — true if the page shows "in stock" or "add to cart"; false if backordered / out of stock / contact for availability\n5. contact_email — the parts, sales, or customer-support email address for this vendor. Visit their contact / support / about page if needed. It MUST be a real email you read on their site, not a guess.\n6. vendor_note — one short sentence: what kind of vendor, lead time, MOQ, or anything useful\n7. quote_email_subject — RFQ email subject you'd send this vendor, e.g. "RFQ: Part # ${pn} — ${desc || 'Industrial Part'}"\n8. quote_email_body — a professional RFQ email body (4-6 short paragraphs). Ask for: unit price, volume discount tiers, lead time, shipping options and cost, payment terms. Mention you're price-comparing across multiple vendors. Sign off as "Cooper Battle / Pride of the Pond". Plain text, no markdown.\n\nPrefer authorized industrial distributors (Grainger, McMaster-Carr, Motion Industries, Fastenal, MSC Direct, Global Industrial, Amazon Business, the OEM's own site). Skip generic marketplace resellers and any listing that clearly isn't this part.\n\nOmit a vendor entirely if you cannot find a real contact email for them. Don't invent emails.\n\nReturn ONLY JSON (no markdown fences, no preamble). Shape:\n{"vendors":[{"vendor":"","price":0,"url":"","available":true,"contact_email":"","vendor_note":"","quote_email_subject":"","quote_email_body":""}]}`;
+      try {
+        const msg = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 10000,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }],
+          messages: [{ role: 'user', content: prompt }]
+        });
+        const text = (msg.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+        const cleaned = text.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim();
+        let parsed;
+        try { parsed = JSON.parse(cleaned); }
+        catch (e) {
+          // Try to find a JSON object inside the text
+          const firstBrace = cleaned.indexOf('{');
+          const lastBrace = cleaned.lastIndexOf('}');
+          if (firstBrace >= 0 && lastBrace > firstBrace) {
+            try { parsed = JSON.parse(cleaned.substring(firstBrace, lastBrace + 1)); }
+            catch (e2) { return res.status(500).json({ error: 'AI response not JSON', raw: cleaned.slice(0, 400) }); }
+          } else {
+            return res.status(500).json({ error: 'AI response not JSON', raw: cleaned.slice(0, 400) });
+          }
+        }
+        const vendors = Array.isArray(parsed.vendors) ? parsed.vendors : [];
+        return res.json({ ok: true, part_number: pn, description: desc, vendors });
+      } catch (err) {
+        console.error('Vendor search error:', err);
+        return res.status(500).json({ error: 'Vendor search failed: ' + err.message });
+      }
+    }
+
 
     // ââ INVOICE SCAN / EXTRACT âââââââââââââââââââââââââââââââââââââââââââââââ
     if (action === 'extract_invoice') {

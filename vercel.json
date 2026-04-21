@@ -18,10 +18,15 @@
       "maxDuration": 60
     },
     "api/parts.js": {
-      "maxDuration": 60
+      "maxDuration": 300,
+      "memory": 1024
     },
     "api/ai.js": {
       "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/manuals.js": {
+      "maxDuration": 300,
       "memory": 1024
     }
   },
