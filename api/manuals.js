@@ -1,6 +1,16 @@
 const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
+const cloudinary = require('cloudinary').v2;
+
+function configureCloudinary() {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  });
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,11 +37,12 @@ module.exports = async function handler(req, res) {
   try {
     if (action === 'get_manuals') {
       const rows = await sql`
-        SELECT pm.id, pm.title, pm.machine_tag, pm.file_url, pm.notes,
-               pm.part_count, pm.created_at, pm.updated_at
-        FROM parts_manuals pm
-        WHERE pm.company_id = ${company_id}
-        ORDER BY pm.created_at DESC`;
+        SELECT id, title, machine_tag, file_url, cloudinary_public_id,
+               file_size_bytes, filename, notes, part_count,
+               created_at, updated_at
+        FROM parts_manuals
+        WHERE company_id = ${company_id}
+        ORDER BY created_at DESC`;
       return res.json(rows);
     }
 
@@ -45,39 +56,65 @@ module.exports = async function handler(req, res) {
       return res.json(rows);
     }
 
-    if (action === 'upload_manual') {
-      const { title, machine_tag, file_base64, media_type, file_url, notes } = body;
+    if (action === 'get_upload_signature') {
+      if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        return res.status(500).json({ error: 'Cloudinary env vars missing' });
+      }
+      configureCloudinary();
+      const folder = 'parts-manuals';
+      const timestamp = Math.round(Date.now() / 1000);
+      const paramsToSign = { timestamp, folder };
+      const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET);
+      return res.json({
+        signature,
+        timestamp,
+        folder,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME
+      });
+    }
+
+    if (action === 'save_manual_record') {
+      const { title, machine_tag, file_url, cloudinary_public_id, file_size_bytes, filename, notes } = body;
       if (!title || !String(title).trim()) return res.status(400).json({ error: 'Title required' });
 
-      // Extract parts via AI if a file was provided
+      // Save record first so a slow/failed extraction doesn't lose the upload
+      const [manual] = await sql`
+        INSERT INTO parts_manuals
+          (company_id, title, machine_tag, file_url, cloudinary_public_id, file_size_bytes, filename, notes, part_count)
+        VALUES (${company_id}, ${String(title).trim()}, ${machine_tag || ''},
+                ${file_url || ''}, ${cloudinary_public_id || ''}, ${file_size_bytes || 0},
+                ${filename || ''}, ${notes || ''}, 0)
+        RETURNING *`;
+
+      // If no file_url, nothing to extract; return metadata-only record
+      if (!file_url) return res.json({ ok: true, manual, extracted_count: 0 });
+
+      // Extract part numbers via Claude document API (fetch the PDF from Cloudinary)
       let extractedParts = [];
-      if (file_base64) {
+      let extractionError = null;
+      try {
+        const fetchResp = await fetch(file_url);
+        if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
+        const buffer = Buffer.from(await fetchResp.arrayBuffer());
+        const b64 = buffer.toString('base64');
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const prompt = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:\n{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown"}]}\n\nRules:\n- Only extract part numbers from the parts list / bill of materials / exploded diagram section\n- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers\n- Do NOT invent or guess part numbers\n- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled\n- Description is optional — use the label/name next to the part number, keep it under 60 chars\n- If this document has no parts list, return {"parts":[]}\n- Return every unique part number (deduplicate identical ones)`;
-        const isPdf = (media_type || '').includes('pdf');
-        const content = isPdf
-          ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file_base64 } }, { type: 'text', text: prompt }]
-          : [{ type: 'image', source: { type: 'base64', media_type: media_type || 'image/jpeg', data: file_base64 } }, { type: 'text', text: prompt }];
-        try {
-          const msg = await client.messages.create({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 8000,
-            messages: [{ role: 'user', content }]
-          });
-          const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-          const parsed = JSON.parse(raw);
-          extractedParts = Array.isArray(parsed.parts) ? parsed.parts : [];
-        } catch (err) {
-          console.error('Manual extract error:', err);
-          return res.status(500).json({ error: 'Extraction failed: ' + err.message });
-        }
+        const msg = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          messages: [{ role: 'user', content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: prompt }
+          ]}]
+        });
+        const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+        const parsed = JSON.parse(raw);
+        extractedParts = Array.isArray(parsed.parts) ? parsed.parts : [];
+      } catch (err) {
+        console.error('Manual extract error:', err);
+        extractionError = err.message;
       }
-
-      // Create the manual row
-      const [manual] = await sql`
-        INSERT INTO parts_manuals (company_id, title, machine_tag, file_url, notes, part_count)
-        VALUES (${company_id}, ${String(title).trim()}, ${machine_tag || ''}, ${file_url || ''}, ${notes || ''}, ${extractedParts.length})
-        RETURNING *`;
 
       // Insert extracted parts (deduped)
       if (extractedParts.length > 0) {
@@ -94,7 +131,13 @@ module.exports = async function handler(req, res) {
         }
         await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${manual.id}`;
       }
-      return res.json({ ok: true, manual, extracted_count: extractedParts.length });
+
+      return res.json({
+        ok: true,
+        manual,
+        extracted_count: extractedParts.length,
+        extraction_error: extractionError
+      });
     }
 
     if (action === 'save_manual_metadata') {
@@ -108,15 +151,43 @@ module.exports = async function handler(req, res) {
           notes = ${notes || ''},
           updated_at = NOW()
         WHERE id = ${id} AND company_id = ${company_id} RETURNING *`;
-      // Keep index rows' machine_tag in sync with the manual's
       await sql`UPDATE manual_part_index SET machine_tag = ${machine_tag || ''} WHERE manual_id = ${id} AND company_id = ${company_id}`;
       return res.json({ ok: true, manual: m });
     }
 
+    if (action === 'get_download_url') {
+      const pid = String(body.public_id || body.cloudinary_public_id || '').trim();
+      if (!pid) return res.status(400).json({ error: 'public_id required' });
+      if (!process.env.CLOUDINARY_CLOUD_NAME) return res.status(500).json({ error: 'Cloudinary not configured' });
+      configureCloudinary();
+      // Verify the user owns this manual (defense-in-depth)
+      const owned = await sql`SELECT id FROM parts_manuals WHERE cloudinary_public_id = ${pid} AND company_id = ${company_id} LIMIT 1`;
+      if (!owned.length) return res.status(404).json({ error: 'Not found' });
+      const url = cloudinary.url(pid, {
+        resource_type: 'raw',
+        secure: true,
+        sign_url: true,
+        expires_at: Math.floor(Date.now() / 1000) + 3600
+      });
+      return res.json({ url });
+    }
+
     if (action === 'delete_manual') {
       if (!body.id) return res.status(400).json({ error: 'Missing id' });
+      // Look up cloudinary id before deleting the row
+      const rows = await sql`SELECT cloudinary_public_id FROM parts_manuals WHERE id = ${body.id} AND company_id = ${company_id}`;
+      const publicId = rows.length ? rows[0].cloudinary_public_id : null;
       await sql`DELETE FROM manual_part_index WHERE manual_id = ${body.id} AND company_id = ${company_id}`;
       await sql`DELETE FROM parts_manuals WHERE id = ${body.id} AND company_id = ${company_id}`;
+      // Best-effort Cloudinary cleanup — don't fail the request if it errors
+      if (publicId && process.env.CLOUDINARY_CLOUD_NAME) {
+        try {
+          configureCloudinary();
+          await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+        } catch (err) {
+          console.error('Cloudinary destroy failed:', err);
+        }
+      }
       return res.json({ ok: true });
     }
 
@@ -138,7 +209,6 @@ module.exports = async function handler(req, res) {
     if (action === 'check_invoice_parts') {
       const { items, machine_tag } = body;
       const flags = [];
-      // Shop stock is a catch-all — never flag against it
       if (!machine_tag || machine_tag === 'shop_stock') return res.json({ flags });
       for (const li of (items || [])) {
         const pn = String(li.part_number || '').trim();
