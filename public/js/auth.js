@@ -170,7 +170,13 @@ function renderCompanyCards() {
         div.setAttribute('data-slug', c.slug);
         div.setAttribute('data-name', c.name);
         div.addEventListener('click', function() {
-          selectCompany(c.slug || c.id);
+          // Map API slug to COMPANIES key
+          var SLUG_TO_KEY = {
+            'pride-of-the-pond': 'potp',
+            'battle-fish-north': 'bfn'
+          };
+          var coKey = SLUG_TO_KEY[c.slug] || c.slug;
+          selectCompany(coKey);
         });
         container.appendChild(div);
       });
