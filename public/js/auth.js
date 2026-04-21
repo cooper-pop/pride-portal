@@ -158,30 +158,32 @@ function renderCompanyCards() {
   if (!container) return;
   fetch('/api/auth?action=get_companies')
     .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.ok || !data.companies || !data.companies.length) return;
+    .then(function(d) {
+      if (!d.ok || !d.companies || !d.companies.length) return;
       container.innerHTML = '';
-      data.companies.forEach(function(c) {
-        var div = document.createElement('div');
-        div.className = 'portal-card';
-        div.innerHTML = '<div style="font-size:2.5rem">🐟</div><div style="font-weight:700;margin-top:8px;font-size:.95rem">' + c.name + '</div>';
-        div.style.cursor = 'pointer';
-        div.setAttribute('data-id', c.id);
-        div.setAttribute('data-slug', c.slug);
-        div.setAttribute('data-name', c.name);
-        div.addEventListener('click', function() {
-          // Map API slug to COMPANIES key
-          var SLUG_TO_KEY = {
-            'pride-of-the-pond': 'potp',
-            'battle-fish-north': 'bfn'
-          };
-          var coKey = SLUG_TO_KEY[c.slug] || c.slug;
-          selectCompany(coKey);
-        });
-        container.appendChild(div);
+      var M = {'pride-of-the-pond':'potp','battle-fish-north':'bfn'};
+      d.companies.forEach(function(c) {
+        var key = M[c.slug] || c.slug;
+        var co = (typeof COMPANIES!=='undefined'&&COMPANIES[key])||{};
+        var card = document.createElement('div');
+        card.className = 'portal-card';
+        if (co.color) card.style.borderColor = co.color;
+        if (co.logo) {
+          var img = document.createElement('img');
+          img.className = 'portal-card-logo';
+          img.src = co.logo;
+          card.appendChild(img);
+        }
+        var nm = document.createElement('div');
+        nm.className = 'portal-card-name';
+        nm.textContent = co.name || c.name;
+        card.appendChild(nm);
+        card.addEventListener('click', function() { selectCompany(key); });
+        container.appendChild(card);
       });
-    }).catch(function(e) { console.warn('Company cards error:', e); });
+    }).catch(function(e){console.warn('cards:',e);});
 }
+
 
 document.addEventListener('DOMContentLoaded', function() {
   renderCompanyCards();
