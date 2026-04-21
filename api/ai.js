@@ -29,7 +29,7 @@ module.exports = async function handler(req, res) {
   // context limits on large images.
   if (image) {
     const isPdf = image_mime === 'application/pdf';
-    const scanPrompt = query || 'Extract invoice data as JSON only (no markdown, no commentary): {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"item":"","qty":0,"cost":0.00}]}';
+    const scanPrompt = query || 'Extract invoice data as JSON only (no markdown, no commentary): {"vendor":"","invoice_number":"","date":"YYYY-MM-DD","line_items":[{"part_number":"","description":"","qty":0,"cost":0.00}]}. part_number is the catalog/SKU/item code if visible (empty string if not shown). description is the item name. qty is quantity. cost is PRICE PER UNIT, not the line total. Skip shipping, tax, and subtotal rows.';
     const content = isPdf
       ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image } }, { type: 'text', text: scanPrompt }]
       : [{ type: 'image', source: { type: 'base64', media_type: image_mime || 'image/jpeg', data: image } }, { type: 'text', text: scanPrompt }];

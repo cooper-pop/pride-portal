@@ -287,14 +287,17 @@ module.exports = async function handler(req, res) {
       if (isNew) {
         const lineItems = inv.items || [];
         for (const li of lineItems) {
-          if (!li.item || !String(li.item).trim()) continue;
+          const desc = String(li.description || li.item || '').trim();
+          const pn = String(li.part_number || '').trim();
+          if (!desc && !pn) continue;
           if ((li.use_type || 'stock') !== 'stock') continue;
-          const itemName = String(li.item).trim();
           const itemQty = parseFloat(li.qty) || 1;
           const itemCost = parseFloat(li.cost) || 0;
           const machTag = inv.machine_tag || li.machine_tag || '';
-          const existing = await sql`SELECT id, quantity, avg_cost FROM parts_inventory
-            WHERE company_id = ${company_id} AND LOWER(TRIM(description)) = LOWER(TRIM(${itemName})) LIMIT 1`;
+          // Match on part_number when available (more reliable), fall back to description
+          const existing = pn
+            ? await sql`SELECT id, quantity, avg_cost FROM parts_inventory WHERE company_id = ${company_id} AND part_number = ${pn} LIMIT 1`
+            : await sql`SELECT id, quantity, avg_cost FROM parts_inventory WHERE company_id = ${company_id} AND LOWER(TRIM(description)) = LOWER(TRIM(${desc})) LIMIT 1`;
           if (existing.length > 0) {
             const old = existing[0];
             const oldQty = parseFloat(old.quantity) || 0;
@@ -309,7 +312,7 @@ module.exports = async function handler(req, res) {
             const totalVal = itemQty * itemCost;
             await sql`INSERT INTO parts_inventory
               (company_id, description, part_number, quantity, unit_cost, avg_cost, total_value, machine_tag, supplier)
-              VALUES (${company_id}, ${itemName}, ${itemName}, ${itemQty}, ${itemCost}, ${itemCost}, ${totalVal}, ${machTag}, ${inv.vendor || ''})`;
+              VALUES (${company_id}, ${desc || pn}, ${pn || desc}, ${itemQty}, ${itemCost}, ${itemCost}, ${totalVal}, ${machTag}, ${inv.vendor || ''})`;
           }
         }
       }
