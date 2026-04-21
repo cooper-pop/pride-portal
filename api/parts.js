@@ -44,12 +44,15 @@ module.exports = async function handler(req, res) {
     await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS supplier TEXT DEFAULT ''`;
     await sql`ALTER TABLE parts_invoices ADD COLUMN IF NOT EXISTS tags TEXT DEFAULT ''`;
     await sql`ALTER TABLE parts_invoices ADD COLUMN IF NOT EXISTS machine_tag TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS avg_cost NUMERIC(10,4) DEFAULT 0`;
+    await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS total_value NUMERIC(10,2) DEFAULT 0`;
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company_id INT, part_number TEXT DEFAULT '', description TEXT DEFAULT '',
         manufacturer TEXT DEFAULT '', category TEXT DEFAULT '',
         quantity INT DEFAULT 0, min_quantity INT DEFAULT 1,
-        unit_cost NUMERIC(10,2) DEFAULT 0, location TEXT DEFAULT '',
+        unit_cost NUMERIC(10,2) DEFAULT 0, avg_cost NUMERIC(10,4) DEFAULT 0,
+        total_value NUMERIC(10,2) DEFAULT 0, location TEXT DEFAULT '',
         machine_tag TEXT DEFAULT '', supplier TEXT DEFAULT '',
         notes TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -100,7 +103,8 @@ module.exports = async function handler(req, res) {
         company_id INT, part_number TEXT DEFAULT '', description TEXT DEFAULT '',
         manufacturer TEXT DEFAULT '', category TEXT DEFAULT '',
         quantity INT DEFAULT 0, min_quantity INT DEFAULT 1,
-        unit_cost NUMERIC(10,2) DEFAULT 0, location TEXT DEFAULT '',
+        unit_cost NUMERIC(10,2) DEFAULT 0, avg_cost NUMERIC(10,4) DEFAULT 0,
+        total_value NUMERIC(10,2) DEFAULT 0, location TEXT DEFAULT '',
         machine_tag TEXT DEFAULT '', supplier TEXT DEFAULT '',
         notes TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -233,7 +237,41 @@ module.exports = async function handler(req, res) {
           ${inv.total_amount || 0}, ${inv.notes || ''}, ${JSON.stringify(inv.items || [])}, ${inv.tags || ''}, ${inv.machine_tag || ''}, ${company_id})
           RETURNING *`;
       }
-      return res.json({ ok: true, invoice: rows[0] });
+      return     // Auto-update parts inventory from invoice line items
+    const lineItems = inv.items || [];
+    for (const li of lineItems) {
+      if (!li.item || !String(li.item).trim()) continue;
+      const itemName = String(li.item).trim();
+      const itemQty = parseFloat(li.qty) || 1;
+      const itemCost = parseFloat(li.cost) || 0;
+      const machTag = inv.machine_tag || li.machine_tag || '';
+      const existing = await sql`
+        SELECT id, quantity, avg_cost FROM parts_inventory
+        WHERE company_id = ${company_id} AND LOWER(TRIM(description)) = LOWER(TRIM(${itemName}))
+        LIMIT 1
+      `;
+      if (existing.length > 0) {
+        const old = existing[0];
+        const oldQty = parseFloat(old.quantity) || 0;
+        const oldAvg = parseFloat(old.avg_cost) || 0;
+        const newQty = oldQty + itemQty;
+        const newAvg = newQty > 0 ? ((oldQty * oldAvg) + (itemQty * itemCost)) / newQty : itemCost;
+        const totalVal = newQty * newAvg;
+        await sql`UPDATE parts_inventory SET
+          quantity = ${newQty}, avg_cost = ${newAvg},
+          unit_cost = ${itemCost}, total_value = ${totalVal},
+          updated_at = NOW()
+          WHERE id = ${old.id}
+        `;
+      } else {
+        const totalVal = itemQty * itemCost;
+        await sql`INSERT INTO parts_inventory
+          (company_id, description, part_number, quantity, unit_cost, avg_cost, total_value, machine_tag, supplier)
+          VALUES (${company_id}, ${itemName}, ${itemName}, ${itemQty}, ${itemCost}, ${itemCost}, ${totalVal}, ${machTag}, ${inv.vendor || ''})
+        `;
+      }
+    }
+    res.json({ ok: true, invoice: rows[0] });
     }
 
     if (action === 'delete_invoice') {
