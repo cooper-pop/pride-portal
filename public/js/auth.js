@@ -165,24 +165,41 @@ function renderCompanyCards() {
       d.companies.forEach(function(c) {
         var key = M[c.slug] || c.slug;
         var co = (typeof COMPANIES!=='undefined'&&COMPANIES[key])||{};
+        var coName = co.name || c.name;
+        var coColor = co.color || '#1a3a6b';
         var card = document.createElement('div');
         card.className = 'portal-card';
-        if (co.color) card.style.borderColor = co.color;
         if (co.logo) {
           var img = document.createElement('img');
           img.className = 'portal-card-logo';
           img.src = co.logo;
+          img.alt = coName;
+          img.onerror = function() {
+            var fb = document.createElement('div');
+            fb.style.cssText = 'width:80px;height:80px;border-radius:50%;background:'+coColor+';display:flex;align-items:center;justify-content:center;margin:0 auto 10px;';
+            fb.style.color = '#fff';
+            fb.style.fontSize = '1.6rem';
+            fb.style.fontWeight = '700';
+            fb.textContent = coName.split(' ').map(function(w){return w[0];}).join('').substring(0,3);
+            img.parentNode.replaceChild(fb, img);
+          };
           card.appendChild(img);
+        } else {
+          var fb2 = document.createElement('div');
+          fb2.style.cssText = 'width:80px;height:80px;border-radius:50%;background:'+coColor+';display:flex;align-items:center;justify-content:center;margin:0 auto 10px;font-size:1.6rem;font-weight:700;color:#fff;';
+          fb2.textContent = coName.split(' ').map(function(w){return w[0];}).join('').substring(0,3);
+          card.appendChild(fb2);
         }
         var nm = document.createElement('div');
         nm.className = 'portal-card-name';
-        nm.textContent = co.name || c.name;
+        nm.textContent = coName;
         card.appendChild(nm);
         card.addEventListener('click', function() { selectCompany(key); });
         container.appendChild(card);
       });
     }).catch(function(e){console.warn('cards:',e);});
 }
+
 
 
 document.addEventListener('DOMContentLoaded', function() {
