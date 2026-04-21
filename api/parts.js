@@ -56,6 +56,16 @@ module.exports = async function handler(req, res) {
       user_id UUID, created_at TIMESTAMPTZ DEFAULT NOW()
     )`;
     await sql`CREATE INDEX IF NOT EXISTS idx_adjustments_part ON parts_adjustments(part_id, created_at DESC)`;
+    await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS machine_tag TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS part_count INT DEFAULT 0`;
+    await sql`CREATE TABLE IF NOT EXISTS manual_part_index (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      manual_id UUID, company_id INT,
+      part_number TEXT NOT NULL, description TEXT DEFAULT '',
+      machine_tag TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_manual_part_num ON manual_part_index(company_id, LOWER(part_number))`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_manual_part_manual ON manual_part_index(manual_id)`;
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company_id INT, part_number TEXT DEFAULT '', description TEXT DEFAULT '',
