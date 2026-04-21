@@ -152,7 +152,26 @@ window.bufferToBase64url = bufferToBase64url;
 window.submitPasswordChange = submitPasswordChange;
 
 // ── SIGN OUT BUTTON ──
+// ── COMPANY CARD RENDERING ──
+function renderCompanyCards() {
+  var el=document.querySelector('.portal-cards');
+  if(!el)return;
+  fetch('/api/auth?action=get_companies')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.ok||!d.companies)return;
+      el.innerHTML=d.companies.map(function(c){
+        var fn='selectCompany('+c.id+','''+c.slug+''','''+c.name+''')';
+        return '<div class="portal-card" onclick="'+fn+'">'
+          +'<div style="font-size:2.5rem">🐟</div>'
+          +'<div style="font-weight:700;margin-top:8px;font-size:.95rem">'+c.name+'</div>'
+          +'</div>';
+      }).join('');
+    }).catch(function(e){console.warn('company cards:',e);});
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+  renderCompanyCards();
   var logoutBtn = document.getElementById('logout-btn');
   if(logoutBtn) {
     logoutBtn.addEventListener('click', function() {
