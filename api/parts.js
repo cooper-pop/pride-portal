@@ -72,6 +72,18 @@ module.exports = async function handler(req, res) {
     await sql`ALTER TABLE manual_part_index ADD COLUMN IF NOT EXISTS page_number INT`;
     await sql`CREATE INDEX IF NOT EXISTS idx_manual_part_num ON manual_part_index(company_id, LOWER(part_number))`;
     await sql`CREATE INDEX IF NOT EXISTS idx_manual_part_manual ON manual_part_index(manual_id)`;
+    await sql`CREATE TABLE IF NOT EXISTS parts_machines (
+      id TEXT NOT NULL,
+      company_id INT NOT NULL,
+      name TEXT DEFAULT '',
+      make TEXT DEFAULT '',
+      model TEXT DEFAULT '',
+      year TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (company_id, id)
+    )`;
       await sql`CREATE TABLE IF NOT EXISTS parts_inventory (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company_id INT, part_number TEXT DEFAULT '', description TEXT DEFAULT '',
@@ -189,6 +201,42 @@ module.exports = async function handler(req, res) {
     if (action === 'get_manuals') {
       const rows = await sql`SELECT * FROM parts_manuals WHERE company_id = ${company_id} ORDER BY title`;
       return res.json(rows);
+    }
+    if (action === 'get_machines') {
+      // Bootstrap the table the first time any user hits this endpoint, so we never depend on init ordering.
+      await sql`CREATE TABLE IF NOT EXISTS parts_machines (
+        id TEXT NOT NULL, company_id INT NOT NULL,
+        name TEXT DEFAULT '', make TEXT DEFAULT '', model TEXT DEFAULT '',
+        year TEXT DEFAULT '', notes TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (company_id, id)
+      )`;
+      const rows = await sql`SELECT id, name, make, model, year, notes
+        FROM parts_machines WHERE company_id = ${company_id} ORDER BY name`;
+      return res.json(rows);
+    }
+    if (action === 'save_machines') {
+      // Replaces the entire machine list for this company. Match on (company_id, id) upsert-style
+      // so we preserve unknown extra columns and the frontend only sends what it knows.
+      await sql`CREATE TABLE IF NOT EXISTS parts_machines (
+        id TEXT NOT NULL, company_id INT NOT NULL,
+        name TEXT DEFAULT '', make TEXT DEFAULT '', model TEXT DEFAULT '',
+        year TEXT DEFAULT '', notes TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (company_id, id)
+      )`;
+      const machines = Array.isArray(body.machines) ? body.machines : [];
+      // Wipe the company's list and re-insert. Simplest correct semantics — matches the localStorage
+      // replace behavior callers are expecting. Inventory rows reference machines by their TEXT id,
+      // so re-inserting with the same id keeps those references valid.
+      await sql`DELETE FROM parts_machines WHERE company_id = ${company_id}`;
+      for (const m of machines) {
+        const id = String(m.id || '').trim();
+        if (!id) continue;
+        await sql`INSERT INTO parts_machines (id, company_id, name, make, model, year, notes)
+          VALUES (${id}, ${company_id}, ${m.name || ''}, ${m.make || ''}, ${m.model || ''}, ${m.year || ''}, ${m.notes || ''})`;
+      }
+      return res.json({ ok: true, count: machines.length });
     }
     if (action === 'get_low_stock') {
       const rows = await sql`SELECT *, quantity AS qty_on_hand, min_quantity AS qty_minimum FROM parts_inventory WHERE company_id = ${company_id} AND quantity <= min_quantity ORDER BY quantity ASC`;

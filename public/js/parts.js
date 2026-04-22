@@ -1,7 +1,42 @@
 // parts.js
 var _partsTab='inventory',_partsData={inventory:[],invoices:[],manuals:[],crossref:[],orders:[]},_editingPart=null,_machinesList=[],_scanLineCount=0,_partsInvFilter='',_xrVendors=[];
-function loadMachines(){try{_machinesList=JSON.parse(localStorage.getItem('parts_machines')||'[]');}catch(e){_machinesList=[];}}
-function saveMachines(){localStorage.setItem('parts_machines',JSON.stringify(_machinesList));}
+// Machines list is per-COMPANY, stored on the server so every user sees the same list.
+// Render functions call loadMachines() synchronously at the top. We keep a 5-second
+// cache to keep those calls cheap and avoid a re-render loop when the API return
+// triggers another render pass. saveMachines also bumps the cache timestamp to freeze
+// it with local state while the POST is in flight.
+var _machinesFetchedAt=0,_machinesLoadInFlight=false;
+function loadMachines(cb){
+  if(Date.now()-_machinesFetchedAt<5000){if(cb)cb();return;}
+  if(_machinesLoadInFlight){if(cb)setTimeout(function(){loadMachines(cb);},120);return;}
+  _machinesLoadInFlight=true;
+  apiCall('GET','/api/parts?action=get_machines').then(function(rows){
+    var serverList=Array.isArray(rows)?rows:[];
+    // One-time migration: if the server is empty but this browser has legacy localStorage machines, upload them.
+    if(serverList.length===0){
+      var legacy=[];
+      try{legacy=JSON.parse(localStorage.getItem('parts_machines')||'[]');}catch(e){}
+      if(Array.isArray(legacy)&&legacy.length>0){
+        _machinesList=legacy;
+        apiCall('POST','/api/parts?action=save_machines',{machines:legacy}).then(function(){
+          try{localStorage.removeItem('parts_machines');}catch(e){}
+        }).catch(function(){});
+      }else{_machinesList=[];}
+    }else{_machinesList=serverList;}
+    _machinesFetchedAt=Date.now();
+    _machinesLoadInFlight=false;
+    if(cb)cb();
+    else{
+      // Refresh currently visible tab so fresh list shows without a manual tab switch.
+      // (The nested loadMachines call inside these renders is a cache hit, no loop.)
+      if(typeof _partsTab!=='undefined'){
+        if(_partsTab==='machines'&&typeof partsRenderMachines==='function')partsRenderMachines();
+        else if(_partsTab==='inventory'&&typeof partsRenderInventory==='function')partsRenderInventory();
+      }
+    }
+  }).catch(function(){_machinesLoadInFlight=false;if(cb)cb();});
+}
+function saveMachines(){_machinesFetchedAt=Date.now();apiCall('POST','/api/parts?action=save_machines',{machines:_machinesList}).catch(function(){});}
 function buildPartsWidget(){var wt=document.getElementById('widget-tabs'),wc=document.getElementById('widget-content');var tabs=['inventory','invoices','manuals','crossref','orders','machines'];var labels={inventory:'Inventory',invoices:'Invoices',manuals:'Manuals',crossref:'Cross-Ref',orders:'Orders',machines:'Machines'};wt.innerHTML=tabs.map(function(t){return '<button class="wtab" onclick="partsShowTab(\''+t+'\')" id="ptab-'+t+'" style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;border-bottom:2px solid transparent;color:#94a3b8">'+labels[t]+'</button>';}).join('');wc.innerHTML='<div id="parts-panel" style="padding:0"></div>';loadMachines();partsInit();}
 function partsInit(){apiCall('GET','/api/parts?action=init_parts_db').then(function(){partsShowTab('inventory');}).catch(function(){partsShowTab('inventory');});}
 function partsShowTab(tab){_partsTab=tab;['inventory','invoices','manuals','crossref','orders','machines'].forEach(function(t){var b=document.getElementById('ptab-'+t);if(b){b.style.borderBottomColor=t===tab?'#1a3a6b':'transparent';b.style.color=t===tab?'#1a3a6b':'#94a3b8';b.style.fontWeight=t===tab?'600':'400';}});var panel=document.getElementById('parts-panel');if(!panel)return;if(tab==='machines'){partsRenderMachines();return;}panel.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8">Loading...</div>';var actions={inventory:'get_parts',invoices:'get_invoices',manuals:'get_manuals',crossref:'get_cross_ref',orders:'get_parts_orders'};var endpoint=tab==='manuals'?'/api/manuals?action=get_manuals':'/api/parts?action='+actions[tab];apiCall('GET',endpoint).then(function(data){_partsData[tab]=Array.isArray(data)?data:[];var r={inventory:partsRenderInventory,invoices:partsRenderInvoices,manuals:partsRenderManuals,crossref:partsRenderCrossRef,orders:partsRenderOrders};if(r[tab])r[tab]();}).catch(function(){document.getElementById('parts-panel').innerHTML='<div style="padding:20px;color:#ef4444">Error loading data</div>';});}
