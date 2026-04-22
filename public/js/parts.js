@@ -35,9 +35,9 @@ function loadMachines(cb){
   }).catch(function(){_machinesLoadInFlight=false;if(cb)cb();});
 }
 function saveMachines(){_machinesFetchedAt=Date.now();apiCall('POST','/api/parts?action=save_machines',{machines:_machinesList}).catch(function(){});}
-function buildPartsWidget(){var wt=document.getElementById('widget-tabs'),wc=document.getElementById('widget-content');var tabs=['inventory','invoices','manuals','crossref','orders','machines'];var labels={inventory:'Inventory',invoices:'Invoices',manuals:'Manuals',crossref:'Cross-Ref',orders:'Orders',machines:'Machines'};wt.innerHTML=tabs.map(function(t){return '<button class="wtab" onclick="partsShowTab(\''+t+'\')" id="ptab-'+t+'" style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;border-bottom:2px solid transparent;color:#94a3b8">'+labels[t]+'</button>';}).join('');wc.innerHTML='<div id="parts-panel" style="padding:0"></div>';loadMachines();partsInit();}
+function buildPartsWidget(){var wt=document.getElementById('widget-tabs'),wc=document.getElementById('widget-content');var tabs=['inventory','invoices','manuals','crossref','orders','machines','troubleshoot'];var labels={inventory:'Inventory',invoices:'Invoices',manuals:'Manuals',crossref:'Cross-Ref',orders:'Orders',machines:'Machines',troubleshoot:'🔧 Troubleshoot'};wt.innerHTML=tabs.map(function(t){return '<button class="wtab" onclick="partsShowTab(\''+t+'\')" id="ptab-'+t+'" style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;border-bottom:2px solid transparent;color:#94a3b8">'+labels[t]+'</button>';}).join('');wc.innerHTML='<div id="parts-panel" style="padding:0"></div>';loadMachines();partsInit();}
 function partsInit(){apiCall('GET','/api/parts?action=init_parts_db').then(function(){partsShowTab('inventory');}).catch(function(){partsShowTab('inventory');});}
-function partsShowTab(tab){_partsTab=tab;['inventory','invoices','manuals','crossref','orders','machines'].forEach(function(t){var b=document.getElementById('ptab-'+t);if(b){b.style.borderBottomColor=t===tab?'#1a3a6b':'transparent';b.style.color=t===tab?'#1a3a6b':'#94a3b8';b.style.fontWeight=t===tab?'600':'400';}});var panel=document.getElementById('parts-panel');if(!panel)return;if(tab==='machines'){partsRenderMachines();return;}panel.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8">Loading...</div>';var actions={inventory:'get_parts',invoices:'get_invoices',manuals:'get_manuals',crossref:'get_cross_ref',orders:'get_parts_orders'};var endpoint=tab==='manuals'?'/api/manuals?action=get_manuals':'/api/parts?action='+actions[tab];apiCall('GET',endpoint).then(function(data){_partsData[tab]=Array.isArray(data)?data:[];var r={inventory:partsRenderInventory,invoices:partsRenderInvoices,manuals:partsRenderManuals,crossref:partsRenderCrossRef,orders:partsRenderOrders};if(r[tab])r[tab]();}).catch(function(){document.getElementById('parts-panel').innerHTML='<div style="padding:20px;color:#ef4444">Error loading data</div>';});}
+function partsShowTab(tab){_partsTab=tab;['inventory','invoices','manuals','crossref','orders','machines','troubleshoot'].forEach(function(t){var b=document.getElementById('ptab-'+t);if(b){b.style.borderBottomColor=t===tab?'#1a3a6b':'transparent';b.style.color=t===tab?'#1a3a6b':'#94a3b8';b.style.fontWeight=t===tab?'600':'400';}});var panel=document.getElementById('parts-panel');if(!panel)return;if(tab==='machines'){partsRenderMachines();return;}if(tab==='troubleshoot'){partsRenderTroubleshoot();return;}panel.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8">Loading...</div>';var actions={inventory:'get_parts',invoices:'get_invoices',manuals:'get_manuals',crossref:'get_cross_ref',orders:'get_parts_orders'};var endpoint=tab==='manuals'?'/api/manuals?action=get_manuals':'/api/parts?action='+actions[tab];apiCall('GET',endpoint).then(function(data){_partsData[tab]=Array.isArray(data)?data:[];var r={inventory:partsRenderInventory,invoices:partsRenderInvoices,manuals:partsRenderManuals,crossref:partsRenderCrossRef,orders:partsRenderOrders};if(r[tab])r[tab]();}).catch(function(){document.getElementById('parts-panel').innerHTML='<div style="padding:20px;color:#ef4444">Error loading data</div>';});}
 window.partsShowTab=partsShowTab;
 var CARD='background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)';
 var BTN='padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600';
@@ -116,3 +116,212 @@ function partsRenderMachines(){loadMachines();var panel=document.getElementById(
 function partsMachineForm(editIdx){var m=editIdx>=0?_machinesList[editIdx]:{};document.getElementById('parts-panel').innerHTML='<div style="padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button style="'+BTN+';background:#f1f5f9;color:#334155" onclick="partsRenderMachines()">Back</button><span style="font-weight:700;font-size:.95rem">'+(editIdx>=0?'Edit':'Add')+' Machine</span></div><input type="text" placeholder="Machine Name (required)" id="mch-n" style="'+INP+'" value="'+(m.name||'')+'"><input type="text" placeholder="Make or Brand" id="mch-mk" style="'+INP+'" value="'+(m.make||'')+'"><input type="text" placeholder="Model" id="mch-mo" style="'+INP+'" value="'+(m.model||'')+'"><input type="text" placeholder="Year" id="mch-y" style="'+INP+'" value="'+(m.year||'')+'"><textarea placeholder="Notes (serial number, location, etc.)" id="mch-no" style="'+INP+'resize:vertical;height:60px">'+(m.notes||'')+'</textarea><button style="'+BTN_P+';width:100%" onclick="partsSaveMachine('+editIdx+')">Save Machine</button></div>';}
 function partsSaveMachine(editIdx){var name=document.getElementById('mch-n').value.trim();if(!name){alert('Machine name required');return;}var machine={id:editIdx>=0?_machinesList[editIdx].id:'mach_'+Date.now(),name:name,make:document.getElementById('mch-mk').value,model:document.getElementById('mch-mo').value,year:document.getElementById('mch-y').value,notes:document.getElementById('mch-no').value};if(editIdx>=0)_machinesList[editIdx]=machine;else _machinesList.push(machine);saveMachines();partsRenderMachines();}
 function partsDelMachine(i){if(!confirm('Delete this machine?'))return;_machinesList.splice(i,1);saveMachines();partsRenderMachines();}
+
+// ═══ TROUBLESHOOT ══════════════════════════════════════════════════════════
+// Conversation state: last diagnosis so the user can follow up with more detail
+var _tsLastDiagnosis = null;
+
+function partsRenderTroubleshoot() {
+  loadMachines();
+  // Preload manuals so the manual-picker dropdown has data. If the user has already
+  // visited the Manuals tab it's cached; otherwise fetch.
+  var ensureManuals = (Array.isArray(_partsData.manuals) && _partsData.manuals.length > 0)
+    ? Promise.resolve(_partsData.manuals)
+    : apiCall('GET', '/api/manuals?action=get_manuals').then(function(d){ _partsData.manuals = Array.isArray(d) ? d : []; return _partsData.manuals; }).catch(function(){ return []; });
+  ensureManuals.then(function(){
+    var panel = document.getElementById('parts-panel');
+    if (!panel) return;
+    var machineOptions = '<option value="">— Select a machine —</option>' + (_machinesList||[]).map(function(m){
+      return '<option value="'+m.id+'">'+ (m.name||'Machine') + (m.make?' · '+m.make:'') + (m.model?' '+m.model:'') + '</option>';
+    }).join('');
+    panel.innerHTML =
+      '<div style="padding:14px;max-width:780px;margin:0 auto">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+          '<span style="font-weight:700;font-size:.95rem">🔧 Troubleshoot</span>' +
+          '<span style="color:#64748b;font-size:.76rem">AI-assisted diagnosis using the machine\'s manual + web search</span>' +
+        '</div>' +
+        '<div style="background:#f0f7ff;border-left:3px solid #3b82f6;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:.78rem;color:#1e40af">' +
+          'Describe what\'s happening with the machine — strange noises, error codes, failed startup, product defects, anything. Claude reads the manual (if one is uploaded) and searches the web for known failure modes and service bulletins on this make/model, then gives you step-by-step diagnostic instructions.' +
+        '</div>' +
+        '<label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">Machine</label>' +
+        '<select id="ts-machine" style="'+INP+'" onchange="partsTsOnMachineChange()">' + machineOptions + '</select>' +
+        '<label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">Manual to reference <span style="color:#94a3b8">(optional — leave blank to use all manuals tagged to this machine)</span></label>' +
+        '<select id="ts-manual" style="'+INP+'"><option value="">— Auto-pick from this machine\'s manuals —</option></select>' +
+        '<label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">What\'s happening?</label>' +
+        '<textarea id="ts-symptoms" style="'+INP+';resize:vertical;min-height:110px;font-family:inherit" placeholder="e.g. Machine starts normally but after ~2 minutes there\'s a high-pitched squeal from the back of the unit and product output becomes inconsistent. No error codes on the panel. Noise gets worse if we push speed past 60%."></textarea>' +
+        '<div id="ts-status" style="margin:8px 0;font-size:.82rem;color:#64748b;min-height:20px"></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button style="'+BTN_P+';flex:1" onclick="partsRunDiagnose()">🔎 Diagnose</button>' +
+          '<button style="'+BTN+';background:#f1f5f9;color:#334155" onclick="partsRenderTroubleshoot()">Clear</button>' +
+        '</div>' +
+        '<div id="ts-result" style="margin-top:14px"></div>' +
+      '</div>';
+    // If we had a prior diagnosis, redraw it so tab-switching doesn't lose it
+    if (_tsLastDiagnosis) {
+      document.getElementById('ts-symptoms').value = _tsLastDiagnosis.symptoms || '';
+      if (_tsLastDiagnosis.machine_tag) document.getElementById('ts-machine').value = _tsLastDiagnosis.machine_tag;
+      partsTsOnMachineChange();
+      if (_tsLastDiagnosis.manual_id) {
+        // Set after dropdown rebuilt
+        setTimeout(function(){ var s=document.getElementById('ts-manual'); if(s) s.value = _tsLastDiagnosis.manual_id; }, 30);
+      }
+      partsRenderDiagnosisResult(_tsLastDiagnosis.response);
+    }
+  });
+}
+
+// When the user picks a machine, rebuild the manual dropdown to show only manuals tagged to it.
+function partsTsOnMachineChange() {
+  var tag = (document.getElementById('ts-machine')||{}).value || '';
+  var manuals = (_partsData.manuals || []).filter(function(m){
+    if (!tag) return false;
+    return (m.machine_tag || '') === tag;
+  });
+  var sel = document.getElementById('ts-manual');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Auto-pick from this machine\'s manuals ('+manuals.length+' available) —</option>' +
+    manuals.map(function(m){
+      var parts = parseInt(m.part_count)||0;
+      return '<option value="'+m.id+'">'+ (m.title||'Untitled') + ' · ' + parts + ' parts indexed</option>';
+    }).join('');
+}
+
+function partsRunDiagnose() {
+  var machineSel = document.getElementById('ts-machine');
+  var manualSel = document.getElementById('ts-manual');
+  var symptomsEl = document.getElementById('ts-symptoms');
+  var status = document.getElementById('ts-status');
+  var resultEl = document.getElementById('ts-result');
+  var machine_tag = machineSel ? machineSel.value : '';
+  var manual_id = manualSel ? manualSel.value : '';
+  var symptoms = (symptomsEl ? symptomsEl.value : '').trim();
+  if (!symptoms) { status.style.color = '#dc2626'; status.textContent = 'Describe the symptoms first.'; return; }
+  if (!machine_tag) { status.style.color = '#d97706'; status.textContent = 'Pick a machine — AI needs to know which manual to reference.'; return; }
+  status.style.color = '#64748b';
+  status.innerHTML = '<div class="spinner-wrap" style="display:inline-block;vertical-align:middle"><div class="spinner"></div></div> Reading manual + searching the web for this issue... (30-90 seconds)';
+  resultEl.innerHTML = '';
+  apiCall('POST', '/api/troubleshoot?action=diagnose', { machine_tag: machine_tag, manual_id: manual_id, symptoms: symptoms })
+    .then(function(r){
+      status.textContent = '';
+      _tsLastDiagnosis = { machine_tag: machine_tag, manual_id: manual_id, symptoms: symptoms, response: r };
+      partsRenderDiagnosisResult(r);
+    })
+    .catch(function(e){
+      status.style.color = '#dc2626';
+      status.textContent = 'Diagnosis failed: ' + ((e && e.message) || 'unknown');
+    });
+}
+
+function partsRenderDiagnosisResult(r) {
+  var resultEl = document.getElementById('ts-result');
+  if (!resultEl) return;
+  if (!r || !r.diagnosis) {
+    resultEl.innerHTML = '<div style="padding:20px;color:#dc2626">Empty response from AI. Click Diagnose to retry.</div>';
+    return;
+  }
+  var d = r.diagnosis;
+  var manualRefs = r.manual_refs || [];
+  // Build a map from manual_id to index-in-_partsData.manuals for page-jump links
+  var manualIndexById = {};
+  (_partsData.manuals || []).forEach(function(m, i){ manualIndexById[m.id] = i; });
+  // Helper: render a clickable page link. Page refs without a manual id fall back to the first attached manual.
+  function pageLink(pageNum) {
+    if (!pageNum) return '';
+    var ref = manualRefs[0];
+    if (!ref) return ' <span style="color:#94a3b8;font-size:.74rem">(p.'+pageNum+')</span>';
+    var idx = manualIndexById[ref.id];
+    if (idx === undefined) return ' <span style="color:#94a3b8;font-size:.74rem">(p.'+pageNum+')</span>';
+    return ' <a href="#" onclick="partsViewManual('+idx+','+pageNum+');return false" style="color:#2563eb;font-size:.74rem;text-decoration:underline">📖 p.'+pageNum+'</a>';
+  }
+  function partLink(pn, desc) {
+    if (!pn) return '';
+    var safe = (pn || '').replace(/'/g, "\\'").replace(/</g, '&lt;');
+    var descSafe = (desc || '').replace(/'/g, "\\'").replace(/</g, '&lt;');
+    return '<a href="#" onclick="partsGotoCrossRefForPart(\''+safe+'\',\''+descSafe+'\');return false" style="font-family:monospace;color:#2563eb;font-weight:600;text-decoration:underline">'+pn+'</a>';
+  }
+  function esc(s) { return String(s||'').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  var confidenceBadge = function(conf) {
+    var colors = { high: ['#dcfce7','#166534'], medium: ['#fef3c7','#92400e'], low: ['#f1f5f9','#64748b'] };
+    var c = colors[conf] || colors.low;
+    return '<span style="background:'+c[0]+';color:'+c[1]+';padding:1px 6px;border-radius:8px;font-size:.66rem;font-weight:600;text-transform:uppercase;margin-left:6px">'+conf+'</span>';
+  };
+  var html = '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
+  // Header
+  html += '<div style="background:#1a3a6b;color:#fff;padding:12px 16px"><div style="font-weight:700;font-size:.95rem">Diagnosis — '+esc(r.machine_label||'')+'</div>';
+  if (manualRefs.length > 0) {
+    html += '<div style="font-size:.76rem;opacity:.85;margin-top:4px">Referenced '+manualRefs.length+' manual'+(manualRefs.length===1?'':'s')+': '+manualRefs.map(function(m){ return esc(m.title) + (m.trimmed ? ' (first 100 of '+m.totalPages+' pages)' : ''); }).join(' · ')+'</div>';
+  } else {
+    html += '<div style="font-size:.76rem;opacity:.85;margin-top:4px">No manual on file for this machine — diagnosis is based on web sources only.</div>';
+  }
+  html += '</div>';
+  // Summary
+  if (d.summary) {
+    html += '<div style="padding:14px 16px;background:#f0f7ff;border-bottom:1px solid #e2e8f0;font-size:.88rem;color:#1e40af;line-height:1.5">'+esc(d.summary)+'</div>';
+  }
+  // Safety warnings
+  if (Array.isArray(d.safety_warnings) && d.safety_warnings.length) {
+    html += '<div style="padding:12px 16px;background:#fef2f2;border-bottom:1px solid #e2e8f0">' +
+      '<div style="font-weight:700;font-size:.8rem;color:#991b1b;margin-bottom:6px">⚠️ Safety — do this FIRST</div>' +
+      '<ul style="margin:0;padding-left:22px;font-size:.82rem;color:#7f1d1d;line-height:1.6">' +
+      d.safety_warnings.map(function(s){ return '<li>'+esc(s)+'</li>'; }).join('') +
+      '</ul></div>';
+  }
+  // Likely causes
+  if (Array.isArray(d.likely_causes) && d.likely_causes.length) {
+    html += '<div style="padding:12px 16px;border-bottom:1px solid #e2e8f0">' +
+      '<div style="font-weight:700;font-size:.82rem;color:#334155;margin-bottom:8px">Likely Causes</div>' +
+      d.likely_causes.map(function(c){
+        return '<div style="background:#f8fafc;border-radius:8px;padding:10px;margin-bottom:6px">' +
+          '<div style="font-weight:600;font-size:.85rem;color:#1a3a6b">'+esc(c.cause||'')+confidenceBadge(c.confidence||'low')+'</div>' +
+          (c.reasoning ? '<div style="color:#64748b;font-size:.78rem;margin-top:4px">'+esc(c.reasoning)+'</div>' : '') +
+          '</div>';
+      }).join('') + '</div>';
+  }
+  // Diagnostic steps
+  if (Array.isArray(d.diagnostic_steps) && d.diagnostic_steps.length) {
+    html += '<div style="padding:12px 16px;border-bottom:1px solid #e2e8f0">' +
+      '<div style="font-weight:700;font-size:.82rem;color:#334155;margin-bottom:8px">Diagnostic Steps</div>' +
+      '<ol style="margin:0;padding-left:22px;font-size:.84rem;color:#334155;line-height:1.6">' +
+      d.diagnostic_steps.map(function(s){
+        var pg = s.manual_page ? pageLink(s.manual_page) : '';
+        return '<li style="margin-bottom:8px"><div>'+esc(s.instruction||'')+pg+'</div>' +
+          (s.expected_result ? '<div style="color:#64748b;font-size:.78rem;margin-top:2px">Expected: '+esc(s.expected_result)+'</div>' : '') +
+          '</li>';
+      }).join('') +
+      '</ol></div>';
+  }
+  // Parts to check
+  if (Array.isArray(d.parts_to_check) && d.parts_to_check.length) {
+    html += '<div style="padding:12px 16px;border-bottom:1px solid #e2e8f0">' +
+      '<div style="font-weight:700;font-size:.82rem;color:#334155;margin-bottom:8px">Parts to Inspect / Replace</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;font-size:.78rem;border-collapse:collapse">' +
+      '<thead><tr style="background:#f8fafc"><th style="padding:6px 10px;text-align:left;color:#64748b;font-weight:600">Part #</th><th style="padding:6px 10px;text-align:left;color:#64748b;font-weight:600">Name</th><th style="padding:6px 10px;text-align:left;color:#64748b;font-weight:600">Why</th><th style="padding:6px 10px;text-align:left;color:#64748b;font-weight:600">Manual</th></tr></thead><tbody>' +
+      d.parts_to_check.map(function(p){
+        return '<tr style="border-bottom:1px solid #f1f5f9"><td style="padding:6px 10px">'+partLink(p.part_number, p.name)+'</td><td style="padding:6px 10px">'+esc(p.name||'')+'</td><td style="padding:6px 10px;color:#64748b">'+esc(p.reason||'')+'</td><td style="padding:6px 10px">'+(p.manual_page ? pageLink(p.manual_page) : '<span style="color:#94a3b8">—</span>')+'</td></tr>';
+      }).join('') +
+      '</tbody></table></div></div>';
+  }
+  // Web findings
+  if (Array.isArray(d.web_findings) && d.web_findings.length) {
+    html += '<div style="padding:12px 16px;border-bottom:1px solid #e2e8f0">' +
+      '<div style="font-weight:700;font-size:.82rem;color:#334155;margin-bottom:8px">🌐 Web Sources</div>' +
+      d.web_findings.map(function(w){
+        var href = String(w.url||'').trim();
+        var hrefSafe = href ? href.replace(/"/g, '&quot;') : '';
+        return '<div style="background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:5px">' +
+          (hrefSafe ? '<a href="'+hrefSafe+'" target="_blank" rel="noopener" style="color:#2563eb;font-weight:600;font-size:.82rem;text-decoration:underline">'+esc(w.title||href)+'</a>' : '<span style="font-weight:600;font-size:.82rem">'+esc(w.title||'')+'</span>') +
+          (w.summary ? '<div style="color:#64748b;font-size:.76rem;margin-top:2px">'+esc(w.summary)+'</div>' : '') +
+          '</div>';
+      }).join('') + '</div>';
+  }
+  // Next actions
+  if (Array.isArray(d.next_actions) && d.next_actions.length) {
+    html += '<div style="padding:12px 16px">' +
+      '<div style="font-weight:700;font-size:.82rem;color:#334155;margin-bottom:8px">Next Actions</div>' +
+      '<ul style="margin:0;padding-left:22px;font-size:.84rem;color:#334155;line-height:1.6">' +
+      d.next_actions.map(function(a){ return '<li>'+esc(a)+'</li>'; }).join('') +
+      '</ul></div>';
+  }
+  html += '</div>';
+  resultEl.innerHTML = html;
+}

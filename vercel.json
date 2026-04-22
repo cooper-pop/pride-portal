@@ -28,6 +28,10 @@
     "api/manuals.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/troubleshoot.js": {
+      "maxDuration": 300,
+      "memory": 1024
     }
   },
   "headers": [
