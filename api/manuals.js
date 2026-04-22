@@ -12,6 +12,36 @@ function configureCloudinary() {
   });
 }
 
+// Seed parts_inventory with zero-qty / zero-cost rows for every NEW part number
+// discovered from a manual. Existing rows are left untouched so user-adjusted
+// qty / cost is preserved. Invoice imports later fill in the real cost via their
+// own upsert path (which matches on part_number).
+async function seedInventoryFromManualParts(sql, parts, companyId, machineTag, manualTitle) {
+  let seeded = 0;
+  const seen = new Set();
+  for (const p of (parts || [])) {
+    const pn = String(p.part_number || '').trim();
+    if (!pn) continue;
+    const key = pn.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const existing = await sql`SELECT id FROM parts_inventory
+        WHERE company_id = ${companyId} AND LOWER(part_number) = LOWER(${pn}) LIMIT 1`;
+      if (existing.length > 0) continue;
+      const desc = String(p.description || '').trim().slice(0, 200) || ('From ' + manualTitle);
+      await sql`INSERT INTO parts_inventory
+        (company_id, part_number, description, quantity, min_quantity, unit_cost, avg_cost, total_value, machine_tag, notes)
+        VALUES (${companyId}, ${pn}, ${desc}, 0, 0, 0, 0, 0, ${machineTag || ''}, ${'From manual: ' + manualTitle})`;
+      seeded++;
+    } catch (e) {
+      // Don't abort the whole seed pass on one failure — just log and move on
+      console.error('seedInventoryFromManualParts failed for', pn, e.message);
+    }
+  }
+  return seeded;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -117,6 +147,7 @@ module.exports = async function handler(req, res) {
       }
 
       // Insert extracted parts (deduped)
+      let inventorySeeded = 0;
       if (extractedParts.length > 0) {
         const seen = new Set();
         for (const p of extractedParts) {
@@ -131,12 +162,15 @@ module.exports = async function handler(req, res) {
             VALUES (${manual.id}, ${company_id}, ${pn}, ${desc}, ${machine_tag || ''}, ${pg})`;
         }
         await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${manual.id}`;
+        // Also seed the main parts_inventory so these show up as catalog rows (qty=0, $0.00)
+        inventorySeeded = await seedInventoryFromManualParts(sql, extractedParts, company_id, machine_tag, String(title).trim());
       }
 
       return res.json({
         ok: true,
         manual,
         extracted_count: extractedParts.length,
+        inventory_seeded: inventorySeeded,
         extraction_error: extractionError
       });
     }
@@ -187,7 +221,9 @@ module.exports = async function handler(req, res) {
           VALUES (${id}, ${company_id}, ${pn}, ${desc}, ${manual.machine_tag || ''}, ${pg})`;
       }
       await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${id}`;
-      return res.json({ ok: true, extracted_count: seen.size });
+      // Seed inventory with any NEW part numbers (never clobbers existing rows)
+      const inventorySeeded = await seedInventoryFromManualParts(sql, extractedParts, company_id, manual.machine_tag, manual.title || '');
+      return res.json({ ok: true, extracted_count: seen.size, inventory_seeded: inventorySeeded });
     }
 
     if (action === 'save_manual_metadata') {
