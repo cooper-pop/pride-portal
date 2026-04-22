@@ -25,8 +25,11 @@ module.exports = async function handler(req, res) {
 
   try {
     if (type === 'rankings' || !type) {
+      // Group by normalized name so a trimmer who shows up with varying casing,
+      // trailing whitespace, or stale/missing emp_number collapses into one row.
+      // MAX(full_name) picks a single representative display name.
       const rankings = await sql`
-        SELECT te.emp_number, te.full_name,
+        SELECT MAX(te.full_name) AS full_name,
           COUNT(DISTINCT tr.id) as days_worked,
           ROUND(AVG(te.realtime_lbs_per_hour)::NUMERIC, 2) as avg_lph,
           ROUND(AVG(te.eighthour_lbs_per_hour)::NUMERIC, 2) as avg_8hr_lph,
@@ -40,7 +43,9 @@ module.exports = async function handler(req, res) {
         WHERE tr.company_id = ${user.company_id}
           AND tr.report_date >= ${sinceStr}
           AND te.realtime_lbs_per_hour IS NOT NULL
-        GROUP BY te.emp_number, te.full_name
+          AND te.full_name IS NOT NULL
+          AND TRIM(te.full_name) <> ''
+        GROUP BY LOWER(TRIM(te.full_name))
         ORDER BY avg_lph DESC NULLS LAST
       `;
       const shiftAvgResult = await sql`
@@ -68,17 +73,34 @@ module.exports = async function handler(req, res) {
       return res.json({ trends, trimmer_name, days: parseInt(days) });
     }
     if (type === 'daily_rankings') {
+      // Same name-normalization as rankings, applied per-day via a CTE so the RANK()s
+      // operate on deduped rows. Also fixes a pre-existing "ASCNULLS" typo.
       const daily = await sql`
-        SELECT te.emp_number, te.full_name, tr.report_date,
-          te.realtime_lbs_per_hour, te.fillet_yield_pct, te.nugget_yield_pct,
-          te.misccut_yield_pct, te.total_yield_pct,
-          RANK() OVER (PARTITION BY tr.report_date ORDER BY te.realtime_lbs_per_hour DESC NULLS LAST) as lbshr_rank,
-          RANK() OVER (PARTITION BY tr.report_date ORDER BY te.fillet_yield_pct DESC NULLS LAST) as fillet_rank,
-          RANK() OVER (PARTITION BY tr.report_date ORDER BY te.nugget_yield_pct DESC NULLS LAST) as nugget_rank,
-          RANK() OVER (PARTITION BY tr.report_date ORDER BY te.misccut_yield_pct ASCNULLS LAST) as misccut_rank
-        FROM trimmer_entries te JOIN trimmer_reports tr ON tr.id = te.report_id
-        WHERE tr.company_id = ${user.company_id} AND tr.report_date >= ${sinceStr}
-        ORDER BY tr.report_date DESC, lbshr_rank ASC
+        WITH agg AS (
+          SELECT
+            MAX(te.full_name) AS full_name,
+            tr.report_date,
+            AVG(te.realtime_lbs_per_hour) AS realtime_lbs_per_hour,
+            AVG(te.fillet_yield_pct) AS fillet_yield_pct,
+            AVG(te.nugget_yield_pct) AS nugget_yield_pct,
+            AVG(te.misccut_yield_pct) AS misccut_yield_pct,
+            AVG(te.total_yield_pct) AS total_yield_pct
+          FROM trimmer_entries te JOIN trimmer_reports tr ON tr.id = te.report_id
+          WHERE tr.company_id = ${user.company_id}
+            AND tr.report_date >= ${sinceStr}
+            AND te.full_name IS NOT NULL
+            AND TRIM(te.full_name) <> ''
+          GROUP BY LOWER(TRIM(te.full_name)), tr.report_date
+        )
+        SELECT full_name, report_date,
+          realtime_lbs_per_hour, fillet_yield_pct, nugget_yield_pct,
+          misccut_yield_pct, total_yield_pct,
+          RANK() OVER (PARTITION BY report_date ORDER BY realtime_lbs_per_hour DESC NULLS LAST) as lbshr_rank,
+          RANK() OVER (PARTITION BY report_date ORDER BY fillet_yield_pct DESC NULLS LAST) as fillet_rank,
+          RANK() OVER (PARTITION BY report_date ORDER BY nugget_yield_pct DESC NULLS LAST) as nugget_rank,
+          RANK() OVER (PARTITION BY report_date ORDER BY misccut_yield_pct ASC NULLS LAST) as misccut_rank
+        FROM agg
+        ORDER BY report_date DESC, lbshr_rank ASC
       `;
       return res.json({ daily_rankings: daily, days: parseInt(days) });
     }
