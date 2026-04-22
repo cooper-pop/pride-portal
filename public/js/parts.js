@@ -26,14 +26,12 @@ function loadMachines(cb){
     _machinesFetchedAt=Date.now();
     _machinesLoadInFlight=false;
     if(cb)cb();
-    else{
-      // Refresh currently visible tab so fresh list shows without a manual tab switch.
-      // (The nested loadMachines call inside these renders is a cache hit, no loop.)
-      if(typeof _partsTab!=='undefined'){
-        if(_partsTab==='machines'&&typeof partsRenderMachines==='function')partsRenderMachines();
-        else if(_partsTab==='inventory'&&typeof partsRenderInventory==='function')partsRenderInventory();
-      }
-    }
+    // NOTE: do NOT auto-re-render the current tab here. partsAddPartForm / partsAdjustForm
+    // / partsUploadManualForm all call loadMachines() at their top, and they REPLACE the
+    // parts-panel with their own form markup. An auto-re-render fires ~300ms later and
+    // clobbers the form with the inventory list. Callers that need to react to the fresh
+    // list should pass an explicit cb. Stale labels in _machinesList for a sub-second is
+    // an acceptable trade for not eating user-visible sub-forms.
   }).catch(function(){_machinesLoadInFlight=false;if(cb)cb();});
 }
 function saveMachines(){_machinesFetchedAt=Date.now();apiCall('POST','/api/parts?action=save_machines',{machines:_machinesList}).catch(function(){});}
