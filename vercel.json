@@ -32,6 +32,9 @@
     "api/troubleshoot.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/flavor.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

@@ -1,478 +1,277 @@
-import { neon } from '@neondatabase/serverless';
+const { neon } = require('@neondatabase/serverless');
+const jwt = require('jsonwebtoken');
 
-const sql = neon(process.env.DATABASE_URL);
+// ═══════════════════════════════════════════════════════════════════════════
+// Flavor Sample API
+// Tracks per-pond flavor grades over time so the processing plant knows which
+// ponds are On Flavor (Good) and within the 14-day harvest window.
+//
+// Grades (stored as strings):
+//   off_5, off_4, off_3, off_2, off_1  — bad → barely off; cannot harvest
+//   good_resample_1     — first Good sample; 14-day window OPENS here
+//   good_resample_2     — second Good sample
+//   good_ready          — Good - Ready to Harvest
+//   truck_sample        — last check on delivery (effectively harvested)
+//
+// Tables (named flv_* so they never collide with any abandoned flavor_* tables
+// from earlier experiments):
+//   flv_farmers        — producers (e.g., Battle Fish North, Adams Lane)
+//   flv_pond_groups    — farms/areas under a farmer (New Ponds, Denton, ...)
+//   flv_ponds          — individual ponds under a pond group (1 North, 2 East)
+//   flv_samples        — one row per sample event (a pond can have many)
+// ═══════════════════════════════════════════════════════════════════════════
 
-export default async function handler(req, res) {
-  const { method } = req;
-  
-  // Initialize tables on first request
-  try {
-    await sql`CREATE TABLE IF NOT EXISTS flavor_ponds (
-      pond_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      producer_name TEXT NOT NULL,
-      pond_name TEXT NOT NULL,
-      active BOOLEAN DEFAULT true,
-      company_id INTEGER DEFAULT 1,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(producer_name, pond_name, company_id)
-    )`;
-    
-    await sql`CREATE TABLE IF NOT EXISTS flavor_samples (
-      sample_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      pond_id UUID NOT NULL REFERENCES flavor_ponds(pond_id),
-      sample_date DATE NOT NULL,
-      pond_sample_status TEXT DEFAULT 'pending' CHECK (pond_sample_status IN ('pending', 'completed', 'failed')),
-      pond_sample_result TEXT CHECK (pond_sample_result IN ('good_for_resample', 'good', 'off_1', 'off_2', 'off_3', 'off_4', 'off_5')),
-      truck_sample_status TEXT DEFAULT 'pending' CHECK (truck_sample_status IN ('pending', 'completed', 'failed', 'n/a')),
-      truck_sample_result TEXT CHECK (truck_sample_result IN ('pass', 'fail')),
-      teresa_status TEXT DEFAULT 'pending' CHECK (teresa_status IN ('pending', 'completed', 'failed', 'n/a')),
-      logged_status TEXT DEFAULT 'pending' CHECK (logged_status IN ('pending', 'completed', 'failed', 'n/a')),
-      sampled_by TEXT,
-      sampled_at TIMESTAMPTZ,
-      truck_by TEXT,
-      truck_at TIMESTAMPTZ,
-      teresa_by TEXT,
-      teresa_at TIMESTAMPTZ,
-      logged_by TEXT,
-      logged_at TIMESTAMPTZ,
-      notes TEXT,
-      company_id INTEGER DEFAULT 1,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(pond_id, sample_date)
-    )`;
-    
-    await sql`CREATE INDEX IF NOT EXISTS flavor_samples_date_idx ON flavor_samples(sample_date)`;
-    await sql`CREATE INDEX IF NOT EXISTS flavor_samples_pond_idx ON flavor_samples(pond_id)`;
-  } catch (initError) {
-    console.log('Table initialization (likely already exists):', initError.message);
-  }
-  
-  try {
-    if (method === 'GET') {
-      const { action } = req.query;
-      
-      if (action === 'producers') {
-        const producers = await sql`
-          SELECT DISTINCT producer_name, COUNT(*) as pond_count
-          FROM flavor_ponds 
-          GROUP BY producer_name 
-          ORDER BY producer_name
-        `;
-        return res.json(producers);
-      }
-      
-      if (action === 'ponds') {
-        const { producer } = req.query;
-        let query = `
-          SELECT pond_id, producer_name, pond_name, active 
-          FROM flavor_ponds 
-        `;
-        let params = [];
-        
-        if (producer) {
-          query += ` WHERE producer_name = $1`;
-          params = [producer];
-        }
-        query += ` ORDER BY producer_name, pond_name`;
-        
-        const ponds = await sql(query, params);
-        return res.json(ponds);
-      }
-      
-      if (action === 'samples') {
-        const { start_date, end_date, producer, pond_id } = req.query;
-        
-        let query = `
-          SELECT s.*, p.producer_name, p.pond_name,
-                 u1.full_name as sampled_by_name,
-                 u2.full_name as truck_by_name, 
-                 u3.full_name as teresa_by_name,
-                 u4.full_name as logged_by_name
-          FROM flavor_samples s
-          JOIN flavor_ponds p ON s.pond_id = p.pond_id
-          LEFT JOIN users u1 ON s.sampled_by = u1.username
-          LEFT JOIN users u2 ON s.truck_by = u2.username  
-          LEFT JOIN users u3 ON s.teresa_by = u3.username
-          LEFT JOIN users u4 ON s.logged_by = u4.username
-          WHERE 1=1
-        `;
-        let params = [];
-        let paramCount = 0;
-        
-        if (start_date) {
-          paramCount++;
-          query += ` AND s.sample_date >= $${paramCount}`;
-          params.push(start_date);
-        }
-        if (end_date) {
-          paramCount++;
-          query += ` AND s.sample_date <= $${paramCount}`;
-          params.push(end_date);
-        }
-        if (producer) {
-          paramCount++;
-          query += ` AND p.producer_name = $${paramCount}`;
-          params.push(producer);
-        }
-        if (pond_id) {
-          paramCount++;
-          query += ` AND s.pond_id = $${paramCount}`;
-          params.push(pond_id);
-        }
-        
-        query += ` ORDER BY s.sample_date DESC, p.producer_name, p.pond_name`;
-        
-        const samples = await sql(query, params);
-        return res.json(samples);
-      }
-      
-      if (action === 'seed_initial') {
-        // Clear existing data if requested
-        const { reset } = req.query;
-        if (reset === 'true') {
-          await sql`DELETE FROM flavor_samples`;
-          await sql`DELETE FROM flavor_ponds`;
-        }
-        
-        // Producer/pond combinations from your Excel file (cleaned up)
-        const producers = [
-          { producer: 'A&K FARMERS', ponds: ['P22-5', 'P23', 'P29', 'P31', 'P35', 'P36', 'P37', 'P27'] },
-          { producer: 'ALAN JOHNSON', ponds: ['P2', 'P3'] },
-          { producer: 'ADAMS LANE', ponds: ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D5-ALT'] },
-          { producer: 'AARON YODER CATFISH', ponds: ['P2', 'P4', 'P5', 'P6'] },
-          { producer: 'AUSTIN HARING', ponds: ['P4'] },
-          { producer: 'BCH FARMERS', ponds: ['P1', 'P2', 'P3', 'P4', 'P5', 'P8', 'P9', 'P10', 'P11', 'P12', 'P27', 'P9-5', 'P5-6'] },
-          { producer: 'BRADEN FARMERS', ponds: ['P6'] },
-          { producer: 'BRADEN HARING', ponds: ['P5'] },
-          { producer: 'BATTLE FISH NORTH', ponds: ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8'] },
-          { producer: 'CATFISH ENTERPRISE', ponds: ['P1', 'P2', 'P3', 'P4', 'P5'] },
-          { producer: 'GIESBRECHT', ponds: ['P1', 'P2', 'P3', 'P4'] },
-          { producer: 'RIPPLING WATER', ponds: ['P1', 'P2', 'P3'] },
-          { producer: 'WCC', ponds: ['P1', 'P2', 'P3', 'P4'] },
-          { producer: 'BEN SAUL/SHIRK', ponds: ['P1', 'P2', 'P3'] },
-          { producer: 'SCHMIDT', ponds: ['P1', 'P2'] }
-        ];
-        
-        let inserted = 0;
-        for (const { producer, ponds } of producers) {
-          for (const pond of ponds) {
-            try {
-              await sql`
-                INSERT INTO flavor_ponds (producer_name, pond_name) 
-                VALUES (${producer}, ${pond})
-                ON CONFLICT (producer_name, pond_name, company_id) DO NOTHING
-              `;
-              inserted++;
-            } catch (e) {
-              console.log(`Skip duplicate: ${producer} - ${pond}`);
-            }
-          }
-        }
-        
-        return res.json({ success: true, message: `${inserted} producer/pond combinations initialized` });
-      }
-      
-      if (action === 'calendar') {
-        const { month, year } = req.query;
-        
-        if (!month || !year) {
-          return res.status(400).json({ error: 'Month and year are required' });
-        }
-        
-        const monthStr = month.toString().padStart(2, '0');
-        const yearStr = year.toString();
-        const startDate = `${yearStr}-${monthStr}-01`;
-        const endDate = `${yearStr}-${monthStr}-31`;
-        
-        const samples = await sql`
-          SELECT s.sample_date, s.pond_id, s.pond_sample_status, s.pond_sample_result, 
-                 s.truck_sample_status, s.truck_sample_result, s.teresa_status, s.logged_status, 
-                 p.producer_name, p.pond_name, s.sampled_by, s.sampled_at, s.notes
-          FROM flavor_samples s
-          JOIN flavor_ponds p ON s.pond_id = p.pond_id
-          WHERE s.sample_date >= ${startDate} AND s.sample_date <= ${endDate}
-          ORDER BY s.sample_date, p.producer_name, p.pond_name
-        `;
-        return res.json(samples);
-      }
-      
-      if (action === 'farmer_tracking') {
-        const { start_date, end_date } = req.query;
-        
-        // Get all farmers with their ponds and latest sample data
-        const farmerData = await sql`
-          SELECT 
-            p.producer_name,
-            p.pond_name,
-            p.pond_id,
-            s.sample_date,
-            s.pond_sample_status,
-            s.pond_sample_result,
-            s.truck_sample_status,
-            s.truck_sample_result,
-            s.teresa_status,
-            s.logged_status,
-            s.sampled_by,
-            s.notes
-          FROM flavor_ponds p
-          LEFT JOIN (
-            SELECT DISTINCT ON (pond_id) 
-              pond_id, sample_date, pond_sample_status, pond_sample_result,
-              truck_sample_status, truck_sample_result, teresa_status, logged_status,
-              sampled_by, notes
-            FROM flavor_samples 
-            ${start_date && end_date ? sql`WHERE sample_date BETWEEN ${start_date} AND ${end_date}` : sql``}
-            ORDER BY pond_id, sample_date DESC
-          ) s ON p.pond_id = s.pond_id
-          ORDER BY p.producer_name, p.pond_name
-        `;
-        
-        // Group by farmer
-        const grouped = {};
-        farmerData.forEach(row => {
-          if (!grouped[row.producer_name]) {
-            grouped[row.producer_name] = [];
-          }
-          grouped[row.producer_name].push({
-            pond_id: row.pond_id,
-            pond_name: row.pond_name,
-            sample_date: row.sample_date,
-            pond_sample_status: row.pond_sample_status,
-            pond_sample_result: row.pond_sample_result,
-            truck_sample_status: row.truck_sample_status,
-            truck_sample_result: row.truck_sample_result,
-            teresa_status: row.teresa_status,
-            logged_status: row.logged_status,
-            sampled_by: row.sampled_by,
-            notes: row.notes
-          });
-        });
-        
-        return res.json(grouped);
-      }
-      
-      if (action === 'harvest_readiness') {
-        // Get ponds ranked by harvest readiness and quality status
-        const readinessData = await sql`
-          WITH latest_samples AS (
-            SELECT DISTINCT ON (p.pond_id) 
-              p.pond_id,
-              p.producer_name,
-              p.pond_name,
-              s.sample_date,
-              s.pond_sample_result,
-              s.truck_sample_result,
-              s.notes,
-              s.sampled_by,
-              EXTRACT(DAY FROM NOW() - s.sample_date) as days_since_sample
-            FROM flavor_ponds p
-            LEFT JOIN flavor_samples s ON p.pond_id = s.pond_id
-            WHERE s.pond_sample_result IS NOT NULL
-            ORDER BY p.pond_id, s.sample_date DESC
-          )
-          SELECT 
-            *,
-            CASE 
-              WHEN pond_sample_result IN ('good_for_resample', 'good') AND days_since_sample <= 30 THEN 'good_to_go'
-              WHEN pond_sample_result = 'off_1' AND days_since_sample <= 30 THEN 'very_close'
-              WHEN pond_sample_result = 'off_2' AND days_since_sample <= 30 THEN 'close'
-              WHEN pond_sample_result = 'off_3' AND days_since_sample <= 30 THEN 'moderate'
-              WHEN pond_sample_result = 'off_4' AND days_since_sample <= 30 THEN 'distant'
-              WHEN pond_sample_result = 'off_5' AND days_since_sample <= 30 THEN 'very_distant'
-              WHEN days_since_sample > 30 THEN 'expired'
-              ELSE 'needs_sample'
-            END as readiness_status,
-            CASE 
-              WHEN pond_sample_result IN ('good_for_resample', 'good') AND days_since_sample > 25 AND days_since_sample <= 30 THEN true
-              ELSE false
-            END as needs_alert
-          FROM latest_samples
-          ORDER BY 
-            CASE pond_sample_result
-              WHEN 'good' THEN 1
-              WHEN 'good_for_resample' THEN 2
-              WHEN 'off_1' THEN 3
-              WHEN 'off_2' THEN 4
-              WHEN 'off_3' THEN 5
-              WHEN 'off_4' THEN 6
-              WHEN 'off_5' THEN 7
-              ELSE 8
-            END,
-            days_since_sample ASC
-        `;
-        
-        // Group by readiness status for dashboard display
-        const grouped = {
-          good_to_go: [],
-          approaching_flavor: [],
-          needs_attention: [],
-          expired: []
-        };
-        
-        readinessData.forEach(pond => {
-          if (pond.readiness_status === 'good_to_go') {
-            grouped.good_to_go.push(pond);
-          } else if (['very_close', 'close', 'moderate'].includes(pond.readiness_status)) {
-            grouped.approaching_flavor.push(pond);
-          } else if (pond.needs_alert || pond.readiness_status === 'expired') {
-            grouped.needs_attention.push(pond);
-          }
-        });
-        
-        return res.json({
-          summary: {
-            good_to_go: grouped.good_to_go.length,
-            approaching_flavor: grouped.approaching_flavor.length,
-            needs_attention: grouped.needs_attention.length,
-            total_tracked: readinessData.length
-          },
-          ponds: grouped,
-          alerts: readinessData.filter(pond => pond.needs_alert)
-        });
-      }
-    }
-    
-    if (method === 'POST') {
-      const { action } = req.body;
-      
-      if (action === 'create_sample') {
-        const { pond_id, sample_date, pond_sample_result, truck_sample_result, sampled_by, notes } = req.body;
-        
-        const [sample] = await sql`
-          INSERT INTO flavor_samples (
-            pond_id, 
-            sample_date, 
-            pond_sample_status,
-            pond_sample_result,
-            truck_sample_status,
-            truck_sample_result,
-            sampled_by, 
-            sampled_at,
-            notes
-          )
-          VALUES (
-            ${pond_id}, 
-            ${sample_date}, 
-            'completed',
-            ${pond_sample_result},
-            ${truck_sample_result ? 'completed' : 'pending'},
-            ${truck_sample_result},
-            ${sampled_by}, 
-            NOW(),
-            ${notes}
-          )
-          RETURNING *
-        `;
-        return res.json(sample);
-      }
-      
-      if (action === 'update_status') {
-        const { sample_id, status_type, status, updated_by } = req.body;
-        
-        const updateField = `${status_type}_status`;
-        const updateByField = `${status_type}_by`;
-        const updateAtField = `${status_type}_at`;
-        
-        const [sample] = await sql`
-          UPDATE flavor_samples 
-          SET ${sql(updateField)} = ${status},
-              ${sql(updateByField)} = ${updated_by},
-              ${sql(updateAtField)} = NOW()
-          WHERE sample_id = ${sample_id}
-          RETURNING *
-        `;
-        return res.json(sample);
-      }
-      
-      if (action === 'update_sample_result') {
-        const { sample_id, field, value, updated_by } = req.body;
-        
-        // Validate field name for security
-        const allowedFields = ['pond_sample_result', 'truck_sample_result', 'pond_sample_status', 'truck_sample_status', 'teresa_status', 'logged_status'];
-        if (!allowedFields.includes(field)) {
-          return res.status(400).json({ error: 'Invalid field name' });
-        }
-        
-        const updateQuery = `
-          UPDATE flavor_samples 
-          SET ${field} = $1,
-              updated_at = NOW()
-          WHERE sample_id = $2
-          RETURNING *
-        `;
-        
-        const [sample] = await sql(updateQuery, [value, sample_id]);
-        return res.json(sample);
-      }
-      
-      if (action === 'bulk_update') {
-        const { sample_ids, status_type, status, updated_by } = req.body;
-        
-        const updateField = `${status_type}_status`;
-        const updateByField = `${status_type}_by`;
-        const updateAtField = `${status_type}_at`;
-        
-        await sql`
-          UPDATE flavor_samples 
-          SET ${sql(updateField)} = ${status},
-              ${sql(updateByField)} = ${updated_by},
-              ${sql(updateAtField)} = NOW()
-          WHERE sample_id = ANY(${sample_ids})
-        `;
-        
-        return res.json({ success: true, updated: sample_ids.length });
-      }
-      
-      if (action === 'add_pond') {
-        const { producer_name, pond_name } = req.body;
-        
-        const [pond] = await sql`
-          INSERT INTO flavor_ponds (producer_name, pond_name, active)
-          VALUES (${producer_name}, ${pond_name}, true)
-          RETURNING *
-        `;
-        return res.json(pond);
-      }
-    }
-    
-    if (method === 'PUT') {
-      const { sample_id } = req.body;
-      const updateData = { ...req.body };
-      delete updateData.sample_id;
-      
-      const setClause = Object.keys(updateData)
-        .map((key, index) => `${key} = $${index + 2}`)
-        .join(', ');
-      
-      const values = [sample_id, ...Object.values(updateData)];
-      
-      const [sample] = await sql(`
-        UPDATE flavor_samples 
-        SET ${setClause}
-        WHERE sample_id = $1
-        RETURNING *
-      `, values);
-      
-      return res.json(sample);
-    }
-    
-    if (method === 'DELETE') {
-      const { sample_id } = req.body;
-      
-      await sql`
-        DELETE FROM flavor_samples 
-        WHERE sample_id = ${sample_id}
-      `;
-      
-      return res.json({ success: true });
-    }
-    
-    return res.status(405).json({ error: 'Method not allowed' });
-    
-  } catch (error) {
-    console.error('Flavor API error:', error);
-    return res.status(500).json({ error: error.message });
-  }
+const VALID_GRADES = new Set([
+  'off_5','off_4','off_3','off_2','off_1',
+  'good_resample_1','good_resample_2','good_ready','truck_sample'
+]);
+
+async function ensureTables(sql) {
+  await sql`CREATE TABLE IF NOT EXISTS flv_farmers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id INT NOT NULL,
+    name TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    archived BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_flv_farmers_co ON flv_farmers(company_id) WHERE archived = false`;
+
+  await sql`CREATE TABLE IF NOT EXISTS flv_pond_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id INT NOT NULL,
+    farmer_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    archived BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_flv_groups_co ON flv_pond_groups(company_id, farmer_id) WHERE archived = false`;
+
+  await sql`CREATE TABLE IF NOT EXISTS flv_ponds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id INT NOT NULL,
+    pond_group_id UUID NOT NULL,
+    number TEXT NOT NULL,
+    acres NUMERIC(6,2),
+    notes TEXT DEFAULT '',
+    archived BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_flv_ponds_co ON flv_ponds(company_id, pond_group_id) WHERE archived = false`;
+
+  await sql`CREATE TABLE IF NOT EXISTS flv_samples (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id INT NOT NULL,
+    pond_id UUID NOT NULL,
+    sample_date DATE NOT NULL,
+    grade TEXT NOT NULL,
+    sampled_by TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_by UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_flv_samples_pond ON flv_samples(pond_id, sample_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_flv_samples_co_date ON flv_samples(company_id, sample_date DESC)`;
 }
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Unauthorized' });
+  let user_id, company_id;
+  try {
+    const p = jwt.verify(auth.replace('Bearer ', ''), process.env.JWT_SECRET);
+    user_id = p.user_id;
+    company_id = p.company_id;
+  } catch (e) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const sql = neon(process.env.DATABASE_URL);
+  const action = req.query.action;
+  const body = req.body || {};
+
+  try {
+    await ensureTables(sql);
+
+    // ─── READ ────────────────────────────────────────────────────────────────
+    if (action === 'get_state') {
+      // Everything the dashboard needs in one shot. Samples capped at 120 days
+      // back — plenty to derive current status + window for any active pond.
+      const sinceDays = parseInt(req.query.since_days) || 120;
+      const since = new Date();
+      since.setDate(since.getDate() - sinceDays);
+      const sinceStr = since.toISOString().split('T')[0];
+      const [farmers, pondGroups, ponds, samples] = await Promise.all([
+        sql`SELECT id, name, notes FROM flv_farmers
+            WHERE company_id = ${company_id} AND archived = false
+            ORDER BY name`,
+        sql`SELECT id, farmer_id, name, notes FROM flv_pond_groups
+            WHERE company_id = ${company_id} AND archived = false
+            ORDER BY name`,
+        sql`SELECT id, pond_group_id, number, acres, notes FROM flv_ponds
+            WHERE company_id = ${company_id} AND archived = false
+            ORDER BY number`,
+        sql`SELECT id, pond_id, sample_date, grade, sampled_by, notes, created_at
+            FROM flv_samples
+            WHERE company_id = ${company_id} AND sample_date >= ${sinceStr}
+            ORDER BY sample_date DESC, created_at DESC`
+      ]);
+      return res.json({ farmers, pond_groups: pondGroups, ponds, samples });
+    }
+
+    if (action === 'get_pond_history') {
+      const pondId = String(body.pond_id || req.query.pond_id || '').trim();
+      if (!pondId) return res.status(400).json({ error: 'pond_id required' });
+      const rows = await sql`SELECT id, sample_date, grade, sampled_by, notes, created_by, created_at
+        FROM flv_samples
+        WHERE company_id = ${company_id} AND pond_id = ${pondId}
+        ORDER BY sample_date DESC, created_at DESC
+        LIMIT 500`;
+      return res.json({ samples: rows });
+    }
+
+    // ─── FARMERS CRUD ────────────────────────────────────────────────────────
+    if (action === 'save_farmer') {
+      const name = String(body.name || '').trim();
+      if (!name) return res.status(400).json({ error: 'Name required' });
+      if (body.id) {
+        const [f] = await sql`UPDATE flv_farmers
+          SET name = ${name}, notes = ${body.notes || ''}, updated_at = NOW()
+          WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        return res.json({ ok: true, farmer: f });
+      }
+      const [f] = await sql`INSERT INTO flv_farmers (company_id, name, notes)
+        VALUES (${company_id}, ${name}, ${body.notes || ''}) RETURNING *`;
+      return res.json({ ok: true, farmer: f });
+    }
+    if (action === 'delete_farmer') {
+      if (!body.id) return res.status(400).json({ error: 'id required' });
+      // Soft-delete the farmer AND all of its pond groups + ponds so samples
+      // stay in the DB for history but the records disappear from active lists.
+      await sql`UPDATE flv_farmers SET archived = true, updated_at = NOW()
+        WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await sql`UPDATE flv_pond_groups SET archived = true, updated_at = NOW()
+        WHERE farmer_id = ${body.id} AND company_id = ${company_id}`;
+      await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
+        WHERE company_id = ${company_id} AND pond_group_id IN (
+          SELECT id FROM flv_pond_groups WHERE farmer_id = ${body.id} AND company_id = ${company_id}
+        )`;
+      return res.json({ ok: true });
+    }
+
+    // ─── POND GROUPS CRUD ────────────────────────────────────────────────────
+    if (action === 'save_pond_group') {
+      const name = String(body.name || '').trim();
+      const farmerId = String(body.farmer_id || '').trim();
+      if (!name) return res.status(400).json({ error: 'Name required' });
+      if (!farmerId) return res.status(400).json({ error: 'farmer_id required' });
+      if (body.id) {
+        const [g] = await sql`UPDATE flv_pond_groups
+          SET name = ${name}, notes = ${body.notes || ''}, farmer_id = ${farmerId}, updated_at = NOW()
+          WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        return res.json({ ok: true, pond_group: g });
+      }
+      const [g] = await sql`INSERT INTO flv_pond_groups (company_id, farmer_id, name, notes)
+        VALUES (${company_id}, ${farmerId}, ${name}, ${body.notes || ''}) RETURNING *`;
+      return res.json({ ok: true, pond_group: g });
+    }
+    if (action === 'delete_pond_group') {
+      if (!body.id) return res.status(400).json({ error: 'id required' });
+      await sql`UPDATE flv_pond_groups SET archived = true, updated_at = NOW()
+        WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
+        WHERE pond_group_id = ${body.id} AND company_id = ${company_id}`;
+      return res.json({ ok: true });
+    }
+
+    // ─── PONDS CRUD ──────────────────────────────────────────────────────────
+    if (action === 'save_pond') {
+      const number = String(body.number || '').trim();
+      const groupId = String(body.pond_group_id || '').trim();
+      if (!number) return res.status(400).json({ error: 'Pond number/name required' });
+      if (!groupId) return res.status(400).json({ error: 'pond_group_id required' });
+      const acres = body.acres !== undefined && body.acres !== null && body.acres !== ''
+        ? parseFloat(body.acres) : null;
+      if (body.id) {
+        const [p] = await sql`UPDATE flv_ponds
+          SET number = ${number}, pond_group_id = ${groupId},
+              acres = ${acres}, notes = ${body.notes || ''}, updated_at = NOW()
+          WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        return res.json({ ok: true, pond: p });
+      }
+      const [p] = await sql`INSERT INTO flv_ponds (company_id, pond_group_id, number, acres, notes)
+        VALUES (${company_id}, ${groupId}, ${number}, ${acres}, ${body.notes || ''}) RETURNING *`;
+      return res.json({ ok: true, pond: p });
+    }
+    if (action === 'delete_pond') {
+      if (!body.id) return res.status(400).json({ error: 'id required' });
+      await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
+        WHERE id = ${body.id} AND company_id = ${company_id}`;
+      return res.json({ ok: true });
+    }
+
+    // Bulk-add ponds — user can paste a comma- or newline-separated list like
+    // "1 North, 1 South, 2 East, 2 Middle, 2 West" and get individual pond rows.
+    if (action === 'bulk_add_ponds') {
+      const groupId = String(body.pond_group_id || '').trim();
+      if (!groupId) return res.status(400).json({ error: 'pond_group_id required' });
+      const list = Array.isArray(body.numbers) ? body.numbers : [];
+      let created = 0;
+      for (const raw of list) {
+        const number = String(raw || '').trim();
+        if (!number) continue;
+        const exists = await sql`SELECT id FROM flv_ponds
+          WHERE company_id = ${company_id} AND pond_group_id = ${groupId}
+            AND archived = false AND LOWER(number) = LOWER(${number}) LIMIT 1`;
+        if (exists.length) continue;
+        await sql`INSERT INTO flv_ponds (company_id, pond_group_id, number)
+          VALUES (${company_id}, ${groupId}, ${number})`;
+        created++;
+      }
+      return res.json({ ok: true, created });
+    }
+
+    // ─── SAMPLES CRUD ────────────────────────────────────────────────────────
+    if (action === 'save_sample') {
+      const pondId = String(body.pond_id || '').trim();
+      const grade = String(body.grade || '').trim();
+      const sampleDate = String(body.sample_date || '').trim() || new Date().toISOString().split('T')[0];
+      if (!pondId) return res.status(400).json({ error: 'pond_id required' });
+      if (!VALID_GRADES.has(grade)) return res.status(400).json({ error: 'Invalid grade: ' + grade });
+      if (body.id) {
+        const [s] = await sql`UPDATE flv_samples SET
+          pond_id = ${pondId}, sample_date = ${sampleDate}, grade = ${grade},
+          sampled_by = ${body.sampled_by || ''}, notes = ${body.notes || ''},
+          updated_at = NOW()
+          WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        return res.json({ ok: true, sample: s });
+      }
+      const [s] = await sql`INSERT INTO flv_samples
+        (company_id, pond_id, sample_date, grade, sampled_by, notes, created_by)
+        VALUES (${company_id}, ${pondId}, ${sampleDate}, ${grade},
+                ${body.sampled_by || ''}, ${body.notes || ''}, ${user_id})
+        RETURNING *`;
+      return res.json({ ok: true, sample: s });
+    }
+    if (action === 'delete_sample') {
+      if (!body.id) return res.status(400).json({ error: 'id required' });
+      await sql`DELETE FROM flv_samples WHERE id = ${body.id} AND company_id = ${company_id}`;
+      return res.json({ ok: true });
+    }
+
+    return res.status(400).json({ error: 'Unknown action: ' + action });
+  } catch (err) {
+    console.error('Flavor API error:', err);
+    return res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+};

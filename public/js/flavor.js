@@ -1,2 +1,675 @@
-// flavor.js - placeholder
-function buildFlavorWidget(){}
+// flavor.js — Flavor Sample widget
+// Tracks per-pond flavor grades so we know which ponds are Ready to Harvest,
+// which are still on resample, and which are off (ranked by severity).
+// All data is company-scoped via the JWT on the API side.
+
+var _flavorState = { farmers: [], pond_groups: [], ponds: [], samples: [] };
+var _flavorTab = 'dashboard';
+var _flavorFarmerFilter = '';      // '' = all farmers
+var _flavorSearch = '';
+
+// ═══ Grade metadata ═════════════════════════════════════════════════════════
+var FLAVOR_GRADES = [
+  { key:'off_5',            label:'Off 5',                 short:'Off 5', severity:5, bucket:'off',   color:'#991b1b', bg:'#fee2e2' },
+  { key:'off_4',            label:'Off 4',                 short:'Off 4', severity:4, bucket:'off',   color:'#991b1b', bg:'#fee2e2' },
+  { key:'off_3',            label:'Off 3',                 short:'Off 3', severity:3, bucket:'off',   color:'#b45309', bg:'#fef3c7' },
+  { key:'off_2',            label:'Off 2',                 short:'Off 2', severity:2, bucket:'off',   color:'#b45309', bg:'#fef3c7' },
+  { key:'off_1',            label:'Off 1 (barely off)',    short:'Off 1', severity:1, bucket:'off',   color:'#92400e', bg:'#fef3c7' },
+  { key:'good_resample_1',  label:'Good — Resample 1st Check',  short:'Good R1',       bucket:'good', color:'#065f46', bg:'#d1fae5' },
+  { key:'good_resample_2',  label:'Good — Resample 2nd Check',  short:'Good R2',       bucket:'good', color:'#065f46', bg:'#d1fae5' },
+  { key:'good_ready',       label:'Good — Ready to Harvest',    short:'READY',         bucket:'ready',color:'#166534', bg:'#dcfce7' },
+  { key:'truck_sample',     label:'Truck Sample (delivery)',    short:'Truck',         bucket:'delivered', color:'#1e40af', bg:'#dbeafe' }
+];
+function flavorGradeMeta(key){ return FLAVOR_GRADES.find(function(g){return g.key===key;}) || null; }
+
+var WINDOW_DAYS = 14;           // Good window is 14 days from the first Good sample.
+var ALERT_THRESHOLD_DAYS = 3;   // Show "expires soon" alert if window ends within this many days.
+
+// ═══ Entry point ════════════════════════════════════════════════════════════
+function buildFlavorWidget(){
+  var wt = document.getElementById('widget-tabs');
+  var wc = document.getElementById('widget-content');
+  var tabs = [
+    { id:'dashboard', label:'📊 Dashboard' },
+    { id:'log',       label:'➕ Log Sample' },
+    { id:'manage',    label:'🏡 Farms & Ponds' },
+    { id:'history',   label:'📜 History' }
+  ];
+  wt.innerHTML = tabs.map(function(t){
+    return '<button class="wtab" id="ftab-'+t.id+'" onclick="flavorShowTab(\''+t.id+'\')" '
+      + 'style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;'
+      + 'border-bottom:2px solid transparent;color:#94a3b8">'+t.label+'</button>';
+  }).join('');
+  wc.innerHTML = '<div id="flavor-panel" style="padding:0"></div>';
+  flavorLoadState(function(){ flavorShowTab('dashboard'); });
+}
+window.buildFlavorWidget = buildFlavorWidget;
+
+function flavorShowTab(tab){
+  _flavorTab = tab;
+  ['dashboard','log','manage','history'].forEach(function(t){
+    var b = document.getElementById('ftab-'+t);
+    if(!b) return;
+    var active = (t===tab);
+    b.style.borderBottomColor = active ? '#1a3a6b' : 'transparent';
+    b.style.color = active ? '#1a3a6b' : '#94a3b8';
+    b.style.fontWeight = active ? '600' : '400';
+  });
+  if(tab==='dashboard') flavorRenderDashboard();
+  else if(tab==='log') flavorRenderLogForm();
+  else if(tab==='manage') flavorRenderManage();
+  else if(tab==='history') flavorRenderHistory();
+}
+window.flavorShowTab = flavorShowTab;
+
+// ═══ Data load ══════════════════════════════════════════════════════════════
+function flavorLoadState(cb){
+  apiCall('GET','/api/flavor?action=get_state').then(function(d){
+    _flavorState = {
+      farmers: Array.isArray(d.farmers) ? d.farmers : [],
+      pond_groups: Array.isArray(d.pond_groups) ? d.pond_groups : [],
+      ponds: Array.isArray(d.ponds) ? d.ponds : [],
+      samples: Array.isArray(d.samples) ? d.samples : []
+    };
+    if(cb) cb();
+  }).catch(function(e){
+    var panel = document.getElementById('flavor-panel');
+    if(panel) panel.innerHTML = '<div style="padding:20px;color:#dc2626">Failed to load flavor data: '+ ((e&&e.message)||'unknown') +'</div>';
+  });
+}
+function flavorRefresh(cb){ flavorLoadState(function(){ if(cb) cb(); else flavorShowTab(_flavorTab); }); }
+
+// ═══ Status derivation per pond ════════════════════════════════════════════
+// Given all samples for a pond, return the pond's current status + window info.
+function derivePondStatus(pondId){
+  var pondSamples = _flavorState.samples
+    .filter(function(s){ return s.pond_id === pondId; })
+    .slice()
+    .sort(function(a,b){
+      // Date descending, then created_at descending
+      if(a.sample_date !== b.sample_date) return a.sample_date < b.sample_date ? 1 : -1;
+      return (a.created_at||'') < (b.created_at||'') ? 1 : -1;
+    });
+  if(pondSamples.length === 0) return { state:'no_sample' };
+  var latest = pondSamples[0];
+  var meta = flavorGradeMeta(latest.grade);
+  if(!meta) return { state:'unknown', latest:latest };
+
+  if(meta.bucket === 'off') {
+    return {
+      state:'off',
+      grade:latest.grade,
+      meta:meta,
+      latest:latest,
+      days_since_sample:daysBetween(latest.sample_date, todayStr())
+    };
+  }
+  if(meta.bucket === 'delivered') {
+    return { state:'delivered', grade:latest.grade, meta:meta, latest:latest };
+  }
+  // Good family — walk oldest-to-newest to find the start of the current Good streak
+  var goodSince = null;
+  for(var i = pondSamples.length - 1; i >= 0; i--){
+    var s = pondSamples[i];
+    var m = flavorGradeMeta(s.grade);
+    if(!m) continue;
+    if(m.bucket === 'off'){ goodSince = null; continue; }
+    if(m.bucket === 'good' || m.bucket === 'ready'){
+      if(goodSince === null) goodSince = s.sample_date;
+    }
+  }
+  var windowStart = goodSince || latest.sample_date;
+  var windowEnd = addDays(windowStart, WINDOW_DAYS);
+  var daysLeft = daysBetween(todayStr(), windowEnd); // positive if windowEnd > today
+  return {
+    state: meta.bucket === 'ready' ? 'ready' : 'in_resample',
+    grade: latest.grade,
+    meta: meta,
+    latest: latest,
+    window_start: windowStart,
+    window_end: windowEnd,
+    days_left: daysLeft,
+    expired: daysLeft < 0
+  };
+}
+
+// ═══ Utility ════════════════════════════════════════════════════════════════
+function todayStr(){ return new Date().toISOString().split('T')[0]; }
+function addDays(dateStr, n){
+  var d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+function daysBetween(fromStr, toStr){
+  var a = new Date(fromStr + 'T00:00:00');
+  var b = new Date(toStr + 'T00:00:00');
+  return Math.round((b - a) / 86400000);
+}
+function flavorEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function flavorPondLabel(pondId){
+  var p = _flavorState.ponds.find(function(x){return x.id===pondId;});
+  if(!p) return '?';
+  var g = _flavorState.pond_groups.find(function(x){return x.id===p.pond_group_id;});
+  var f = g ? _flavorState.farmers.find(function(x){return x.id===g.farmer_id;}) : null;
+  var parts = [];
+  if(f) parts.push(f.name);
+  if(g) parts.push(g.name);
+  parts.push(p.number);
+  return parts.join(' › ');
+}
+function flavorFarmerIdForPond(pondId){
+  var p = _flavorState.ponds.find(function(x){return x.id===pondId;});
+  if(!p) return null;
+  var g = _flavorState.pond_groups.find(function(x){return x.id===p.pond_group_id;});
+  return g ? g.farmer_id : null;
+}
+
+// Reusable button styles
+var FB = 'padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600';
+var FB_P = FB + ';background:#1a3a6b;color:#fff';
+var FB_S = FB + ';background:#6366f1;color:#fff';
+var FB_SUB = FB + ';background:#f1f5f9;color:#334155';
+var FB_D = 'padding:3px 9px;border-radius:5px;border:none;cursor:pointer;font-size:.73rem;background:#fee2e2;color:#b91c1c';
+var FINP = 'width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:.83rem;margin-bottom:8px;box-sizing:border-box';
+
+// ═══ Tab: Dashboard ═════════════════════════════════════════════════════════
+function flavorRenderDashboard(){
+  var panel = document.getElementById('flavor-panel');
+  if(!panel) return;
+
+  var statuses = _flavorState.ponds.map(function(p){ return { pond:p, st:derivePondStatus(p.id) }; });
+
+  if(_flavorFarmerFilter){
+    statuses = statuses.filter(function(row){ return flavorFarmerIdForPond(row.pond.id) === _flavorFarmerFilter; });
+  }
+  if(_flavorSearch){
+    var q = _flavorSearch.toLowerCase();
+    statuses = statuses.filter(function(row){
+      return flavorPondLabel(row.pond.id).toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  var ready = statuses.filter(function(r){ return r.st.state==='ready' && !r.st.expired; });
+  var inResample = statuses.filter(function(r){ return r.st.state==='in_resample' && !r.st.expired; });
+  var expired = statuses.filter(function(r){
+    return (r.st.state==='ready' || r.st.state==='in_resample') && r.st.expired;
+  });
+  var off = statuses.filter(function(r){ return r.st.state==='off'; });
+
+  ready.sort(function(a,b){ return (a.st.days_left||0) - (b.st.days_left||0); });
+  inResample.sort(function(a,b){ return (a.st.days_left||0) - (b.st.days_left||0); });
+  off.sort(function(a,b){
+    var sa = a.st.meta ? a.st.meta.severity : 99;
+    var sb = b.st.meta ? b.st.meta.severity : 99;
+    if(sa !== sb) return sa - sb;
+    return (a.st.latest.sample_date < b.st.latest.sample_date) ? 1 : -1;
+  });
+
+  var farmerOptions = '<option value="">All Farmers</option>' + _flavorState.farmers.map(function(f){
+    var sel = (f.id === _flavorFarmerFilter) ? ' selected' : '';
+    return '<option value="'+flavorEsc(f.id)+'"'+sel+'>'+flavorEsc(f.name)+'</option>';
+  }).join('');
+
+  var html = '<div style="padding:14px;max-width:960px;margin:0 auto">';
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+    + '<button style="'+FB_P+'" onclick="flavorShowTab(\'log\')">+ Log Sample</button>'
+    + '<button style="'+FB_SUB+'" onclick="flavorRefresh()">Refresh</button>'
+    + '<select style="'+FINP+';flex:1;min-width:160px;margin-bottom:0" onchange="_flavorFarmerFilter=this.value;flavorRenderDashboard()">'+farmerOptions+'</select>'
+    + '<input type="text" placeholder="Search pond…" value="'+flavorEsc(_flavorSearch)+'" oninput="_flavorSearch=this.value;flavorRenderDashboard()" style="'+FINP+';flex:2;min-width:180px;margin-bottom:0">'
+    + '</div>';
+
+  if(_flavorState.ponds.length === 0){
+    html += '<div style="background:#fff;border-radius:10px;padding:30px;text-align:center;color:#64748b;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+      + 'No ponds yet. Go to <a href="#" onclick="flavorShowTab(\'manage\');return false" style="color:#2563eb">Farms &amp; Ponds</a> to add your first farmer and ponds.'
+      + '</div></div>';
+    panel.innerHTML = html;
+    return;
+  }
+
+  html += flavorSectionHeader('✅ READY TO HARVEST', ready.length, '#166534');
+  if(ready.length === 0){
+    html += '<div style="background:#fff;border-radius:10px;padding:14px;color:#94a3b8;font-size:.84rem;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:16px">No ponds are currently ready to harvest.</div>';
+  } else {
+    html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:16px">';
+    ready.forEach(function(row){ html += flavorRowReadyOrResample(row); });
+    html += '</div>';
+  }
+
+  html += flavorSectionHeader('🟡 GOOD — IN RESAMPLE PROCESS', inResample.length, '#92400e');
+  if(inResample.length === 0){
+    html += '<div style="background:#fff;border-radius:10px;padding:14px;color:#94a3b8;font-size:.84rem;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:16px">No ponds in resample.</div>';
+  } else {
+    html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:16px">';
+    inResample.forEach(function(row){ html += flavorRowReadyOrResample(row); });
+    html += '</div>';
+  }
+
+  html += flavorSectionHeader('🔴 OFF PONDS (closest-to-good first)', off.length, '#991b1b');
+  if(off.length === 0){
+    html += '<div style="background:#fff;border-radius:10px;padding:14px;color:#94a3b8;font-size:.84rem;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:16px">No ponds are currently off.</div>';
+  } else {
+    var byFarmer = {};
+    off.forEach(function(row){
+      var fid = flavorFarmerIdForPond(row.pond.id) || 'unknown';
+      if(!byFarmer[fid]) byFarmer[fid] = [];
+      byFarmer[fid].push(row);
+    });
+    Object.keys(byFarmer).forEach(function(fid){
+      var f = _flavorState.farmers.find(function(x){return x.id===fid;});
+      var farmerName = f ? f.name : 'Unassigned';
+      html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:10px">';
+      html += '<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:600;font-size:.82rem;color:#1a3a6b">'+flavorEsc(farmerName)+' ('+byFarmer[fid].length+' off)</div>';
+      byFarmer[fid].forEach(function(row){ html += flavorRowOff(row); });
+      html += '</div>';
+    });
+  }
+
+  if(expired.length > 0){
+    html += flavorSectionHeader('⚠️ WINDOW EXPIRED — NEEDS RETEST', expired.length, '#991b1b');
+    html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:16px">';
+    expired.sort(function(a,b){ return (a.st.days_left||0) - (b.st.days_left||0); });
+    expired.forEach(function(row){ html += flavorRowReadyOrResample(row, true); });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function flavorSectionHeader(title, count, color){
+  return '<div style="display:flex;align-items:baseline;justify-content:space-between;margin:10px 0 6px 2px">'
+    + '<div style="font-weight:700;font-size:.85rem;color:'+color+';letter-spacing:.02em">'+title+'</div>'
+    + '<div style="font-size:.76rem;color:#64748b">'+count+' pond'+(count===1?'':'s')+'</div>'
+    + '</div>';
+}
+
+function flavorRowReadyOrResample(row, isExpired){
+  var p = row.pond;
+  var st = row.st;
+  var label = flavorPondLabel(p.id);
+  var meta = st.meta;
+  var badgeBg = meta ? meta.bg : '#f1f5f9';
+  var badgeColor = meta ? meta.color : '#64748b';
+  var badgeText = meta ? meta.label : st.grade;
+
+  var dayText = '';
+  if(isExpired){
+    dayText = '<span style="color:#dc2626;font-weight:700;font-size:.78rem">🚨 Expired ' + Math.abs(st.days_left) + ' day' + (Math.abs(st.days_left)===1?'':'s') + ' ago</span>';
+  } else if(st.days_left <= ALERT_THRESHOLD_DAYS){
+    dayText = '<span style="color:#dc2626;font-weight:700;font-size:.78rem">🚨 Expires in ' + st.days_left + ' day' + (st.days_left===1?'':'s') + '</span>';
+  } else {
+    dayText = '<span style="color:#64748b;font-size:.78rem">' + st.days_left + ' days left</span>';
+  }
+
+  return '<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
+    + '<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:.88rem;color:#1e293b">'+flavorEsc(label)+'</div>'
+    + '<div style="font-size:.75rem;color:#64748b;margin-top:2px">Last sample ' + st.latest.sample_date + ' · <span style="background:'+badgeBg+';color:'+badgeColor+';padding:1px 7px;border-radius:10px;font-size:.68rem;font-weight:600">'+flavorEsc(badgeText)+'</span></div></div>'
+    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+    + dayText
+    + '<button style="'+FB_S+';padding:4px 10px;font-size:.72rem" onclick="flavorQuickLog(\''+p.id+'\')">+ Sample</button>'
+    + '<button style="'+FB_SUB+';padding:4px 10px;font-size:.72rem" onclick="flavorShowPondHistory(\''+p.id+'\')">History</button>'
+    + '</div>'
+    + '</div>';
+}
+function flavorRowOff(row){
+  var p = row.pond;
+  var st = row.st;
+  var label = flavorPondLabel(p.id);
+  var meta = st.meta;
+  return '<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
+    + '<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:.88rem;color:#1e293b">'+flavorEsc(label)+'</div>'
+    + '<div style="font-size:.75rem;color:#64748b;margin-top:2px">Sampled ' + st.latest.sample_date + ' ('+ st.days_since_sample + ' day' + (st.days_since_sample===1?'':'s') + ' ago)</div></div>'
+    + '<span style="background:'+meta.bg+';color:'+meta.color+';padding:3px 10px;border-radius:10px;font-size:.76rem;font-weight:700">'+meta.short+'</span>'
+    + '<button style="'+FB_S+';padding:4px 10px;font-size:.72rem" onclick="flavorQuickLog(\''+p.id+'\')">+ Sample</button>'
+    + '<button style="'+FB_SUB+';padding:4px 10px;font-size:.72rem" onclick="flavorShowPondHistory(\''+p.id+'\')">History</button>'
+    + '</div>';
+}
+function flavorQuickLog(pondId){
+  window._flavorPrefillPondId = pondId;
+  flavorShowTab('log');
+}
+
+// ═══ Tab: Log Sample ════════════════════════════════════════════════════════
+function flavorRenderLogForm(){
+  var panel = document.getElementById('flavor-panel');
+  if(!panel) return;
+
+  var prefillPondId = window._flavorPrefillPondId || '';
+  window._flavorPrefillPondId = null;
+  var prefillFarmerId = prefillPondId ? flavorFarmerIdForPond(prefillPondId) : '';
+  var prefillPond = prefillPondId ? _flavorState.ponds.find(function(x){return x.id===prefillPondId;}) : null;
+  var prefillGroupId = prefillPond ? prefillPond.pond_group_id : '';
+
+  var farmerOpts = '<option value="">— Select Farmer —</option>' + _flavorState.farmers.map(function(f){
+    return '<option value="'+flavorEsc(f.id)+'"'+(f.id===prefillFarmerId?' selected':'')+'>'+flavorEsc(f.name)+'</option>';
+  }).join('');
+
+  var gradeOpts = '<option value="">— Select Grade —</option>' + FLAVOR_GRADES.map(function(g){
+    return '<option value="'+flavorEsc(g.key)+'">'+flavorEsc(g.label)+'</option>';
+  }).join('');
+
+  var html = '<div style="padding:14px;max-width:560px;margin:0 auto">'
+    + '<div style="font-weight:700;font-size:.95rem;margin-bottom:10px">Log a flavor sample</div>'
+    + '<div style="background:#f0f7ff;border-left:3px solid #3b82f6;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:.78rem;color:#1e40af">'
+    + 'Pick the farmer, pond group, and pond. If a pond isn\'t in the list yet, add it in the <a href="#" onclick="flavorShowTab(\'manage\');return false" style="color:#2563eb">Farms &amp; Ponds</a> tab first.'
+    + '</div>'
+    + '<label style="font-size:.78rem;color:#64748b">Farmer</label>'
+    + '<select id="fl-farmer" style="'+FINP+'" onchange="flavorLogFarmerChange()">'+farmerOpts+'</select>'
+    + '<label style="font-size:.78rem;color:#64748b">Pond Group</label>'
+    + '<select id="fl-group" style="'+FINP+'" onchange="flavorLogGroupChange()"></select>'
+    + '<label style="font-size:.78rem;color:#64748b">Pond</label>'
+    + '<select id="fl-pond" style="'+FINP+'"></select>'
+    + '<label style="font-size:.78rem;color:#64748b">Sample Date</label>'
+    + '<input type="date" id="fl-date" style="'+FINP+'" value="'+todayStr()+'">'
+    + '<label style="font-size:.78rem;color:#64748b">Grade</label>'
+    + '<select id="fl-grade" style="'+FINP+'">'+gradeOpts+'</select>'
+    + '<label style="font-size:.78rem;color:#64748b">Sampled By (optional)</label>'
+    + '<input type="text" id="fl-by" style="'+FINP+'" value="'+flavorEsc((typeof currentUser!=="undefined" && currentUser && currentUser.full_name) || '')+'">'
+    + '<label style="font-size:.78rem;color:#64748b">Notes (optional)</label>'
+    + '<textarea id="fl-notes" style="'+FINP+';resize:vertical;min-height:60px"></textarea>'
+    + '<div id="fl-status" style="margin:8px 0;font-size:.82rem;min-height:18px"></div>'
+    + '<div style="display:flex;gap:8px">'
+    + '<button style="'+FB_P+';flex:1" onclick="flavorSubmitSample()">Save Sample</button>'
+    + '<button style="'+FB_SUB+'" onclick="flavorShowTab(\'dashboard\')">Cancel</button>'
+    + '</div></div>';
+  panel.innerHTML = html;
+  flavorLogFarmerChange();
+  if(prefillGroupId) document.getElementById('fl-group').value = prefillGroupId;
+  flavorLogGroupChange();
+  if(prefillPondId) document.getElementById('fl-pond').value = prefillPondId;
+}
+function flavorLogFarmerChange(){
+  var farmerId = document.getElementById('fl-farmer').value;
+  var groups = _flavorState.pond_groups.filter(function(g){ return g.farmer_id === farmerId; });
+  var sel = document.getElementById('fl-group');
+  sel.innerHTML = '<option value="">— Select Pond Group —</option>' + groups.map(function(g){
+    return '<option value="'+flavorEsc(g.id)+'">'+flavorEsc(g.name)+'</option>';
+  }).join('');
+  flavorLogGroupChange();
+}
+function flavorLogGroupChange(){
+  var groupId = document.getElementById('fl-group').value;
+  var ponds = _flavorState.ponds.filter(function(p){ return p.pond_group_id === groupId; });
+  var sel = document.getElementById('fl-pond');
+  sel.innerHTML = '<option value="">— Select Pond —</option>' + ponds.map(function(p){
+    return '<option value="'+flavorEsc(p.id)+'">'+flavorEsc(p.number)+'</option>';
+  }).join('');
+}
+window.flavorLogFarmerChange = flavorLogFarmerChange;
+window.flavorLogGroupChange = flavorLogGroupChange;
+
+function flavorSubmitSample(){
+  var pond_id = document.getElementById('fl-pond').value;
+  var grade = document.getElementById('fl-grade').value;
+  var sample_date = document.getElementById('fl-date').value || todayStr();
+  var sampled_by = document.getElementById('fl-by').value;
+  var notes = document.getElementById('fl-notes').value;
+  var status = document.getElementById('fl-status');
+  if(!pond_id){ status.style.color='#dc2626'; status.textContent='Pick a pond.'; return; }
+  if(!grade){ status.style.color='#dc2626'; status.textContent='Pick a grade.'; return; }
+  status.style.color='#64748b';
+  status.innerHTML='<div class="spinner-wrap" style="display:inline-block;vertical-align:middle"><div class="spinner"></div></div> Saving…';
+  apiCall('POST','/api/flavor?action=save_sample', { pond_id:pond_id, grade:grade, sample_date:sample_date, sampled_by:sampled_by, notes:notes })
+    .then(function(){
+      status.style.color='#166534';
+      status.textContent='✓ Saved.';
+      flavorRefresh();
+      setTimeout(function(){ flavorShowTab('dashboard'); }, 600);
+    })
+    .catch(function(e){
+      status.style.color='#dc2626';
+      status.textContent='Save failed: ' + ((e&&e.message)||'unknown');
+    });
+}
+window.flavorSubmitSample = flavorSubmitSample;
+
+// ═══ Tab: Manage Farms & Ponds ══════════════════════════════════════════════
+function flavorRenderManage(){
+  var panel = document.getElementById('flavor-panel');
+  if(!panel) return;
+  var html = '<div style="padding:14px;max-width:820px;margin:0 auto">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700;font-size:.95rem">Farms &amp; Ponds</div>'
+    + '<button style="'+FB_P+'" onclick="flavorAddFarmer()">+ Add Farmer</button></div>';
+  if(_flavorState.farmers.length === 0){
+    html += '<div style="background:#fff;border-radius:10px;padding:20px;text-align:center;color:#94a3b8;box-shadow:0 1px 4px rgba(0,0,0,.08)">No farmers yet. Click <strong>+ Add Farmer</strong> to get started.</div>';
+  }
+  _flavorState.farmers.forEach(function(f){
+    var groups = _flavorState.pond_groups.filter(function(g){return g.farmer_id===f.id;});
+    html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px;overflow:hidden">'
+      + '<div style="padding:10px 14px;background:#1a3a6b;color:#fff;display:flex;justify-content:space-between;align-items:center">'
+      + '<div style="font-weight:700;font-size:.9rem">🏡 '+flavorEsc(f.name)+'</div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorAddPondGroup(\''+f.id+'\')">+ Pond Group</button>'
+      + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorEditFarmer(\''+f.id+'\')">Edit</button>'
+      + '<button style="'+FB_D+'" onclick="flavorDeleteFarmer(\''+f.id+'\')">Del</button>'
+      + '</div></div>';
+    if(groups.length === 0){
+      html += '<div style="padding:12px 14px;color:#94a3b8;font-size:.82rem">No pond groups yet.</div>';
+    }
+    groups.forEach(function(g){
+      var ponds = _flavorState.ponds.filter(function(p){return p.pond_group_id===g.id;});
+      html += '<div style="padding:10px 14px;border-top:1px solid #f1f5f9">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        + '<div style="font-weight:600;font-size:.84rem;color:#334155">📍 '+flavorEsc(g.name)+' <span style="color:#94a3b8;font-weight:400;font-size:.76rem">('+ponds.length+' pond'+(ponds.length===1?'':'s')+')</span></div>'
+        + '<div style="display:flex;gap:6px">'
+        + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorAddPond(\''+g.id+'\')">+ Pond</button>'
+        + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorBulkAddPonds(\''+g.id+'\')">Bulk Add</button>'
+        + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorEditPondGroup(\''+g.id+'\')">Edit</button>'
+        + '<button style="'+FB_D+'" onclick="flavorDeletePondGroup(\''+g.id+'\')">Del</button>'
+        + '</div></div>';
+      if(ponds.length > 0){
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+        ponds.forEach(function(p){
+          html += '<span style="background:#f1f5f9;color:#334155;padding:3px 9px;border-radius:12px;font-size:.72rem;display:inline-flex;align-items:center;gap:4px">'
+            + flavorEsc(p.number)
+            + '<button title="Edit" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:.7rem;padding:0 2px" onclick="flavorEditPond(\''+p.id+'\')">✎</button>'
+            + '<button title="Delete" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.7rem;padding:0 2px" onclick="flavorDeletePond(\''+p.id+'\')">×</button>'
+            + '</span>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function flavorAddFarmer(){
+  var name = prompt('Farmer name (e.g., Battle Fish North):');
+  if(!name) return;
+  apiCall('POST','/api/flavor?action=save_farmer', { name:name.trim() })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorEditFarmer(id){
+  var f = _flavorState.farmers.find(function(x){return x.id===id;});
+  if(!f) return;
+  var newName = prompt('Farmer name:', f.name);
+  if(!newName) return;
+  apiCall('POST','/api/flavor?action=save_farmer', { id:id, name:newName.trim(), notes:f.notes||'' })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorDeleteFarmer(id){
+  var f = _flavorState.farmers.find(function(x){return x.id===id;});
+  if(!f) return;
+  if(!confirm('Archive "'+f.name+'" and all of its pond groups/ponds?\n\nSample history is preserved; this hides the farmer from active lists.')) return;
+  apiCall('POST','/api/flavor?action=delete_farmer', { id:id })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+
+function flavorAddPondGroup(farmerId){
+  var name = prompt('Pond group name (e.g., New Ponds, Denton, Hurt Place):');
+  if(!name) return;
+  apiCall('POST','/api/flavor?action=save_pond_group', { farmer_id:farmerId, name:name.trim() })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorEditPondGroup(id){
+  var g = _flavorState.pond_groups.find(function(x){return x.id===id;});
+  if(!g) return;
+  var newName = prompt('Pond group name:', g.name);
+  if(!newName) return;
+  apiCall('POST','/api/flavor?action=save_pond_group', { id:id, name:newName.trim(), farmer_id:g.farmer_id, notes:g.notes||'' })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorDeletePondGroup(id){
+  var g = _flavorState.pond_groups.find(function(x){return x.id===id;});
+  if(!g) return;
+  if(!confirm('Archive pond group "'+g.name+'" and all of its ponds?')) return;
+  apiCall('POST','/api/flavor?action=delete_pond_group', { id:id })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+
+function flavorAddPond(groupId){
+  var num = prompt('Pond number/name (e.g., "1 North", "4 South", "P27"):');
+  if(!num) return;
+  apiCall('POST','/api/flavor?action=save_pond', { pond_group_id:groupId, number:num.trim() })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorBulkAddPonds(groupId){
+  var raw = prompt('Paste pond numbers separated by commas or new lines\n\nExample:\n1 North, 1 South, 2 East, 2 Middle, 2 West, 3 North, 3 South');
+  if(!raw) return;
+  var numbers = raw.split(/[,\n]/).map(function(s){return s.trim();}).filter(Boolean);
+  if(numbers.length === 0) return;
+  apiCall('POST','/api/flavor?action=bulk_add_ponds', { pond_group_id:groupId, numbers:numbers })
+    .then(function(r){
+      alert('Added ' + (r.created||0) + ' pond' + (r.created===1?'':'s') + '.');
+      flavorRefresh();
+    })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorEditPond(id){
+  var p = _flavorState.ponds.find(function(x){return x.id===id;});
+  if(!p) return;
+  var newNum = prompt('Pond number/name:', p.number);
+  if(!newNum) return;
+  apiCall('POST','/api/flavor?action=save_pond', { id:id, pond_group_id:p.pond_group_id, number:newNum.trim(), acres:p.acres, notes:p.notes||'' })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+function flavorDeletePond(id){
+  var p = _flavorState.ponds.find(function(x){return x.id===id;});
+  if(!p) return;
+  if(!confirm('Archive pond "'+p.number+'"?\n\nSample history is preserved.')) return;
+  apiCall('POST','/api/flavor?action=delete_pond', { id:id })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+
+window.flavorAddFarmer = flavorAddFarmer;
+window.flavorEditFarmer = flavorEditFarmer;
+window.flavorDeleteFarmer = flavorDeleteFarmer;
+window.flavorAddPondGroup = flavorAddPondGroup;
+window.flavorEditPondGroup = flavorEditPondGroup;
+window.flavorDeletePondGroup = flavorDeletePondGroup;
+window.flavorAddPond = flavorAddPond;
+window.flavorBulkAddPonds = flavorBulkAddPonds;
+window.flavorEditPond = flavorEditPond;
+window.flavorDeletePond = flavorDeletePond;
+window.flavorQuickLog = flavorQuickLog;
+window.flavorRefresh = flavorRefresh;
+
+// ═══ Tab: History ═══════════════════════════════════════════════════════════
+function flavorRenderHistory(){
+  var panel = document.getElementById('flavor-panel');
+  if(!panel) return;
+
+  var farmerOptions = '<option value="">All Farmers</option>' + _flavorState.farmers.map(function(f){
+    var sel = (f.id === _flavorFarmerFilter) ? ' selected' : '';
+    return '<option value="'+flavorEsc(f.id)+'"'+sel+'>'+flavorEsc(f.name)+'</option>';
+  }).join('');
+
+  var samples = _flavorState.samples.slice();
+  if(_flavorFarmerFilter){
+    samples = samples.filter(function(s){ return flavorFarmerIdForPond(s.pond_id) === _flavorFarmerFilter; });
+  }
+  if(_flavorSearch){
+    var q = _flavorSearch.toLowerCase();
+    samples = samples.filter(function(s){ return flavorPondLabel(s.pond_id).toLowerCase().indexOf(q) >= 0; });
+  }
+
+  var html = '<div style="padding:14px;max-width:960px;margin:0 auto">'
+    + '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+    + '<div style="font-weight:700;font-size:.95rem;margin-right:auto">Sample History (last 120 days)</div>'
+    + '<select style="'+FINP+';flex:1;min-width:160px;max-width:240px;margin-bottom:0" onchange="_flavorFarmerFilter=this.value;flavorRenderHistory()">'+farmerOptions+'</select>'
+    + '<input type="text" placeholder="Search pond…" value="'+flavorEsc(_flavorSearch)+'" oninput="_flavorSearch=this.value;flavorRenderHistory()" style="'+FINP+';flex:2;min-width:180px;max-width:320px;margin-bottom:0">'
+    + '</div>';
+
+  if(samples.length === 0){
+    html += '<div style="background:#fff;border-radius:10px;padding:20px;text-align:center;color:#94a3b8;box-shadow:0 1px 4px rgba(0,0,0,.08)">No samples match the filter.</div>';
+  } else {
+    html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow-x:auto">'
+      + '<table style="width:100%;font-size:.78rem;border-collapse:collapse"><thead><tr style="background:#1a3a6b;color:#fff">'
+      + '<th style="padding:8px 10px;text-align:left;font-weight:600">Date</th>'
+      + '<th style="padding:8px 10px;text-align:left;font-weight:600">Pond</th>'
+      + '<th style="padding:8px 10px;text-align:left;font-weight:600">Grade</th>'
+      + '<th style="padding:8px 10px;text-align:left;font-weight:600">Sampled By</th>'
+      + '<th style="padding:8px 10px;text-align:left;font-weight:600">Notes</th>'
+      + '<th style="padding:8px 10px"></th>'
+      + '</tr></thead><tbody>';
+    samples.forEach(function(s){
+      var meta = flavorGradeMeta(s.grade);
+      var badge = meta ? ('<span style="background:'+meta.bg+';color:'+meta.color+';padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:600">'+flavorEsc(meta.label)+'</span>') : flavorEsc(s.grade);
+      html += '<tr style="border-bottom:1px solid #f1f5f9">'
+        + '<td style="padding:6px 10px;white-space:nowrap">'+flavorEsc(s.sample_date)+'</td>'
+        + '<td style="padding:6px 10px">'+flavorEsc(flavorPondLabel(s.pond_id))+'</td>'
+        + '<td style="padding:6px 10px">'+badge+'</td>'
+        + '<td style="padding:6px 10px;color:#64748b">'+flavorEsc(s.sampled_by||'')+'</td>'
+        + '<td style="padding:6px 10px;color:#64748b">'+flavorEsc(s.notes||'')+'</td>'
+        + '<td style="padding:6px 10px;text-align:right"><button style="'+FB_D+'" onclick="flavorDeleteSample(\''+s.id+'\')">Del</button></td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function flavorDeleteSample(id){
+  if(!confirm('Delete this sample?')) return;
+  apiCall('POST','/api/flavor?action=delete_sample', { id:id })
+    .then(function(){ flavorRefresh(); })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+window.flavorDeleteSample = flavorDeleteSample;
+
+// Pond history modal
+function flavorShowPondHistory(pondId){
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div id="fph-body">Loading…</div></div>';
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+  apiCall('POST','/api/flavor?action=get_pond_history',{ pond_id:pondId }).then(function(r){
+    var samples = Array.isArray(r.samples) ? r.samples : [];
+    var body = document.getElementById('fph-body');
+    var label = flavorPondLabel(pondId);
+    var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700;font-size:1rem">'+flavorEsc(label)+'</div><button style="'+FB_SUB+'" onclick="this.closest(\'div[style*=position\').remove()">Close</button></div>';
+    if(samples.length === 0){
+      h += '<div style="padding:20px;text-align:center;color:#94a3b8">No sample history for this pond.</div>';
+    } else {
+      h += '<div style="max-height:55vh;overflow-y:auto">';
+      samples.forEach(function(s){
+        var meta = flavorGradeMeta(s.grade);
+        var badge = meta ? ('<span style="background:'+meta.bg+';color:'+meta.color+';padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:600">'+flavorEsc(meta.short)+'</span>') : flavorEsc(s.grade);
+        h += '<div style="padding:8px 10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px">'
+          + '<div style="font-size:.78rem;color:#64748b;min-width:90px">'+s.sample_date+'</div>'
+          + badge
+          + '<div style="flex:1;font-size:.76rem;color:#334155">'+flavorEsc(s.sampled_by||'')+ (s.notes?' · <span style="color:#64748b">'+flavorEsc(s.notes)+'</span>':'') +'</div>'
+          + '</div>';
+      });
+      h += '</div>';
+    }
+    body.innerHTML = h;
+  }).catch(function(e){
+    document.getElementById('fph-body').innerHTML = '<div style="color:#dc2626">Error: '+((e&&e.message)||'unknown')+'</div>';
+  });
+}
+window.flavorShowPondHistory = flavorShowPondHistory;
