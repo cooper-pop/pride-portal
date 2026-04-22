@@ -400,16 +400,37 @@ module.exports = async function handler(req, res) {
     if (action === 'save_manual_metadata') {
       const { id, title, machine_tag, file_url, notes } = body;
       if (!id) return res.status(400).json({ error: 'Missing id' });
+      const newTag = machine_tag || '';
+      // Read the old tag first so we know whether to propagate the change to parts_inventory
+      const prev = await sql`SELECT machine_tag FROM parts_manuals WHERE id = ${id} AND company_id = ${company_id}`;
+      const oldTag = prev.length ? (prev[0].machine_tag || '') : '';
       const [m] = await sql`
         UPDATE parts_manuals SET
           title = ${String(title || '').trim()},
-          machine_tag = ${machine_tag || ''},
+          machine_tag = ${newTag},
           file_url = ${file_url || ''},
           notes = ${notes || ''},
           updated_at = NOW()
         WHERE id = ${id} AND company_id = ${company_id} RETURNING *`;
-      await sql`UPDATE manual_part_index SET machine_tag = ${machine_tag || ''} WHERE manual_id = ${id} AND company_id = ${company_id}`;
-      return res.json({ ok: true, manual: m });
+      await sql`UPDATE manual_part_index SET machine_tag = ${newTag} WHERE manual_id = ${id} AND company_id = ${company_id}`;
+      // Propagate the machine_tag change to parts_inventory rows that came from this manual's parts.
+      // Only touches rows whose current machine_tag matches the OLD value or is empty/'shop_stock',
+      // so we never stomp a user-assigned tag on a different machine.
+      let invUpdated = 0;
+      if (newTag && newTag !== 'shop_stock') {
+        const result = await sql`
+          UPDATE parts_inventory inv
+          SET machine_tag = ${newTag}, updated_at = NOW()
+          WHERE inv.company_id = ${company_id}
+            AND (inv.machine_tag IS NULL OR inv.machine_tag = '' OR inv.machine_tag = 'shop_stock' OR inv.machine_tag = ${oldTag})
+            AND LOWER(inv.part_number) IN (
+              SELECT DISTINCT LOWER(mpi.part_number) FROM manual_part_index mpi
+              WHERE mpi.manual_id = ${id} AND mpi.company_id = ${company_id} AND mpi.part_number <> ''
+            )
+          RETURNING id`;
+        invUpdated = result.length;
+      }
+      return res.json({ ok: true, manual: m, inventory_updated: invUpdated });
     }
 
     if (action === 'get_download_url') {

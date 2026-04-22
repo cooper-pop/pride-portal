@@ -240,6 +240,45 @@ module.exports = async function handler(req, res) {
       }
       return res.json({ ok: true, count: machines.length });
     }
+    if (action === 'get_machine_part_counts') {
+      // Unique part numbers per machine_tag, unioned across parts_inventory (direct assignments)
+      // and manual_part_index (parts extracted from manuals tagged to the machine). This covers
+      // the case where a part was already in inventory from an earlier invoice when the manual
+      // was uploaded — inventory.machine_tag never updated, but manual_part_index still records
+      // the relationship.
+      const rows = await sql`
+        SELECT machine_tag, COUNT(DISTINCT LOWER(part_number)) AS cnt FROM (
+          SELECT machine_tag, part_number FROM parts_inventory
+            WHERE company_id = ${company_id} AND part_number <> ''
+          UNION
+          SELECT machine_tag, part_number FROM manual_part_index
+            WHERE company_id = ${company_id} AND part_number <> ''
+        ) t
+        WHERE machine_tag IS NOT NULL AND machine_tag <> ''
+        GROUP BY machine_tag`;
+      return res.json(rows);
+    }
+    if (action === 'sync_machine_parts') {
+      // For a given machine_tag, look at every part number extracted from manuals tagged to this
+      // machine, and set parts_inventory.machine_tag = <that machine> for matching rows whose
+      // current tag is empty/'shop_stock' (we never stomp a user-assigned tag on a different machine).
+      const machine_tag = String(body.machine_tag || '').trim();
+      if (!machine_tag) return res.status(400).json({ error: 'machine_tag required' });
+      const updated = await sql`
+        UPDATE parts_inventory inv
+        SET machine_tag = ${machine_tag}, updated_at = NOW()
+        WHERE inv.company_id = ${company_id}
+          AND (inv.machine_tag IS NULL OR inv.machine_tag = '' OR inv.machine_tag = 'shop_stock')
+          AND LOWER(inv.part_number) IN (
+            SELECT DISTINCT LOWER(mpi.part_number)
+            FROM manual_part_index mpi
+            WHERE mpi.company_id = ${company_id}
+              AND mpi.machine_tag = ${machine_tag}
+              AND mpi.part_number <> ''
+          )
+        RETURNING id`;
+      return res.json({ ok: true, updated: updated.length });
+    }
     if (action === 'get_low_stock') {
       const rows = await sql`SELECT *, quantity AS qty_on_hand, min_quantity AS qty_minimum FROM parts_inventory WHERE company_id = ${company_id} AND quantity <= min_quantity ORDER BY quantity ASC`;
       return res.json(rows);

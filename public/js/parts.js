@@ -112,7 +112,56 @@ function partsMarkReceived(i){var o=_partsData.orders[i];if(!o){alert('Order not
 function partsOrderForm(editIdx){var o=editIdx>=0?_partsData.orders[editIdx]:{};document.getElementById('parts-panel').innerHTML='<div style="padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button style="'+BTN+';background:#f1f5f9;color:#334155" onclick="partsShowTab(\'orders\')">Back</button><span style="font-weight:700;font-size:.95rem">'+(editIdx>=0?'Edit':'Add')+' Order</span></div><input type="text" placeholder="Part Number" id="of-n" style="'+INP+'" value="'+(o.part_number||'')+'"><input type="text" placeholder="Description" id="of-d" style="'+INP+'" value="'+(o.description||'')+'"><input type="number" placeholder="Quantity" id="of-q" style="'+INP+'" value="'+(o.quantity||'')+'"><input type="text" placeholder="Supplier" id="of-s" style="'+INP+'" value="'+(o.supplier||'')+'"><select id="of-st" style="'+INP+'">'+['pending','ordered','received','cancelled'].map(function(s){return '<option value="'+s+'"'+(o.status===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';}).join('')+'</select><textarea placeholder="Notes" id="of-no" style="'+INP+'resize:vertical;height:60px">'+(o.notes||'')+'</textarea><button style="'+BTN_P+';width:100%" onclick="partsSaveOrder('+editIdx+')">Save</button></div>';}
 function partsSaveOrder(editIdx){var data={part_number:document.getElementById('of-n').value,description:document.getElementById('of-d').value,quantity:document.getElementById('of-q').value,supplier:document.getElementById('of-s').value,status:document.getElementById('of-st').value,notes:document.getElementById('of-no').value};var action=editIdx>=0?'update_parts_order':'add_parts_order';if(editIdx>=0)data.id=_partsData.orders[editIdx].id;apiCall('POST','/api/parts?action='+action,data).then(function(){partsShowTab('orders');}).catch(function(){alert('Error');});}
 function partsDelOrder(i){if(!confirm('Delete?'))return;apiCall('POST','/api/parts?action=delete_parts_order',{id:_partsData.orders[i].id}).then(function(){partsShowTab('orders');}).catch(function(){alert('Error');});}
-function partsRenderMachines(){loadMachines();var panel=document.getElementById('parts-panel');var html='<div style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-weight:700;font-size:.95rem">Machinery</span><button style="'+BTN_P+'" onclick="partsMachineForm(-1)">+ Add Machine</button></div>';if(!_machinesList.length)html+='<div style="text-align:center;color:#94a3b8;padding:30px 0">No machines yet. Add your first machine!</div>';else _machinesList.forEach(function(m,i){var pc=_partsData.inventory.filter(function(p){return p.machine_tag===m.id;}).length;html+='<div style="'+CARD+'"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div style="font-weight:700;font-size:.9rem;color:#1a3a6b">'+m.name+'</div>';if(m.make||m.model||m.year)html+='<div style="color:#64748b;font-size:.78rem">'+[m.make,m.model,m.year].filter(Boolean).join(' - ')+'</div>';if(m.notes)html+='<div style="color:#94a3b8;font-size:.75rem">'+m.notes+'</div>';html+='<div style="font-size:.75rem;color:#6366f1;margin-top:3px">'+pc+' part'+(pc!==1?'s':'')+' assigned</div></div><div><button style="'+BTN_E+'" onclick="partsMachineForm('+i+')">Edit</button><button style="'+BTN_D+'" onclick="partsDelMachine('+i+')">Del</button></div></div></div>';});html+='</div>';panel.innerHTML=html;}
+function partsRenderMachines(){
+  loadMachines();
+  var panel=document.getElementById('parts-panel');
+  // Fetch accurate per-machine counts from the server (union of parts_inventory and manual_part_index
+  // so manuals whose parts were already in inventory from an earlier invoice still count correctly).
+  panel.innerHTML='<div style="padding:14px;text-align:center;color:#94a3b8">Loading machines…</div>';
+  apiCall('GET','/api/parts?action=get_machine_part_counts').then(function(rows){
+    var counts={};
+    (Array.isArray(rows)?rows:[]).forEach(function(r){counts[r.machine_tag]=parseInt(r.cnt)||0;});
+    partsRenderMachinesInner(counts);
+  }).catch(function(){
+    // If the count call fails, still render the list — fall back to the old inventory-only count
+    partsRenderMachinesInner(null);
+  });
+}
+function partsRenderMachinesInner(serverCounts){
+  var panel=document.getElementById('parts-panel');
+  var html='<div style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-weight:700;font-size:.95rem">Machinery</span><button style="'+BTN_P+'" onclick="partsMachineForm(-1)">+ Add Machine</button></div>';
+  if(!_machinesList.length){
+    html+='<div style="text-align:center;color:#94a3b8;padding:30px 0">No machines yet. Add your first machine!</div>';
+  } else {
+    _machinesList.forEach(function(m,i){
+      var pc;
+      if(serverCounts && (m.id in serverCounts)) pc=serverCounts[m.id];
+      else if(serverCounts) pc=0;
+      else pc=(_partsData.inventory||[]).filter(function(p){return p.machine_tag===m.id;}).length;
+      html+='<div style="'+CARD+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.9rem;color:#1a3a6b">'+m.name+'</div>';
+      if(m.make||m.model||m.year) html+='<div style="color:#64748b;font-size:.78rem">'+[m.make,m.model,m.year].filter(Boolean).join(' - ')+'</div>';
+      if(m.notes) html+='<div style="color:#94a3b8;font-size:.75rem">'+m.notes+'</div>';
+      html+='<div style="font-size:.75rem;color:#6366f1;margin-top:3px">'+pc+' part'+(pc!==1?'s':'')+' assigned</div></div>';
+      html+='<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><button style="'+BTN_A+';padding:4px 9px;font-size:.7rem;margin:0" onclick="partsSyncMachineParts(\''+m.id+'\')" title="Claim every part from manuals tagged to this machine into this machine\'s inventory">Sync from manuals</button><div style="display:flex;gap:4px"><button style="'+BTN_E+';margin:0" onclick="partsMachineForm('+i+')">Edit</button><button style="'+BTN_D+';margin:0" onclick="partsDelMachine('+i+')">Del</button></div></div>';
+      html+='</div></div>';
+    });
+  }
+  html+='</div>';
+  panel.innerHTML=html;
+}
+function partsSyncMachineParts(machineId){
+  var m=(_machinesList||[]).find(function(x){return x.id===machineId;});
+  var machineName=m?(m.name||'machine'):'machine';
+  if(!confirm('Assign every part from '+machineName+'\'s manuals to its inventory?\n\nThis updates parts whose machine is currently empty or Shop Stock. Parts already assigned to a different machine are left alone.'))return;
+  apiCall('POST','/api/parts?action=sync_machine_parts',{machine_tag:machineId}).then(function(r){
+    var n=r.updated||0;
+    if(typeof toast==='function') toast('Synced: '+n+' part'+(n===1?'':'s')+' assigned to '+machineName);
+    else alert('Synced '+n+' part'+(n===1?'':'s')+'.');
+    // Invalidate inventory cache so the counts on this screen are fresh
+    _partsData.inventory=[];
+    partsRenderMachines();
+  }).catch(function(e){alert('Sync failed: '+(e&&e.message?e.message:'unknown'));});
+}
 function partsMachineForm(editIdx){var m=editIdx>=0?_machinesList[editIdx]:{};document.getElementById('parts-panel').innerHTML='<div style="padding:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button style="'+BTN+';background:#f1f5f9;color:#334155" onclick="partsRenderMachines()">Back</button><span style="font-weight:700;font-size:.95rem">'+(editIdx>=0?'Edit':'Add')+' Machine</span></div><input type="text" placeholder="Machine Name (required)" id="mch-n" style="'+INP+'" value="'+(m.name||'')+'"><input type="text" placeholder="Make or Brand" id="mch-mk" style="'+INP+'" value="'+(m.make||'')+'"><input type="text" placeholder="Model" id="mch-mo" style="'+INP+'" value="'+(m.model||'')+'"><input type="text" placeholder="Year" id="mch-y" style="'+INP+'" value="'+(m.year||'')+'"><textarea placeholder="Notes (serial number, location, etc.)" id="mch-no" style="'+INP+'resize:vertical;height:60px">'+(m.notes||'')+'</textarea><button style="'+BTN_P+';width:100%" onclick="partsSaveMachine('+editIdx+')">Save Machine</button></div>';}
 function partsSaveMachine(editIdx){var name=document.getElementById('mch-n').value.trim();if(!name){alert('Machine name required');return;}var machine={id:editIdx>=0?_machinesList[editIdx].id:'mach_'+Date.now(),name:name,make:document.getElementById('mch-mk').value,model:document.getElementById('mch-mo').value,year:document.getElementById('mch-y').value,notes:document.getElementById('mch-no').value};if(editIdx>=0)_machinesList[editIdx]=machine;else _machinesList.push(machine);saveMachines();partsRenderMachines();}
 function partsDelMachine(i){if(!confirm('Delete this machine?'))return;_machinesList.splice(i,1);saveMachines();partsRenderMachines();}
