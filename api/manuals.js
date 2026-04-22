@@ -229,6 +229,14 @@ module.exports = async function handler(req, res) {
       // Bootstrap status columns in case this is the first request since the deploy that added them
       await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_status TEXT DEFAULT 'pending'`;
       await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_log TEXT DEFAULT ''`;
+      // Legacy backfill: any manual that already has parts but got 'pending' retroactively from the
+      // ADD COLUMN DEFAULT was actually extracted on an older deploy — mark it done so the UI stops
+      // showing EXTRACTING... on manuals that are finished. Idempotent and cheap when no rows match.
+      await sql`UPDATE parts_manuals SET extraction_status = 'done'
+        WHERE company_id = ${company_id}
+          AND part_count > 0
+          AND (extraction_status IS NULL OR extraction_status = 'pending')
+          AND updated_at < NOW() - INTERVAL '2 minutes'`;
       const rows = await sql`
         SELECT id, title, machine_tag, file_url, cloudinary_public_id,
                file_size_bytes, filename, notes, part_count,
