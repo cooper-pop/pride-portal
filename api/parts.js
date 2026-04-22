@@ -63,6 +63,8 @@ module.exports = async function handler(req, res) {
     await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS cloudinary_public_id TEXT DEFAULT ''`;
     await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT DEFAULT 0`;
     await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS filename TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_status TEXT DEFAULT 'pending'`;
+    await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_log TEXT DEFAULT ''`;
     await sql`CREATE TABLE IF NOT EXISTS manual_part_index (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       manual_id UUID, company_id INT,

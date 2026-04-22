@@ -3,6 +3,12 @@ const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const cloudinary = require('cloudinary').v2;
 const { PDFDocument } = require('pdf-lib');
+// waitUntil lets us keep the serverless function alive after res.json() returns,
+// so the browser gets an instant upload response and we run Anthropic extraction
+// in the background up to the function's maxDuration (300s via vercel.json).
+let waitUntil;
+try { waitUntil = require('@vercel/functions').waitUntil; }
+catch (e) { waitUntil = (p) => p; } // local dev / missing dep fallback
 
 // Anthropic's document API caps at 100 pages per PDF. Anything bigger has to be split,
 // or the request fails with "exceeds maximum page count". We split into 95-page chunks
@@ -20,7 +26,23 @@ Rules:
 - If this document has no parts list, return {"parts":[]}
 - Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
 
-async function extractPartsFromPdfBuffer(client, buffer) {
+// Writes a status line to the parts_manuals row so a failed extraction leaves a paper trail.
+async function writeManualStatus(sql, companyId, manualId, status, logLine) {
+  try {
+    const stamped = new Date().toISOString() + ' ' + logLine;
+    await sql`UPDATE parts_manuals SET
+      extraction_status = ${status},
+      extraction_log = COALESCE(extraction_log, '') || ${stamped + '\n'},
+      updated_at = NOW()
+      WHERE id = ${manualId} AND company_id = ${companyId}`;
+  } catch (e) {
+    console.error('writeManualStatus failed:', e.message);
+  }
+}
+
+async function extractPartsFromPdfBuffer(client, buffer, opts) {
+  // Optional progress callback (manualId + sql wiring passed by caller)
+  const progress = (opts && opts.progress) || (async () => {});
   // Load the source PDF so we can count pages and split if needed
   let srcPdf;
   try {
@@ -29,20 +51,28 @@ async function extractPartsFromPdfBuffer(client, buffer) {
     throw new Error('PDF parse failed: ' + e.message);
   }
   const totalPages = srcPdf.getPageCount();
-  const MAX = 95; // leave a small buffer under Anthropic's 100-page cap
+  await progress('pdf loaded: ' + totalPages + ' pages, ' + buffer.length + ' bytes');
+  // 40 keeps each Anthropic call under ~25s AND keeps re-saved chunk PDFs under a few MB.
+  const MAX = 40;
   const chunks = [];
   if (totalPages <= MAX) {
     chunks.push({ offset: 0, pageCount: totalPages, buffer });
   } else {
     for (let start = 0; start < totalPages; start += MAX) {
       const end = Math.min(start + MAX, totalPages);
-      const chunkDoc = await PDFDocument.create();
-      const indices = [];
-      for (let i = start; i < end; i++) indices.push(i);
-      const pages = await chunkDoc.copyPages(srcPdf, indices);
-      pages.forEach(p => chunkDoc.addPage(p));
-      const bytes = await chunkDoc.save();
-      chunks.push({ offset: start, pageCount: end - start, buffer: Buffer.from(bytes) });
+      try {
+        const chunkDoc = await PDFDocument.create();
+        const indices = [];
+        for (let i = start; i < end; i++) indices.push(i);
+        const pages = await chunkDoc.copyPages(srcPdf, indices);
+        pages.forEach(p => chunkDoc.addPage(p));
+        const bytes = await chunkDoc.save();
+        chunks.push({ offset: start, pageCount: end - start, buffer: Buffer.from(bytes) });
+        await progress('built chunk ' + chunks.length + ' (pages ' + (start + 1) + '-' + end + ', ' + bytes.length + ' bytes)');
+      } catch (splitErr) {
+        await progress('split failed at pages ' + (start + 1) + '-' + end + ': ' + splitErr.message);
+        throw new Error('PDF split failed at pages ' + (start + 1) + '-' + end + ': ' + splitErr.message);
+      }
     }
   }
 
@@ -56,10 +86,12 @@ async function extractPartsFromPdfBuffer(client, buffer) {
     const chunkPrompt = chunks.length > 1
       ? EXTRACTION_PROMPT + `\n\nIMPORTANT: This PDF chunk is pages ${chunk.offset + 1}–${chunkEnd} of a larger ${totalPages}-page document. When you report page_number, give the page number WITHIN THIS CHUNK (1-indexed from 1 to ${chunk.pageCount}). The server will add the chunk offset to get the full-document page number.`
       : EXTRACTION_PROMPT;
+    await progress('calling Anthropic for chunk ' + (idx + 1) + '/' + chunks.length + '...');
     try {
+      const t0 = Date.now();
       const msg = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
+        max_tokens: 6000,
         messages: [{ role: 'user', content: [
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
           { type: 'text', text: chunkPrompt }
@@ -68,6 +100,7 @@ async function extractPartsFromPdfBuffer(client, buffer) {
       const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
       const parsed = JSON.parse(raw);
       const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
+      await progress('chunk ' + (idx + 1) + ' ok (' + parts.length + ' parts, ' + ((Date.now() - t0) / 1000).toFixed(1) + 's)');
       for (const p of parts) {
         const pn = String(p.part_number || '').trim();
         if (!pn) continue;
@@ -87,9 +120,47 @@ async function extractPartsFromPdfBuffer(client, buffer) {
     } catch (err) {
       console.error(`Chunk ${idx + 1}/${chunks.length} (offset ${chunk.offset}) failed:`, err.message);
       chunkErrors.push(`chunk ${idx + 1}: ${err.message}`);
+      await progress('chunk ' + (idx + 1) + ' FAILED: ' + err.message);
     }
   }
   return { parts: allParts, totalPages, chunkCount: chunks.length, chunkErrors };
+}
+
+// Runs the extraction on a saved manual, writes results + status back to the DB.
+// Designed to be called inside waitUntil() so it can keep running after res.json()
+// returns to the browser. Idempotent — safe to re-invoke via the reindex path.
+async function runManualExtractionInBackground({ sql, companyId, manualId, fileUrl, machineTag, title }) {
+  const progress = (line) => writeManualStatus(sql, companyId, manualId, 'processing', line);
+  try {
+    await progress('start: fetching PDF from ' + (fileUrl || '').slice(0, 60));
+    const fetchResp = await fetch(fileUrl);
+    if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
+    const buffer = Buffer.from(await fetchResp.arrayBuffer());
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const result = await extractPartsFromPdfBuffer(client, buffer, { progress });
+    // Clear any prior parts for this manual before writing (so reindex is idempotent)
+    await sql`DELETE FROM manual_part_index WHERE manual_id = ${manualId} AND company_id = ${companyId}`;
+    const seen = new Set();
+    for (const p of result.parts) {
+      const pn = String(p.part_number || '').trim();
+      if (!pn) continue;
+      const key = pn.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const desc = String(p.description || '').trim().slice(0, 200);
+      const pg = Number.isFinite(parseInt(p.page_number)) ? parseInt(p.page_number) : null;
+      await sql`INSERT INTO manual_part_index (manual_id, company_id, part_number, description, machine_tag, page_number)
+        VALUES (${manualId}, ${companyId}, ${pn}, ${desc}, ${machineTag || ''}, ${pg})`;
+    }
+    await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${manualId}`;
+    await seedInventoryFromManualParts(sql, result.parts, companyId, machineTag, title || '');
+    const finalStatus = result.chunkErrors.length > 0 ? 'partial' : 'done';
+    const summary = 'EXTRACTION ' + finalStatus.toUpperCase() + ': ' + seen.size + ' unique parts from ' + result.totalPages + ' pages (' + result.chunkCount + ' chunk' + (result.chunkCount === 1 ? '' : 's') + ')' + (result.chunkErrors.length ? '; errors: ' + result.chunkErrors.join('; ') : '');
+    await writeManualStatus(sql, companyId, manualId, finalStatus, summary);
+  } catch (err) {
+    console.error('Background extraction failed:', err);
+    await writeManualStatus(sql, companyId, manualId, 'failed', 'EXTRACTION FAILED: ' + (err && err.message ? err.message : String(err)));
+  }
 }
 
 function configureCloudinary() {
@@ -155,9 +226,13 @@ module.exports = async function handler(req, res) {
 
   try {
     if (action === 'get_manuals') {
+      // Bootstrap status columns in case this is the first request since the deploy that added them
+      await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_status TEXT DEFAULT 'pending'`;
+      await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_log TEXT DEFAULT ''`;
       const rows = await sql`
         SELECT id, title, machine_tag, file_url, cloudinary_public_id,
                file_size_bytes, filename, notes, part_count,
+               extraction_status, extraction_log,
                created_at, updated_at
         FROM parts_manuals
         WHERE company_id = ${company_id}
@@ -197,68 +272,49 @@ module.exports = async function handler(req, res) {
       const { title, machine_tag, file_url, cloudinary_public_id, file_size_bytes, filename, notes } = body;
       if (!title || !String(title).trim()) return res.status(400).json({ error: 'Title required' });
 
+      // Guarantee status columns exist regardless of whether init_parts_db has been called
+      await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_status TEXT DEFAULT 'pending'`;
+      await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_log TEXT DEFAULT ''`;
+
       // Save record first so a slow/failed extraction doesn't lose the upload
+      const initialStatus = file_url ? 'pending' : 'none';
       const [manual] = await sql`
         INSERT INTO parts_manuals
-          (company_id, title, machine_tag, file_url, cloudinary_public_id, file_size_bytes, filename, notes, part_count)
+          (company_id, title, machine_tag, file_url, cloudinary_public_id, file_size_bytes, filename, notes, part_count, extraction_status, extraction_log)
         VALUES (${company_id}, ${String(title).trim()}, ${machine_tag || ''},
                 ${file_url || ''}, ${cloudinary_public_id || ''}, ${file_size_bytes || 0},
-                ${filename || ''}, ${notes || ''}, 0)
+                ${filename || ''}, ${notes || ''}, 0, ${initialStatus}, ${''})
         RETURNING *`;
 
-      // If no file_url, nothing to extract; return metadata-only record
-      if (!file_url) return res.json({ ok: true, manual, extracted_count: 0 });
+      // No file → no extraction
+      if (!file_url) return res.json({ ok: true, manual, extraction_status: 'none' });
 
-      // Extract part numbers via Claude document API (fetch the PDF from Cloudinary).
-      // Uses the chunking helper so PDFs over Anthropic's 100-page cap still work.
-      let extractedParts = [];
-      let extractionError = null;
-      let extractionMeta = null;
-      try {
-        const fetchResp = await fetch(file_url);
-        if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
-        const buffer = Buffer.from(await fetchResp.arrayBuffer());
-        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const result = await extractPartsFromPdfBuffer(client, buffer);
-        extractedParts = result.parts;
-        extractionMeta = { totalPages: result.totalPages, chunkCount: result.chunkCount };
-        if (result.chunkErrors.length > 0) {
-          extractionError = result.chunkErrors.join('; ');
-        }
-      } catch (err) {
-        console.error('Manual extract error:', err);
-        extractionError = err.message;
-      }
-
-      // Insert extracted parts (deduped)
-      let inventorySeeded = 0;
-      if (extractedParts.length > 0) {
-        const seen = new Set();
-        for (const p of extractedParts) {
-          const pn = String(p.part_number || '').trim();
-          if (!pn) continue;
-          const key = pn.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const desc = String(p.description || '').trim().slice(0, 200);
-          const pg = Number.isFinite(parseInt(p.page_number)) ? parseInt(p.page_number) : null;
-          await sql`INSERT INTO manual_part_index (manual_id, company_id, part_number, description, machine_tag, page_number)
-            VALUES (${manual.id}, ${company_id}, ${pn}, ${desc}, ${machine_tag || ''}, ${pg})`;
-        }
-        await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${manual.id}`;
-        // Also seed the main parts_inventory so these show up as catalog rows (qty=0, $0.00)
-        inventorySeeded = await seedInventoryFromManualParts(sql, extractedParts, company_id, machine_tag, String(title).trim());
-      }
+      // Kick off extraction in the background so the browser isn't blocked on a long Anthropic call.
+      // waitUntil keeps the serverless function alive after res.json() returns (up to maxDuration).
+      const bgPromise = runManualExtractionInBackground({
+        sql, companyId: company_id, manualId: manual.id,
+        fileUrl: file_url, machineTag: machine_tag, title: String(title).trim()
+      });
+      try { waitUntil(bgPromise); } catch (e) { /* local fallback: we already started the promise */ }
 
       return res.json({
         ok: true,
         manual,
-        extracted_count: extractedParts.length,
-        inventory_seeded: inventorySeeded,
-        extraction_error: extractionError,
-        total_pages: extractionMeta ? extractionMeta.totalPages : null,
-        chunk_count: extractionMeta ? extractionMeta.chunkCount : null
+        extraction_status: 'pending',
+        poll_manual_id: manual.id
       });
+    }
+
+    if (action === 'get_manual_status') {
+      const { id } = body;
+      if (!id) return res.status(400).json({ error: 'Missing id' });
+      // Bootstrap the columns in case this runs before init_parts_db
+      await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_status TEXT DEFAULT 'pending'`;
+      await sql`ALTER TABLE parts_manuals ADD COLUMN IF NOT EXISTS extraction_log TEXT DEFAULT ''`;
+      const rows = await sql`SELECT id, title, part_count, extraction_status, extraction_log, updated_at
+        FROM parts_manuals WHERE id = ${id} AND company_id = ${company_id} LIMIT 1`;
+      if (!rows.length) return res.status(404).json({ error: 'Not found' });
+      return res.json(rows[0]);
     }
 
     if (action === 'reindex_manual') {
@@ -269,47 +325,15 @@ module.exports = async function handler(req, res) {
       const manual = rows[0];
       if (!manual.file_url) return res.status(400).json({ error: 'Manual has no stored file to re-extract' });
 
-      let extractedParts = [];
-      let extractionMeta = null;
-      let chunkErrorStr = '';
-      try {
-        const fetchResp = await fetch(manual.file_url);
-        if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
-        const buffer = Buffer.from(await fetchResp.arrayBuffer());
-        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const result = await extractPartsFromPdfBuffer(client, buffer);
-        extractedParts = result.parts;
-        extractionMeta = { totalPages: result.totalPages, chunkCount: result.chunkCount };
-        if (result.chunkErrors.length > 0) chunkErrorStr = result.chunkErrors.join('; ');
-      } catch (err) {
-        console.error('Reindex extract error:', err);
-        return res.status(500).json({ error: 'Reindex failed: ' + err.message });
-      }
-
-      await sql`DELETE FROM manual_part_index WHERE manual_id = ${id} AND company_id = ${company_id}`;
-      const seen = new Set();
-      for (const p of extractedParts) {
-        const pn = String(p.part_number || '').trim();
-        if (!pn) continue;
-        const key = pn.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const desc = String(p.description || '').trim().slice(0, 200);
-        const pg = Number.isFinite(parseInt(p.page_number)) ? parseInt(p.page_number) : null;
-        await sql`INSERT INTO manual_part_index (manual_id, company_id, part_number, description, machine_tag, page_number)
-          VALUES (${id}, ${company_id}, ${pn}, ${desc}, ${manual.machine_tag || ''}, ${pg})`;
-      }
-      await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${id}`;
-      // Seed inventory with any NEW part numbers (never clobbers existing rows)
-      const inventorySeeded = await seedInventoryFromManualParts(sql, extractedParts, company_id, manual.machine_tag, manual.title || '');
-      return res.json({
-        ok: true,
-        extracted_count: seen.size,
-        inventory_seeded: inventorySeeded,
-        total_pages: extractionMeta ? extractionMeta.totalPages : null,
-        chunk_count: extractionMeta ? extractionMeta.chunkCount : null,
-        extraction_error: chunkErrorStr || null
+      // Reset status and kick off extraction in the background
+      await sql`UPDATE parts_manuals SET extraction_status = 'pending', extraction_log = '', updated_at = NOW() WHERE id = ${id}`;
+      const bgPromise = runManualExtractionInBackground({
+        sql, companyId: company_id, manualId: id,
+        fileUrl: manual.file_url, machineTag: manual.machine_tag, title: manual.title || ''
       });
+      try { waitUntil(bgPromise); } catch (e) { /* local fallback */ }
+
+      return res.json({ ok: true, extraction_status: 'pending', poll_manual_id: id });
     }
 
     if (action === 'save_manual_metadata') {
