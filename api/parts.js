@@ -47,6 +47,8 @@ module.exports = async function handler(req, res) {
     await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS avg_cost NUMERIC(10,4) DEFAULT 0`;
     await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS total_value NUMERIC(10,2) DEFAULT 0`;
     await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS barcode TEXT DEFAULT ''`;
+    await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT false`;
+    await sql`ALTER TABLE parts_inventory ADD COLUMN IF NOT EXISTS custom_vendors JSONB DEFAULT '[]'::jsonb`;
     await sql`CREATE INDEX IF NOT EXISTS idx_parts_barcode ON parts_inventory(company_id, barcode) WHERE barcode <> ''`;
     await sql`CREATE TABLE IF NOT EXISTS parts_adjustments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -201,6 +203,8 @@ module.exports = async function handler(req, res) {
     // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ INVENTORY CRUD ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
     if (action === 'save_part') {
       const p = body;
+      const vendorsJson = JSON.stringify(Array.isArray(p.custom_vendors) ? p.custom_vendors : []);
+      const isCustom = !!p.is_custom;
       let rows;
       if (p.id) {
         rows = await sql`UPDATE parts_inventory SET
@@ -215,15 +219,17 @@ module.exports = async function handler(req, res) {
           machine_tag = ${p.machine_tag || ''},
           supplier = ${p.supplier || ''},
           barcode = ${p.barcode || ''},
+          is_custom = ${isCustom},
+          custom_vendors = ${vendorsJson}::jsonb,
           notes = ${p.notes || ''},
           updated_at = NOW()
           WHERE id = ${p.id} AND company_id = ${company_id} RETURNING *`;
       } else {
         rows = await sql`INSERT INTO parts_inventory
-          (part_number, description, manufacturer, category, quantity, min_quantity, unit_cost, location, machine_tag, supplier, barcode, notes, company_id)
+          (part_number, description, manufacturer, category, quantity, min_quantity, unit_cost, location, machine_tag, supplier, barcode, is_custom, custom_vendors, notes, company_id)
           VALUES (${p.part_number || ''}, ${p.description || ''}, ${p.manufacturer || ''}, ${p.category || ''},
           ${p.quantity || 0}, ${p.min_quantity || 1}, ${p.unit_cost || 0}, ${p.location || ''},
-          ${p.machine_tag || ''}, ${p.supplier || ''}, ${p.barcode || ''}, ${p.notes || ''}, ${company_id})
+          ${p.machine_tag || ''}, ${p.supplier || ''}, ${p.barcode || ''}, ${isCustom}, ${vendorsJson}::jsonb, ${p.notes || ''}, ${company_id})
           RETURNING *`;
       }
       return res.json({ ok: true, part: rows[0] });
