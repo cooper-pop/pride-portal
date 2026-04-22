@@ -26,6 +26,45 @@ Rules:
 - If this document has no parts list, return {"parts":[]}
 - Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
 
+// Recover partial parts from a truncated Anthropic response. When max_tokens is hit mid-string,
+// JSON.parse fails on the whole payload. We walk the raw text to find the last complete
+// object inside the "parts":[...] array and reconstruct a valid JSON from everything up to
+// that point. Callers flag this so the log records it as SALVAGED.
+function salvageTruncatedPartsJson(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const arrayMatch = raw.match(/"parts"\s*:\s*\[/);
+  if (!arrayMatch) return null;
+  const arrayStart = arrayMatch.index + arrayMatch[0].length;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastCompleteObjectEnd = -1;
+  for (let i = arrayStart; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) lastCompleteObjectEnd = i;
+    }
+  }
+  if (lastCompleteObjectEnd < 0) {
+    // No complete objects — return empty rather than lose the chunk
+    return { parts: [] };
+  }
+  const prefix = raw.slice(0, arrayStart);
+  const objects = raw.slice(arrayStart, lastCompleteObjectEnd + 1);
+  const rebuilt = prefix + objects + ']}';
+  try { return JSON.parse(rebuilt); }
+  catch (e) { return null; }
+}
+
 // Writes a status line to the parts_manuals row so a failed extraction leaves a paper trail.
 async function writeManualStatus(sql, companyId, manualId, status, logLine) {
   try {
@@ -91,16 +130,30 @@ async function extractPartsFromPdfBuffer(client, buffer, opts) {
       const t0 = Date.now();
       const msg = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 6000,
+        // 16K leaves plenty of headroom for a dense parts list. The original 6K was
+        // tripping on manuals with 100+ parts per chunk (BAADER 1741 chunk 1 truncated
+        // mid-string at ~4,250 tokens).
+        max_tokens: 16000,
         messages: [{ role: 'user', content: [
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
           { type: 'text', text: chunkPrompt }
         ]}]
       });
       const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-      const parsed = JSON.parse(raw);
+      let parsed;
+      let salvaged = false;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (parseErr) {
+        // Anthropic may have still hit the ceiling even at 16K if the parts list is huge.
+        // Salvage every complete part object before the truncation point so we don't lose them all.
+        parsed = salvageTruncatedPartsJson(raw);
+        if (!parsed) throw parseErr;
+        salvaged = true;
+      }
       const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
-      await progress('chunk ' + (idx + 1) + ' ok (' + parts.length + ' parts, ' + ((Date.now() - t0) / 1000).toFixed(1) + 's)');
+      const salvageNote = salvaged ? ' [SALVAGED from truncated response]' : '';
+      await progress('chunk ' + (idx + 1) + ' ok (' + parts.length + ' parts, ' + ((Date.now() - t0) / 1000).toFixed(1) + 's)' + salvageNote);
       for (const p of parts) {
         const pn = String(p.part_number || '').trim();
         if (!pn) continue;
