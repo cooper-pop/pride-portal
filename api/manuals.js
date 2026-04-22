@@ -2,6 +2,95 @@ const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const cloudinary = require('cloudinary').v2;
+const { PDFDocument } = require('pdf-lib');
+
+// Anthropic's document API caps at 100 pages per PDF. Anything bigger has to be split,
+// or the request fails with "exceeds maximum page count". We split into 95-page chunks
+// and offset the reported page_number so the UI still jumps to the correct full-document page.
+const EXTRACTION_PROMPT = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:
+{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown","page_number":5}]}
+
+Rules:
+- Only extract part numbers from the parts list / bill of materials / exploded diagram section
+- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers
+- Do NOT invent or guess part numbers
+- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled
+- Description is optional — use the label/name next to the part number, keep it under 60 chars
+- page_number is the 1-indexed PDF page where the part's exploded diagram / picture / primary listing appears. If a part appears on multiple pages, pick the page that shows its picture. Use null if you cannot determine a page.
+- If this document has no parts list, return {"parts":[]}
+- Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
+
+async function extractPartsFromPdfBuffer(client, buffer) {
+  // Load the source PDF so we can count pages and split if needed
+  let srcPdf;
+  try {
+    srcPdf = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  } catch (e) {
+    throw new Error('PDF parse failed: ' + e.message);
+  }
+  const totalPages = srcPdf.getPageCount();
+  const MAX = 95; // leave a small buffer under Anthropic's 100-page cap
+  const chunks = [];
+  if (totalPages <= MAX) {
+    chunks.push({ offset: 0, pageCount: totalPages, buffer });
+  } else {
+    for (let start = 0; start < totalPages; start += MAX) {
+      const end = Math.min(start + MAX, totalPages);
+      const chunkDoc = await PDFDocument.create();
+      const indices = [];
+      for (let i = start; i < end; i++) indices.push(i);
+      const pages = await chunkDoc.copyPages(srcPdf, indices);
+      pages.forEach(p => chunkDoc.addPage(p));
+      const bytes = await chunkDoc.save();
+      chunks.push({ offset: start, pageCount: end - start, buffer: Buffer.from(bytes) });
+    }
+  }
+
+  const allParts = [];
+  const seenKeys = new Set();
+  const chunkErrors = [];
+  for (let idx = 0; idx < chunks.length; idx++) {
+    const chunk = chunks[idx];
+    const b64 = chunk.buffer.toString('base64');
+    const chunkEnd = chunk.offset + chunk.pageCount;
+    const chunkPrompt = chunks.length > 1
+      ? EXTRACTION_PROMPT + `\n\nIMPORTANT: This PDF chunk is pages ${chunk.offset + 1}–${chunkEnd} of a larger ${totalPages}-page document. When you report page_number, give the page number WITHIN THIS CHUNK (1-indexed from 1 to ${chunk.pageCount}). The server will add the chunk offset to get the full-document page number.`
+      : EXTRACTION_PROMPT;
+    try {
+      const msg = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+          { type: 'text', text: chunkPrompt }
+        ]}]
+      });
+      const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+      const parsed = JSON.parse(raw);
+      const parts = Array.isArray(parsed.parts) ? parsed.parts : [];
+      for (const p of parts) {
+        const pn = String(p.part_number || '').trim();
+        if (!pn) continue;
+        const key = pn.toLowerCase();
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        // Offset the reported page_number into full-document coordinates
+        let pg = parseInt(p.page_number);
+        if (Number.isFinite(pg)) pg = pg + chunk.offset;
+        else pg = null;
+        allParts.push({
+          part_number: pn,
+          description: String(p.description || '').trim(),
+          page_number: pg
+        });
+      }
+    } catch (err) {
+      console.error(`Chunk ${idx + 1}/${chunks.length} (offset ${chunk.offset}) failed:`, err.message);
+      chunkErrors.push(`chunk ${idx + 1}: ${err.message}`);
+    }
+  }
+  return { parts: allParts, totalPages, chunkCount: chunks.length, chunkErrors };
+}
 
 function configureCloudinary() {
   cloudinary.config({
@@ -120,27 +209,22 @@ module.exports = async function handler(req, res) {
       // If no file_url, nothing to extract; return metadata-only record
       if (!file_url) return res.json({ ok: true, manual, extracted_count: 0 });
 
-      // Extract part numbers via Claude document API (fetch the PDF from Cloudinary)
+      // Extract part numbers via Claude document API (fetch the PDF from Cloudinary).
+      // Uses the chunking helper so PDFs over Anthropic's 100-page cap still work.
       let extractedParts = [];
       let extractionError = null;
+      let extractionMeta = null;
       try {
         const fetchResp = await fetch(file_url);
         if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
         const buffer = Buffer.from(await fetchResp.arrayBuffer());
-        const b64 = buffer.toString('base64');
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const prompt = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:\n{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown","page_number":5}]}\n\nRules:\n- Only extract part numbers from the parts list / bill of materials / exploded diagram section\n- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers\n- Do NOT invent or guess part numbers\n- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled\n- Description is optional — use the label/name next to the part number, keep it under 60 chars\n- page_number is the 1-indexed PDF page where the part's exploded diagram / picture / primary listing appears. If a part appears on multiple pages, pick the page that shows its picture. Use null if you cannot determine a page.\n- If this document has no parts list, return {"parts":[]}\n- Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
-        const msg = await client.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 8000,
-          messages: [{ role: 'user', content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
-            { type: 'text', text: prompt }
-          ]}]
-        });
-        const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-        const parsed = JSON.parse(raw);
-        extractedParts = Array.isArray(parsed.parts) ? parsed.parts : [];
+        const result = await extractPartsFromPdfBuffer(client, buffer);
+        extractedParts = result.parts;
+        extractionMeta = { totalPages: result.totalPages, chunkCount: result.chunkCount };
+        if (result.chunkErrors.length > 0) {
+          extractionError = result.chunkErrors.join('; ');
+        }
       } catch (err) {
         console.error('Manual extract error:', err);
         extractionError = err.message;
@@ -171,7 +255,9 @@ module.exports = async function handler(req, res) {
         manual,
         extracted_count: extractedParts.length,
         inventory_seeded: inventorySeeded,
-        extraction_error: extractionError
+        extraction_error: extractionError,
+        total_pages: extractionMeta ? extractionMeta.totalPages : null,
+        chunk_count: extractionMeta ? extractionMeta.chunkCount : null
       });
     }
 
@@ -184,24 +270,17 @@ module.exports = async function handler(req, res) {
       if (!manual.file_url) return res.status(400).json({ error: 'Manual has no stored file to re-extract' });
 
       let extractedParts = [];
+      let extractionMeta = null;
+      let chunkErrorStr = '';
       try {
         const fetchResp = await fetch(manual.file_url);
         if (!fetchResp.ok) throw new Error('PDF fetch failed: ' + fetchResp.status);
         const buffer = Buffer.from(await fetchResp.arrayBuffer());
-        const b64 = buffer.toString('base64');
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const prompt = `You are extracting part numbers from a maintenance or parts manual for industrial machinery at a catfish processing facility. Return ONLY valid JSON (no markdown, no commentary) in this exact shape:\n{"parts":[{"part_number":"ABC-123","description":"Short description if clearly shown","page_number":5}]}\n\nRules:\n- Only extract part numbers from the parts list / bill of materials / exploded diagram section\n- Ignore part numbers embedded in procedure text, page footers, revision stamps, section numbers\n- Do NOT invent or guess part numbers\n- Include manufacturer OEM numbers, cross-ref numbers, and internal SKUs when clearly labeled\n- Description is optional — use the label/name next to the part number, keep it under 60 chars\n- page_number is the 1-indexed PDF page where the part's exploded diagram / picture / primary listing appears. If a part appears on multiple pages, pick the page that shows its picture. Use null if you cannot determine a page.\n- If this document has no parts list, return {"parts":[]}\n- Return every unique part number (deduplicate identical ones, keeping the first occurrence)`;
-        const msg = await client.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 8000,
-          messages: [{ role: 'user', content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
-            { type: 'text', text: prompt }
-          ]}]
-        });
-        const raw = msg.content[0].text.trim().replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-        const parsed = JSON.parse(raw);
-        extractedParts = Array.isArray(parsed.parts) ? parsed.parts : [];
+        const result = await extractPartsFromPdfBuffer(client, buffer);
+        extractedParts = result.parts;
+        extractionMeta = { totalPages: result.totalPages, chunkCount: result.chunkCount };
+        if (result.chunkErrors.length > 0) chunkErrorStr = result.chunkErrors.join('; ');
       } catch (err) {
         console.error('Reindex extract error:', err);
         return res.status(500).json({ error: 'Reindex failed: ' + err.message });
@@ -223,7 +302,14 @@ module.exports = async function handler(req, res) {
       await sql`UPDATE parts_manuals SET part_count = ${seen.size}, updated_at = NOW() WHERE id = ${id}`;
       // Seed inventory with any NEW part numbers (never clobbers existing rows)
       const inventorySeeded = await seedInventoryFromManualParts(sql, extractedParts, company_id, manual.machine_tag, manual.title || '');
-      return res.json({ ok: true, extracted_count: seen.size, inventory_seeded: inventorySeeded });
+      return res.json({
+        ok: true,
+        extracted_count: seen.size,
+        inventory_seeded: inventorySeeded,
+        total_pages: extractionMeta ? extractionMeta.totalPages : null,
+        chunk_count: extractionMeta ? extractionMeta.chunkCount : null,
+        extraction_error: chunkErrorStr || null
+      });
     }
 
     if (action === 'save_manual_metadata') {
