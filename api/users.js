@@ -93,14 +93,19 @@ module.exports = async function handler(req, res) {
 
   // PATCH - update user
   if (req.method === 'PATCH') {
-    const { id, full_name, email, role, active, password } = req.body;
+    const { id, full_name, email, role, active, password, force_password_change } = req.body;
     if (!id) return res.status(400).json({ error: 'Missing id' });
     if (password) {
       const hash = await bcrypt.hash(password, 12);
-      // Clear force_password_change when user sets their own password
+      // If the user is changing their OWN password → clear force_password_change.
+      // If an admin is resetting SOMEONE ELSE'S password → set it to true so that
+      // user is required to change it on their next login. The old ternary had
+      // `? false : false` in both branches, effectively disabling the forcing
+      // behavior for admin-driven resets.
       const isAdmin = user.role === 'admin';
       const isSelf = id === user.user_id;
-      await sql`UPDATE users SET password_hash=${hash}, force_password_change=${isAdmin && !isSelf ? false : false} WHERE id=${id} AND company_id=${company_id}`;
+      const forceChange = isAdmin && !isSelf;
+      await sql`UPDATE users SET password_hash=${hash}, force_password_change=${forceChange} WHERE id=${id} AND company_id=${company_id}`;
     }
     if (full_name !== undefined || email !== undefined || role !== undefined || active !== undefined) {
       await sql`UPDATE users SET
@@ -108,6 +113,14 @@ module.exports = async function handler(req, res) {
         email=COALESCE(${email}, email),
         role=COALESCE(${role}, role),
         active=COALESCE(${active}, active)
+        WHERE id=${id} AND company_id=${company_id}`;
+    }
+    // Admin-only: flip force_password_change without touching the password itself.
+    // Lets an admin mark an existing account "must change password on next login"
+    // even when they don't know the current password.
+    if (force_password_change !== undefined) {
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+      await sql`UPDATE users SET force_password_change=${!!force_password_change}
         WHERE id=${id} AND company_id=${company_id}`;
     }
     return res.json({ success: true });
