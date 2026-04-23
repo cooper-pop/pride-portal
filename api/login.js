@@ -37,10 +37,22 @@ module.exports = async function handler(req, res) {
     company_id: company.id
   }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
+  // Flags MUST be inside `user` — the frontend reads currentUser.force_password_change
+  // and currentUser.needs_passkey_setup off the user object directly. They were
+  // previously at the response top level which meant neither redirect ever fired.
   return res.json({
     token,
-    user: { id: user.id, username: user.username, full_name: user.full_name, role: user.role },
+    user: {
+      id: user.id,
+      username: user.username,
+      full_name: user.full_name,
+      role: user.role,
+      force_password_change: user.force_password_change || false,
+      needs_passkey_setup: passkeys.length === 0,
+      has_passkey: passkeys.length > 0
+    },
     company: { id: company.id, slug: company.slug, name: company.name },
+    // Keep the top-level copies too so any other caller still works
     force_password_change: user.force_password_change || false,
     needs_passkey_setup: passkeys.length === 0,
     has_passkey: passkeys.length > 0
