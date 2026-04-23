@@ -45,11 +45,17 @@ function buildDash() {
       { id:'parts',     label:'Parts',          icon:'⚙️', color:'#7c3aed', category:'maintenance' },
       { id:'ai',        label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' }
     ];
-    // Filter by role — supervisors don't see Financial (Contract Bids) or Tools (AI Analysis),
-    // managers see everything except Settings (which is gated by the admin-btn visibility above).
-    if (typeof userCan === 'function') {
-      apps = apps.filter(function(a){ return userCan(a.id, 'view'); });
-    }
+  } else if (currentCompany === 'bfn') {
+    // Battle Fish North portal — data is company-scoped automatically via the
+    // JWT's company_id, so BFN sees its own farmers/ponds/samples, not POTP's.
+    apps = [
+      { id:'flavor',    label:'Flavor Sample',  icon:'🧪', color:'#0891b2', category:'production' }
+    ];
+  }
+  // Filter by role — supervisors don't see Financial / Tools; managers see everything
+  // except Settings (gated by the admin-btn). Runs for every company with apps.
+  if (apps.length && typeof userCan === 'function') {
+    apps = apps.filter(function(a){ return userCan(a.id, 'view'); });
   }
   var dock = document.getElementById('dash-dock');
   if (apps.length === 0) {
