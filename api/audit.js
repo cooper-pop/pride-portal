@@ -14,7 +14,12 @@
 //   success    — 'true' or 'false'
 //   since      — ISO timestamp; only return rows created at/after this time
 //
-// The endpoint also returns distinct actions + usernames for filter UI.
+// Why empty-string sentinels instead of NULL params:
+// Neon's HTTP serverless driver can't infer the type of a NULL parameter
+// when it's used in `$1::text IS NULL` expressions, so that pattern crashes
+// the query with a type-inference error. Instead, every filter parameter
+// is always a non-null string; an empty string (or the epoch date for
+// timestamps, or empty-string success sentinel) means "no filter".
 
 const { neon } = require('@neondatabase/serverless');
 const perms = require('./_permissions');
@@ -56,58 +61,73 @@ module.exports = async function handler(req, res) {
   const qs = url.searchParams;
   const limit = Math.min(Math.max(parseInt(qs.get('limit') || '100', 10), 1), 500);
   const offset = Math.max(parseInt(qs.get('offset') || '0', 10), 0);
-  const actionFilter = (qs.get('action') || '').trim() || null;
-  const usernameFilter = (qs.get('username') || '').trim() || null;
+
+  // Sentinel pattern: always non-null strings. Empty string = no filter.
+  const actionFilter = (qs.get('action') || '').trim();
+  const usernameFilter = (qs.get('username') || '').trim();
+
+  // Success filter: 't' = success only, 'f' = failures only, '' = no filter.
+  // Inside SQL we compare via CASE WHEN success THEN 't' ELSE 'f' END.
   const successParam = qs.get('success');
-  const successFilter = successParam === 'true' ? true
-                     : successParam === 'false' ? false
-                     : null;
-  const since = (qs.get('since') || '').trim() || null;
+  const successFilter = successParam === 'true' ? 't'
+                     : successParam === 'false' ? 'f'
+                     : '';
 
-  // Use conditional pattern: passing null via `::text IS NULL` lets each
-  // filter be optional without building dynamic SQL strings. Neon tagged
-  // templates handle the parameterization safely.
-  const events = await sql`
-    SELECT id, company_id, user_id, username, action, resource_type, resource_id,
-           success, details, ip_address, user_agent, created_at
-    FROM audit_log
-    WHERE (company_id = ${user.company_id} OR company_id IS NULL)
-      AND (${actionFilter}::text IS NULL OR action = ${actionFilter})
-      AND (${usernameFilter}::text IS NULL OR username = ${usernameFilter})
-      AND (${successFilter}::bool IS NULL OR success = ${successFilter})
-      AND (${since}::timestamptz IS NULL OR created_at >= ${since}::timestamptz)
-    ORDER BY created_at DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `;
+  // Since filter: default to epoch when empty so `created_at >= $1` is always
+  // true. This avoids dealing with a NULL timestamp parameter.
+  const sinceRaw = (qs.get('since') || '').trim();
+  const sinceFilter = sinceRaw || '1970-01-01T00:00:00Z';
 
-  // Total count for pagination UI
-  const [{ total }] = await sql`
-    SELECT COUNT(*)::int AS total FROM audit_log
-    WHERE (company_id = ${user.company_id} OR company_id IS NULL)
-      AND (${actionFilter}::text IS NULL OR action = ${actionFilter})
-      AND (${usernameFilter}::text IS NULL OR username = ${usernameFilter})
-      AND (${successFilter}::bool IS NULL OR success = ${successFilter})
-      AND (${since}::timestamptz IS NULL OR created_at >= ${since}::timestamptz)
-  `;
+  try {
+    const events = await sql`
+      SELECT id, company_id, user_id, username, action, resource_type, resource_id,
+             success, details, ip_address, user_agent, created_at
+      FROM audit_log
+      WHERE (company_id = ${user.company_id} OR company_id IS NULL)
+        AND (${actionFilter} = '' OR action = ${actionFilter})
+        AND (${usernameFilter} = '' OR username = ${usernameFilter})
+        AND (${successFilter} = '' OR (CASE WHEN success THEN 't' ELSE 'f' END) = ${successFilter})
+        AND created_at >= ${sinceFilter}::timestamptz
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
 
-  // Distinct actions + usernames for filter dropdowns (company-scoped)
-  const actionsResult = await sql`
-    SELECT DISTINCT action FROM audit_log
-    WHERE (company_id = ${user.company_id} OR company_id IS NULL)
-    ORDER BY action
-  `;
-  const usernamesResult = await sql`
-    SELECT DISTINCT username FROM audit_log
-    WHERE company_id = ${user.company_id} AND username IS NOT NULL
-    ORDER BY username
-  `;
+    // Total count for pagination UI, with the same filters applied.
+    const [{ total }] = await sql`
+      SELECT COUNT(*)::int AS total FROM audit_log
+      WHERE (company_id = ${user.company_id} OR company_id IS NULL)
+        AND (${actionFilter} = '' OR action = ${actionFilter})
+        AND (${usernameFilter} = '' OR username = ${usernameFilter})
+        AND (${successFilter} = '' OR (CASE WHEN success THEN 't' ELSE 'f' END) = ${successFilter})
+        AND created_at >= ${sinceFilter}::timestamptz
+    `;
 
-  return res.json({
-    events,
-    total,
-    limit,
-    offset,
-    actions: actionsResult.map(r => r.action),
-    usernames: usernamesResult.map(r => r.username)
-  });
+    // Distinct actions + usernames for filter dropdowns (company-scoped).
+    // Always returned regardless of filters so the dropdowns don't narrow
+    // themselves after the user applies a filter.
+    const actionsResult = await sql`
+      SELECT DISTINCT action FROM audit_log
+      WHERE (company_id = ${user.company_id} OR company_id IS NULL)
+      ORDER BY action
+    `;
+    const usernamesResult = await sql`
+      SELECT DISTINCT username FROM audit_log
+      WHERE company_id = ${user.company_id} AND username IS NOT NULL
+      ORDER BY username
+    `;
+
+    return res.json({
+      events,
+      total,
+      limit,
+      offset,
+      actions: actionsResult.map(r => r.action),
+      usernames: usernamesResult.map(r => r.username)
+    });
+  } catch (e) {
+    // Surface the real error message so the frontend can show something
+    // useful instead of Vercel's generic "A server error has occurred".
+    console.error('[audit] query failed', e && e.message ? e.message : e);
+    return res.status(500).json({ error: 'Audit query failed: ' + (e && e.message ? e.message : 'unknown') });
+  }
 };
