@@ -49,6 +49,31 @@ module.exports = async function handler(req, res) {
     return res.json(users);
   }
 
+  // POST ?action=create_for_company - admin-only, creates a user in a SPECIFIED
+  // company (by slug). Needed when a POTP admin has to bootstrap a BFN user
+  // without logging into BFN first (chicken-and-egg for a brand-new company).
+  // Body: { company_slug, username, full_name, email, role, password, force_password_change? }
+  if (req.method === 'POST' && req.query && req.query.action === 'create_for_company') {
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { company_slug, username, full_name, email, role, password } = req.body || {};
+    const force = !!(req.body && req.body.force_password_change);
+    if (!company_slug || !username || !full_name || !role || !password) {
+      return res.status(400).json({ error: 'Missing fields (company_slug, username, full_name, role, password required)' });
+    }
+    if (!['admin','manager','supervisor'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role — must be admin / manager / supervisor' });
+    }
+    const [targetCompany] = await sql`SELECT id, slug, name FROM companies WHERE slug=${company_slug}`;
+    if (!targetCompany) return res.status(404).json({ error: 'Company not found: ' + company_slug });
+    const existing = await sql`SELECT id FROM users WHERE username=${username} AND company_id=${targetCompany.id}`;
+    if (existing.length) return res.status(400).json({ error: 'Username already exists in ' + targetCompany.name });
+    const hash = await bcrypt.hash(password, 12);
+    const [newUser] = await sql`INSERT INTO users (company_id, username, full_name, email, role, password_hash, active, force_password_change)
+      VALUES (${targetCompany.id}, ${username}, ${full_name}, ${email||null}, ${role}, ${hash}, true, ${force})
+      RETURNING id, username, full_name, email, role`;
+    return res.json({ ok: true, user: newUser, company: targetCompany });
+  }
+
   // POST ?action=bulk_seed_staff - admin-only, creates multiple accounts at once.
   // Body: { accounts: [{username, full_name, email, role}] }
   // Returns: [{username, full_name, email, role, temp_password}] — caller must
