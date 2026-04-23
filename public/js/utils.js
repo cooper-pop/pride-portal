@@ -40,6 +40,34 @@ function toast(msg) {
   setTimeout(function(){ t.classList.remove('show'); }, 2500);
 }
 
+// ═══ RBAC — mirrors api/_permissions.js ════════════════════════════════════
+// Keep this table in sync with api/_permissions.js · WIDGET_PERMS so the UI
+// filters match what the backend will allow. The backend is the authority —
+// this is only for UX (hide buttons / tabs the user can't use).
+var ROLE_LEVELS = { supervisor: 1, manager: 2, admin: 3 };
+var WIDGET_PERMS = {
+  bids:      { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
+  yield:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  trimmer:   { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  injection: { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  flavor:    { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  parts:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  ai:        { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
+  settings:  { view:'admin',      create:'admin',      edit:'admin',      delete:'admin' }
+};
+// Returns true if the current user can perform `action` on `widget`.
+function userCan(widget, action) {
+  if (!currentUser) return false;
+  var userLevel = ROLE_LEVELS[currentUser.role] || 0;
+  var perms = WIDGET_PERMS[widget];
+  if (!perms) return userLevel >= ROLE_LEVELS.admin;
+  var required = perms[action];
+  if (!required) return userLevel >= ROLE_LEVELS.admin;
+  return userLevel >= (ROLE_LEVELS[required] || 99);
+}
+window.userCan = userCan;
+
 // Widget constants
 // ── STATE ───────────────────────────────────────────────────────────────────
 var currentUser = null;

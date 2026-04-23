@@ -1,7 +1,7 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const { PDFDocument } = require('pdf-lib');
+const perms = require('./_permissions');
 
 // Anthropic's document API caps at 100 pages. For troubleshooting we pass the first
 // 100 pages (usually covers the TOC, operating principles, maintenance, and diagnostics).
@@ -73,17 +73,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Unauthorized' });
-
-  let user_id, company_id;
-  try {
-    const p = jwt.verify(auth.replace('Bearer ', ''), process.env.JWT_SECRET);
-    user_id = p.user_id;
-    company_id = p.company_id;
-  } catch (e) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  // Troubleshoot is read-only AI Q&A over Parts manuals — Maintenance view perm is enough
+  const user = perms.requireAccess(req, res, 'parts', 'view');
+  if (!user) return;
+  const { user_id, company_id } = user;
 
   const sql = neon(process.env.DATABASE_URL);
   const body = req.body || {};

@@ -23,13 +23,7 @@ function normalizeRows(rows) {
   });
 }
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
-
-function verifyToken(req) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) throw new Error('No token');
-  return jwt.verify(auth.slice(7), process.env.JWT_SECRET);
-}
+const perms = require('./_permissions');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -37,11 +31,36 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  let user;
-  try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' }); }
+  const user = perms.requireAuth(req, res);
+  if (!user) return;
 
   const { type, action, id } = req.query;
   const sql = neon(process.env.DATABASE_URL);
+
+  // Map record type → widget for permission checks. Trimmer is what the
+  // Trimmer Log / analytics widget reads from; yield / injection are separate
+  // Production widgets but share this endpoint.
+  const TYPE_TO_WIDGET = { trimmer:'trimmer', yield:'yield', injection:'injection' };
+  const widget = TYPE_TO_WIDGET[type] || 'trimmer';  // default to trimmer for type-less calls
+  // Grade config is admin-only (it defines scoring rules)
+  if (action === 'save_grade_config') {
+    if (!perms.canPerform(user, 'settings', 'edit')) return perms.deny(res, user, 'settings', 'edit');
+  }
+  // bulk_update_roster is admin/manager — supervisors don't manage roster
+  else if (action === 'bulk_update_roster' || action === 'seed_roster' || action === 'bulk_fix_emp' || action === 'validate_entry') {
+    if (!perms.canPerform(user, widget, 'edit')) return perms.deny(res, user, widget, 'edit');
+  }
+  // HTTP verb → action mapping for record CRUD
+  else if (req.method === 'DELETE') {
+    if (!perms.canPerform(user, widget, 'delete')) return perms.deny(res, user, widget, 'delete');
+  }
+  else if (req.method === 'PUT') {
+    if (!perms.canPerform(user, widget, 'edit')) return perms.deny(res, user, widget, 'edit');
+  }
+  else if (req.method === 'POST') {
+    if (!perms.canPerform(user, widget, 'create')) return perms.deny(res, user, widget, 'create');
+  }
+  // GET → view (already gated by auth; every role can view its widgets)
   // Grade config endpoints
   if (action === 'get_grade_config') {
     await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;

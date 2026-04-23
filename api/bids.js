@@ -1,8 +1,8 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const cloudinary = require('cloudinary').v2;
 const { PDFDocument } = require('pdf-lib');
+const perms = require('./_permissions');
 let waitUntil;
 try { waitUntil = require('@vercel/functions').waitUntil; }
 catch (e) { waitUntil = (p) => p; }
@@ -245,16 +245,11 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Unauthorized' });
-  let user_id, company_id;
-  try {
-    const p = jwt.verify(auth.replace('Bearer ', ''), process.env.JWT_SECRET);
-    user_id = p.user_id;
-    company_id = p.company_id;
-  } catch (e) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  // All Contract Bids endpoints require manager or admin — supervisors have
+  // no visibility into Financial-category data.
+  const user = perms.requireAccess(req, res, 'bids', 'view');
+  if (!user) return;
+  const { user_id, company_id } = user;
 
   const sql = neon(process.env.DATABASE_URL);
   const action = req.query.action;
@@ -262,6 +257,16 @@ module.exports = async function handler(req, res) {
 
   try {
     await ensureTables(sql);
+    // Per-action role gate — delete requires an explicit delete perm,
+    // save_* is create vs edit depending on whether body.id is set.
+    if (action === 'delete_category' || action === 'delete_vendor' || action === 'delete_document') {
+      if (!perms.canPerform(user, 'bids', 'delete')) return perms.deny(res, user, 'bids', 'delete');
+    } else if (action === 'save_category' || action === 'save_vendor' ||
+               action === 'save_document' || action === 'reindex_document' ||
+               action === 'update_document_meta' || action === 'generate_negotiation_email') {
+      const act = perms.actionForSave(body);
+      if (!perms.canPerform(user, 'bids', act)) return perms.deny(res, user, 'bids', act);
+    }
 
     // ─── READ ────────────────────────────────────────────────────────────────
     if (action === 'get_state') {

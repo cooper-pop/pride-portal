@@ -1,8 +1,8 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const cloudinary = require('cloudinary').v2;
 const { PDFDocument } = require('pdf-lib');
+const perms = require('./_permissions');
 // waitUntil lets us keep the serverless function alive after res.json() returns,
 // so the browser gets an instant upload response and we run Anthropic extraction
 // in the background up to the function's maxDuration (300s via vercel.json).
@@ -261,21 +261,25 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Unauthorized' });
-
-  let user_id, company_id;
-  try {
-    const p = jwt.verify(auth.replace('Bearer ', ''), process.env.JWT_SECRET);
-    user_id = p.user_id;
-    company_id = p.company_id;
-  } catch (e) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  // Manuals are a sub-feature of Parts (Maintenance category): supervisors
+  // can view + upload new manuals; managers+ can edit metadata / delete / reindex.
+  const user = perms.requireAccess(req, res, 'parts', 'view');
+  if (!user) return;
+  const { user_id, company_id } = user;
 
   const sql = neon(process.env.DATABASE_URL);
   const action = req.query.action;
   const body = req.body || {};
+  // Per-action gate
+  if (action === 'delete_manual') {
+    if (!perms.canPerform(user, 'parts', 'delete')) return perms.deny(res, user, 'parts', 'delete');
+  } else if (action === 'save_manual_record') {
+    // Uploading a new manual = create
+    if (!perms.canPerform(user, 'parts', 'create')) return perms.deny(res, user, 'parts', 'create');
+  } else if (action === 'save_manual_metadata' || action === 'reindex_manual') {
+    if (!perms.canPerform(user, 'parts', 'edit')) return perms.deny(res, user, 'parts', 'edit');
+  }
+  // get_upload_signature, get_download_url, search_part, check_invoice_parts, etc. = view (already gated)
 
   try {
     if (action === 'get_manuals') {

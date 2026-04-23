@@ -49,6 +49,37 @@ module.exports = async function handler(req, res) {
     return res.json(users);
   }
 
+  // POST ?action=bulk_seed_staff - admin-only, creates multiple accounts at once.
+  // Body: { accounts: [{username, full_name, email, role}] }
+  // Returns: [{username, full_name, email, role, temp_password}] — caller must
+  // capture these and share them with the respective users over a secure channel.
+  if (req.method === 'POST' && req.query && req.query.action === 'bulk_seed_staff') {
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const list = Array.isArray(req.body && req.body.accounts) ? req.body.accounts : [];
+    const created = [];
+    for (const a of list) {
+      const username = String(a.username || '').trim();
+      const full_name = String(a.full_name || '').trim();
+      const email = String(a.email || '').trim() || null;
+      const role = String(a.role || '').trim();
+      if (!username || !full_name || !role) continue;
+      if (!['admin','manager','supervisor'].includes(role)) continue;
+      const existing = await sql`SELECT id FROM users WHERE username=${username} AND company_id=${company_id}`;
+      if (existing.length) { created.push({ username, full_name, email, role, skipped: 'username already exists' }); continue; }
+      // Generate a 12-char temp password: 4-char word-ish + 4-digit + 4-char mixed
+      const words = ['Pond','Fish','River','Lake','Deep','Skin','Split','Fillet','Nugget','Trim','Batch','Flavor'];
+      const word = words[Math.floor(Math.random() * words.length)];
+      const digits = String(Math.floor(Math.random() * 9000) + 1000);
+      const suffix = Math.random().toString(36).slice(2, 6);
+      const tempPassword = word + digits + suffix;
+      const hash = await bcrypt.hash(tempPassword, 12);
+      await sql`INSERT INTO users (company_id, username, full_name, email, role, password_hash, active, force_password_change)
+        VALUES (${company_id}, ${username}, ${full_name}, ${email}, ${role}, ${hash}, true, true)`;
+      created.push({ username, full_name, email, role, temp_password: tempPassword });
+    }
+    return res.json({ created });
+  }
+
   // POST - create new user
   if (req.method === 'POST') {
     const { username, full_name, email, role, password } = req.body;

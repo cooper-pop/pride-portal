@@ -1,11 +1,5 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
-
-function verifyToken(req) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) throw new Error('No token');
-  return jwt.verify(auth.slice(7), process.env.JWT_SECRET);
-}
+const perms = require('./_permissions');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,8 +8,9 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  let user;
-  try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' }); }
+  // Analytics is the Trimmer Log's read-only stats endpoint — Production/view perm
+  const user = perms.requireAccess(req, res, 'trimmer', 'view');
+  if (!user) return;
 
   const sql = neon(process.env.DATABASE_URL);
   const { type, days = 30, trimmer_name } = req.query;

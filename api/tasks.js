@@ -1,19 +1,15 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'potp-secret-2026-xk9q7r';
+const perms = require('./_permissions');
 
 function getUser(req) {
   try {
-    const auth = req.headers.authorization || '';
-    const token = auth.replace('Bearer ', '');
-    const decoded = jwt.verify(token, JWT_SECRET);
-    // Normalize: JWT has user_id, but we use id throughout
+    const decoded = perms.verifyToken(req);
     return {
       id: String(decoded.user_id || decoded.id),
       username: decoded.username,
       role: decoded.role,
-      company_id: parseInt(decoded.company_id)
+      company_id: parseInt(decoded.company_id),
+      user_id: decoded.user_id
     };
   } catch(e) { return null; }
 }
@@ -75,11 +71,31 @@ module.exports = async function handler(req, res) {
 
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!perms.canPerform(user, 'todo', 'view')) return perms.deny(res, user, 'todo', 'view');
   const userId = user.id;
   const companyId = user.company_id;
 
   const action = req.query.action || (req.body && req.body.action);
   const body = req.body || {};
+
+  // Enforce per-verb permissions for mutations. GET = view (already gated).
+  // Completing / updating your own task instance stays allowed for supervisors —
+  // that's the normal data-entry pattern. Admin-only inline checks on a few
+  // actions (all_tasks, grades admin branch) are preserved below.
+  if (req.method === 'DELETE') {
+    if (!perms.canPerform(user, 'todo', 'delete')) return perms.deny(res, user, 'todo', 'delete');
+  } else if (req.method === 'PUT') {
+    // Supervisors CAN PUT to update their OWN task instance (complete a step etc).
+    // Only gate PUT operations that modify the task definition itself.
+    const actionsThatEdit = new Set(['update_task', 'edit_task']);
+    if (actionsThatEdit.has(action) && !perms.canPerform(user, 'todo', 'edit')) {
+      return perms.deny(res, user, 'todo', 'edit');
+    }
+  } else if (req.method === 'POST') {
+    // Creating a brand-new task requires 'create' (supervisors can).
+    // The `assign` action (assigning a task to someone else) stays manager+,
+    // enforced inline below in its existing handler.
+  }
   const today = new Date().toISOString().split('T')[0];
 
   try {

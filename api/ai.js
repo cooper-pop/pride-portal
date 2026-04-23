@@ -1,12 +1,6 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
-
-function verifyToken(req) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) throw new Error('No token');
-  return jwt.verify(auth.slice(7), process.env.JWT_SECRET);
-}
+const perms = require('./_permissions');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,8 +9,18 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  let user;
-  try { user = verifyToken(req); } catch { return res.status(401).json({ error: 'Unauthorized' }); }
+  // This endpoint serves two distinct use cases:
+  //   1. AI Analysis widget (text-only queries) — manager+ only
+  //   2. Parts invoice OCR (image present) — supervisors can use it (parts.create)
+  // Gate on the right widget based on whether an image is attached.
+  const user = perms.requireAuth(req, res);
+  if (!user) return;
+  const hasImage = !!(req.body && req.body.image);
+  if (hasImage) {
+    if (!perms.canPerform(user, 'parts', 'create')) return perms.deny(res, user, 'parts', 'create');
+  } else {
+    if (!perms.canPerform(user, 'ai', 'view')) return perms.deny(res, user, 'ai', 'view');
+  }
 
   const { query, image, image_mime } = req.body;
   if (!query && !image) return res.status(400).json({ error: 'Missing query or image' });

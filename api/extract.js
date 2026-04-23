@@ -1,12 +1,6 @@
 module.exports.config = { api: { bodyParser: { sizeLimit: '10mb' } } };
 const Anthropic = require('@anthropic-ai/sdk');
-const jwt = require('jsonwebtoken');
-
-function verifyToken(req) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) throw new Error('No token');
-  return jwt.verify(auth.slice(7), process.env.JWT_SECRET);
-}
+const perms = require('./_permissions');
 
 function parseCSV(csv) {
   const lines = csv.trim().split('\n').filter(l => l.trim() && !l.toLowerCase().includes('grand total') && !l.toLowerCase().startsWith('name') && !l.toLowerCase().startsWith('emp') && !l.toLowerCase().startsWith('full_name'));
@@ -51,8 +45,9 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
   if (req.method==='OPTIONS') return res.status(200).end();
   if (req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
-  let user;
-  try { user=verifyToken(req); } catch { return res.status(401).json({error:'Unauthorized'}); }
+  // Extract = trimmer-log scan-to-data (supervisors allowed, data entry)
+  const user = perms.requireAccess(req, res, 'trimmer', 'create');
+  if (!user) return;
   const {image_base64,media_type}=req.body;
   if (!image_base64) return res.status(400).json({error:'Missing image data'});
   const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});

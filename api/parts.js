@@ -1,5 +1,5 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
+const perms = require('./_permissions');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -7,23 +7,44 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Unauthorized' });
-
-  let user_id, company_id;
-  try {
-    const p = jwt.verify(auth.replace('Bearer ', ''), process.env.JWT_SECRET);
-    user_id = p.user_id;
-    company_id = p.company_id;
-  } catch (e) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  // Parts is a Maintenance widget: supervisors can view + create (data entry /
+  // log received parts / adjust qty), managers+ can edit/delete records. DB
+  // migrations are admin-only regardless.
+  const user = perms.requireAccess(req, res, 'parts', 'view');
+  if (!user) return;
+  const { user_id, company_id } = user;
 
   const sql = neon(process.env.DATABASE_URL);
   let action = req.query.action;
   const body = req.body || {};
 
   try {
+    // Admin-only destructive / structural actions
+    if (action === 'init_parts_db' || action === 'migrate_parts_db') {
+      if (!perms.canPerform(user, 'settings', 'edit')) return perms.deny(res, user, 'settings', 'edit');
+    }
+    // Delete actions → parts.delete
+    else if (action && action.indexOf('delete_') === 0) {
+      if (!perms.canPerform(user, 'parts', 'delete')) return perms.deny(res, user, 'parts', 'delete');
+    }
+    // Write actions → parts.edit (existing) or parts.create (new)
+    else if (action === 'save_part' || action === 'save_invoice' || action === 'save_cross_ref'
+          || action === 'save_parts_order' || action === 'save_machines' || action === 'save_machine'
+          || action === 'add_part' || action === 'update_part' || action === 'add_invoice'
+          || action === 'update_invoice' || action === 'add_cross_ref' || action === 'update_cross_ref'
+          || action === 'add_parts_order' || action === 'update_parts_order') {
+      const act = perms.actionForSave(body);
+      if (!perms.canPerform(user, 'parts', act)) return perms.deny(res, user, 'parts', act);
+    }
+    // Adjustment / sync / receive actions → edit
+    else if (action === 'adjust_part' || action === 'sync_machine_parts' || action === 'receive_part') {
+      if (!perms.canPerform(user, 'parts', 'edit')) return perms.deny(res, user, 'parts', 'edit');
+    }
+    // Scan / extract an invoice → create (it generates a new record)
+    else if (action === 'extract_invoice') {
+      if (!perms.canPerform(user, 'parts', 'create')) return perms.deny(res, user, 'parts', 'create');
+    }
+    // search_vendor_prices, lookup_barcode, get_* → view (already gated at top)
     // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ INIT / MIGRATE ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
     // Aliases used by parts.js frontend
     if (action === 'add_invoice') action = 'save_invoice';

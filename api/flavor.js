@@ -1,5 +1,5 @@
 const { neon } = require('@neondatabase/serverless');
-const jwt = require('jsonwebtoken');
+const perms = require('./_permissions');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Flavor Sample API
@@ -85,16 +85,11 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Unauthorized' });
-  let user_id, company_id;
-  try {
-    const p = jwt.verify(auth.replace('Bearer ', ''), process.env.JWT_SECRET);
-    user_id = p.user_id;
-    company_id = p.company_id;
-  } catch (e) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  // Flavor is a Production widget: supervisors can view + create (data entry),
+  // managers+ can edit / delete.
+  const user = perms.requireAccess(req, res, 'flavor', 'view');
+  if (!user) return;
+  const { user_id, company_id } = user;
 
   const sql = neon(process.env.DATABASE_URL);
   const action = req.query.action;
@@ -102,6 +97,15 @@ module.exports = async function handler(req, res) {
 
   try {
     await ensureTables(sql);
+    // Per-action role gate
+    if (action && action.indexOf('delete_') === 0) {
+      if (!perms.canPerform(user, 'flavor', 'delete')) return perms.deny(res, user, 'flavor', 'delete');
+    } else if (action === 'bulk_add_ponds') {
+      if (!perms.canPerform(user, 'flavor', 'create')) return perms.deny(res, user, 'flavor', 'create');
+    } else if (action && action.indexOf('save_') === 0) {
+      const act = perms.actionForSave(body);
+      if (!perms.canPerform(user, 'flavor', act)) return perms.deny(res, user, 'flavor', act);
+    }
 
     // ─── READ ────────────────────────────────────────────────────────────────
     if (action === 'get_state') {
