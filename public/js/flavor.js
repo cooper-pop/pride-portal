@@ -540,7 +540,9 @@ function flavorBulkAddPonds(groupId){
   if(numbers.length === 0) return;
   apiCall('POST','/api/flavor?action=bulk_add_ponds', { pond_group_id:groupId, numbers:numbers })
     .then(function(r){
-      alert('Added ' + (r.created||0) + ' pond' + (r.created===1?'':'s') + '.');
+      var msg = 'Added ' + (r.created||0) + ' pond' + (r.created===1?'':'s') + '.';
+      if(r.skipped) msg += '\nSkipped ' + r.skipped + ' already in this group.';
+      alert(msg);
       flavorRefresh();
     })
     .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });

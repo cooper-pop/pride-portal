@@ -222,23 +222,48 @@ module.exports = async function handler(req, res) {
 
     // Bulk-add ponds — user can paste a comma- or newline-separated list like
     // "1 North, 1 South, 2 East, 2 Middle, 2 West" and get individual pond rows.
+    // Scales to hundreds of ponds: one SELECT for existing names, then chunked
+    // parallel INSERTs. The old version's sequential SELECT+INSERT per pond hit
+    // the function budget above ~200 entries and silently dropped the tail.
     if (action === 'bulk_add_ponds') {
       const groupId = String(body.pond_group_id || '').trim();
       if (!groupId) return res.status(400).json({ error: 'pond_group_id required' });
-      const list = Array.isArray(body.numbers) ? body.numbers : [];
-      let created = 0;
-      for (const raw of list) {
-        const number = String(raw || '').trim();
-        if (!number) continue;
-        const exists = await sql`SELECT id FROM flv_ponds
-          WHERE company_id = ${company_id} AND pond_group_id = ${groupId}
-            AND archived = false AND LOWER(number) = LOWER(${number}) LIMIT 1`;
-        if (exists.length) continue;
-        await sql`INSERT INTO flv_ponds (company_id, pond_group_id, number)
-          VALUES (${company_id}, ${groupId}, ${number})`;
-        created++;
+      const rawList = Array.isArray(body.numbers) ? body.numbers : [];
+      // Normalize + dedupe in-memory (keep first-seen casing of each unique number)
+      const seen = new Set();
+      const numbers = [];
+      for (const raw of rawList) {
+        const n = String(raw || '').trim();
+        if (!n) continue;
+        const key = n.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        numbers.push(n);
       }
-      return res.json({ ok: true, created });
+      if (numbers.length === 0) return res.json({ ok: true, created: 0, skipped: 0 });
+
+      // One query fetches every existing (active) pond number in this group
+      const existing = await sql`SELECT LOWER(number) AS key FROM flv_ponds
+        WHERE company_id = ${company_id} AND pond_group_id = ${groupId} AND archived = false`;
+      const existingKeys = new Set(existing.map(r => r.key));
+      const toInsert = numbers.filter(n => !existingKeys.has(n.toLowerCase()));
+      const skipped = numbers.length - toInsert.length;
+      if (toInsert.length === 0) return res.json({ ok: true, created: 0, skipped });
+
+      // Insert in parallel chunks of 50 so we never exhaust connection slots.
+      const CHUNK = 50;
+      let created = 0;
+      for (let i = 0; i < toInsert.length; i += CHUNK) {
+        const chunk = toInsert.slice(i, i + CHUNK);
+        const results = await Promise.all(chunk.map(n =>
+          sql`INSERT INTO flv_ponds (company_id, pond_group_id, number)
+              VALUES (${company_id}, ${groupId}, ${n})`
+            .then(() => 1)
+            .catch(err => { console.error('bulk pond insert failed:', n, err.message); return 0; })
+        ));
+        created += results.reduce((a, b) => a + b, 0);
+      }
+      return res.json({ ok: true, created, skipped });
     }
 
     // ─── SAMPLES CRUD ────────────────────────────────────────────────────────
