@@ -2,6 +2,7 @@ const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { logAudit } = require('./_audit');
+const rl = require('./_ratelimit');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,6 +14,31 @@ module.exports = async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
   const { username, password, company_slug } = req.body;
   if (!username || !password || !company_slug) return res.status(400).json({ error: 'Missing fields' });
+
+  // Rate limit: per-IP (catches distributed brute force from one source) and
+  // per-username-within-company (catches targeted brute force against one
+  // account even if the attacker rotates IPs). Both buckets are checked on
+  // every attempt, not just failures — if either is over quota, we 429.
+  const ip = rl.getClientIp(req);
+  const ipCheck = await rl.check(req, res, 'login_ip', ip);
+  if (ipCheck && !ipCheck.success) {
+    await logAudit(sql, req, null, {
+      action: 'security.rate_limit_hit',
+      success: false,
+      details: { limiter: 'login_ip', ip, company_slug, username }
+    });
+    return;
+  }
+  const userKey = company_slug + ':' + String(username || '').toLowerCase();
+  const userCheck = await rl.check(req, res, 'login_user', userKey);
+  if (userCheck && !userCheck.success) {
+    await logAudit(sql, req, null, {
+      action: 'security.rate_limit_hit',
+      success: false,
+      details: { limiter: 'login_user', ip, company_slug, username }
+    });
+    return;
+  }
 
   // Find company. On unknown slug we still log so repeated probes against
   // fake company slugs show up in the audit trail as failed logins.

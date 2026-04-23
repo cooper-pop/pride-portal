@@ -2,6 +2,7 @@ const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { logAudit } = require('./_audit');
+const rl = require('./_ratelimit');
 
 const RP_ID = 'pride-portal-eight.vercel.app';
 const RP_NAME = 'Pride of the Pond';
@@ -73,6 +74,19 @@ module.exports = async function handler(req, res) {
 
   // --- AUTH CHALLENGE (pre-login) ---
   if (req.method === 'POST' && action === 'auth-challenge') {
+    // Rate limit: per-IP bucket shared between challenge + verify. Someone
+    // hitting either path too often gets throttled. Same window/limit as
+    // password login so brute force via passkey bypass isn't an option.
+    const ip = rl.getClientIp(req);
+    const ipCheck = await rl.check(req, res, 'passkey_ip', ip);
+    if (ipCheck && !ipCheck.success) {
+      await logAudit(sql, req, null, {
+        action: 'security.rate_limit_hit',
+        success: false,
+        details: { limiter: 'passkey_ip', ip, passkey_action: 'auth-challenge' }
+      });
+      return;
+    }
     const { username, company_id } = req.body;
     const [dbUser] = await sql`SELECT id FROM users WHERE username=${username} AND company_id=${company_id} AND active=true`;
     if (!dbUser) return res.status(404).json({ error: 'User not found' });
@@ -90,6 +104,19 @@ module.exports = async function handler(req, res) {
 
   // --- AUTH VERIFY (complete login) ---
   if (req.method === 'POST' && action === 'auth-verify') {
+    // Same passkey_ip bucket as auth-challenge above. Rate limit *every*
+    // verify attempt, even well-formed ones, to cap how fast an attacker
+    // can churn through stolen credential guesses.
+    const ip = rl.getClientIp(req);
+    const ipCheck = await rl.check(req, res, 'passkey_ip', ip);
+    if (ipCheck && !ipCheck.success) {
+      await logAudit(sql, req, null, {
+        action: 'security.rate_limit_hit',
+        success: false,
+        details: { limiter: 'passkey_ip', ip, passkey_action: 'auth-verify' }
+      });
+      return;
+    }
     const { username, company_id, credential } = req.body;
     const [dbUser] = await sql`SELECT id, username, full_name, role, active FROM users WHERE username=${username} AND company_id=${company_id} AND active=true`;
     if (!dbUser) {
