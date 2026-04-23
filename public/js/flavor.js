@@ -10,6 +10,9 @@ var _flavorSearch = '';
 // When a group is in "manage mode" its pond pills expose the ✎ / × buttons for
 // individual edit/delete. null = no group is in manage mode.
 var _flavorPondManageGroupId = null;
+// Set true when this widget is viewing another company's flavor data
+// (BFN reading POTP's Battle Fish North farmer). Hides every mutation control.
+var _flavorReadonly = false;
 
 // ═══ Grade metadata ═════════════════════════════════════════════════════════
 var FLAVOR_GRADES = [
@@ -32,19 +35,23 @@ var ALERT_THRESHOLD_DAYS = 3;   // Show "expires soon" alert if window ends with
 function buildFlavorWidget(){
   var wt = document.getElementById('widget-tabs');
   var wc = document.getElementById('widget-content');
-  var tabs = [
-    { id:'dashboard', label:'📊 Dashboard' },
-    { id:'log',       label:'➕ Log Sample' },
-    { id:'manage',    label:'🏡 Farms & Ponds' },
-    { id:'history',   label:'📜 History' }
-  ];
-  wt.innerHTML = tabs.map(function(t){
-    return '<button class="wtab" id="ftab-'+t.id+'" onclick="flavorShowTab(\''+t.id+'\')" '
-      + 'style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;'
-      + 'border-bottom:2px solid transparent;color:#94a3b8">'+t.label+'</button>';
-  }).join('');
   wc.innerHTML = '<div id="flavor-panel" style="padding:0"></div>';
-  flavorLoadState(function(){ flavorShowTab('dashboard'); });
+  // Load state FIRST so we know whether we're in readonly (linked viewer) mode,
+  // then build the tab row. Linked viewers skip the Log Sample tab entirely.
+  flavorLoadState(function(){
+    var tabs = [
+      { id:'dashboard', label:'📊 Dashboard' }
+    ];
+    if (!_flavorReadonly) tabs.push({ id:'log', label:'➕ Log Sample' });
+    tabs.push({ id:'manage', label: _flavorReadonly ? '🏡 Farms & Ponds (read-only)' : '🏡 Farms & Ponds' });
+    tabs.push({ id:'history', label:'📜 History' });
+    wt.innerHTML = tabs.map(function(t){
+      return '<button class="wtab" id="ftab-'+t.id+'" onclick="flavorShowTab(\''+t.id+'\')" '
+        + 'style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;'
+        + 'border-bottom:2px solid transparent;color:#94a3b8">'+t.label+'</button>';
+    }).join('');
+    flavorShowTab('dashboard');
+  });
 }
 window.buildFlavorWidget = buildFlavorWidget;
 
@@ -81,6 +88,7 @@ window.flavorShowTab = flavorShowTab;
 function flavorLoadState(cb){
   apiCall('GET','/api/flavor?action=get_state').then(function(d){
     try {
+      _flavorReadonly = !!(d && d.readonly);
       _flavorState = {
         farmers: Array.isArray(d && d.farmers) ? d.farmers : [],
         pond_groups: Array.isArray(d && d.pond_groups) ? d.pond_groups : [],
@@ -238,8 +246,14 @@ function flavorRenderDashboard(){
   }).join('');
 
   var html = '<div style="padding:14px;max-width:960px;margin:0 auto">';
+  if (_flavorReadonly) {
+    html += '<div style="background:#dbeafe;border-left:3px solid #1e40af;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:.78rem;color:#1e40af">'
+      + '🔒 <strong>Read-only view</strong> — this data is synced from the owning company (Pride of the Pond). '
+      + 'Samples, farmer/pond management, and edits happen on their side. Click a pond to view its full sample history.'
+      + '</div>';
+  }
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
-    + '<button style="'+FB_P+'" onclick="flavorShowTab(\'log\')">+ Log Sample</button>'
+    + (_flavorReadonly ? '' : '<button style="'+FB_P+'" onclick="flavorShowTab(\'log\')">+ Log Sample</button>')
     + '<button style="'+FB_SUB+'" onclick="flavorRefresh()">Refresh</button>'
     + '<select style="'+FINP+';flex:1;min-width:160px;margin-bottom:0" onchange="_flavorFarmerFilter=this.value;flavorRenderDashboard()">'+farmerOptions+'</select>'
     + '<input type="text" placeholder="Search pond…" value="'+flavorEsc(_flavorSearch)+'" oninput="_flavorSearch=this.value;flavorRenderDashboard()" style="'+FINP+';flex:2;min-width:180px;margin-bottom:0">'
@@ -464,22 +478,33 @@ window.flavorSubmitSample = flavorSubmitSample;
 function flavorRenderManage(){
   var panel = document.getElementById('flavor-panel');
   if(!panel) return;
-  var html = '<div style="padding:14px;max-width:820px;margin:0 auto">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700;font-size:.95rem">Farms &amp; Ponds</div>'
-    + '<button style="'+FB_P+'" onclick="flavorAddFarmer()">+ Add Farmer</button></div>';
+  var html = '<div style="padding:14px;max-width:820px;margin:0 auto">';
+  if (_flavorReadonly) {
+    html += '<div style="background:#dbeafe;border-left:3px solid #1e40af;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:.78rem;color:#1e40af">'
+      + '🔒 <strong>Read-only</strong> — this is a synced view of the owning company\'s farms and ponds. '
+      + 'Click any pond pill to see its sample history.'
+      + '</div>';
+  }
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700;font-size:.95rem">Farms &amp; Ponds</div>'
+    + (_flavorReadonly ? '' : '<button style="'+FB_P+'" onclick="flavorAddFarmer()">+ Add Farmer</button>')
+    + '</div>';
   if(_flavorState.farmers.length === 0){
-    html += '<div style="background:#fff;border-radius:10px;padding:20px;text-align:center;color:#94a3b8;box-shadow:0 1px 4px rgba(0,0,0,.08)">No farmers yet. Click <strong>+ Add Farmer</strong> to get started.</div>';
+    html += '<div style="background:#fff;border-radius:10px;padding:20px;text-align:center;color:#94a3b8;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+      + (_flavorReadonly ? 'No ponds have been synced for your company yet.' : 'No farmers yet. Click <strong>+ Add Farmer</strong> to get started.')
+      + '</div>';
   }
   _flavorState.farmers.forEach(function(f){
     var groups = _flavorState.pond_groups.filter(function(g){return g.farmer_id===f.id;});
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:12px;overflow:hidden">'
       + '<div style="padding:10px 14px;background:#1a3a6b;color:#fff;display:flex;justify-content:space-between;align-items:center">'
       + '<div style="font-weight:700;font-size:.9rem">🏡 '+flavorEsc(f.name)+'</div>'
-      + '<div style="display:flex;gap:6px">'
-      + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorAddPondGroup(\''+f.id+'\')">+ Pond Group</button>'
-      + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorEditFarmer(\''+f.id+'\')">Edit</button>'
-      + '<button style="'+FB_D+'" onclick="flavorDeleteFarmer(\''+f.id+'\')">Del</button>'
-      + '</div></div>';
+      + (_flavorReadonly ? '' :
+         '<div style="display:flex;gap:6px">'
+         + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorAddPondGroup(\''+f.id+'\')">+ Pond Group</button>'
+         + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorEditFarmer(\''+f.id+'\')">Edit</button>'
+         + '<button style="'+FB_D+'" onclick="flavorDeleteFarmer(\''+f.id+'\')">Del</button>'
+         + '</div>')
+      + '</div>';
     if(groups.length === 0){
       html += '<div style="padding:12px 14px;color:#94a3b8;font-size:.82rem">No pond groups yet.</div>';
     }
@@ -492,7 +517,9 @@ function flavorRenderManage(){
           + (inManageMode ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-size:.66rem;font-weight:700;margin-left:4px">MANAGE MODE</span>' : '')
           + '</div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-      if(inManageMode){
+      if (_flavorReadonly) {
+        // No buttons — pure read-only view
+      } else if(inManageMode){
         html += '<button style="'+FB_P+';padding:3px 12px;font-size:.72rem" onclick="flavorExitPondManageMode()">✓ Done</button>';
       } else {
         html += '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorAddPond(\''+g.id+'\')">+ Pond</button>'
@@ -533,11 +560,18 @@ function flavorRenderManage(){
           // Pill: rounded, status-colored. Click the pill itself to quick-log a sample.
           // In manage mode the ✎ / × buttons appear; otherwise they're hidden.
           // Rounded-rectangle pill: larger, more readable, still color-coded.
-          html += '<span style="background:'+cellBg+';color:'+cellColor+';padding:10px 16px;border-radius:10px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;min-width:100px;min-height:44px;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:'+(inManageMode?'default':'pointer')+';transition:transform .08s ease,box-shadow .08s ease" title="'+flavorEsc(tooltip)+(inManageMode?'':' — click to log a sample')+'"'
-            + (inManageMode ? '' : ' onclick="flavorQuickLog(\''+p.id+'\')" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 8px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'0 1px 3px rgba(0,0,0,.06)\'"')
+          // Click → quick-log a sample normally, OR open history when in readonly mode.
+          var pillClickHandler = _flavorReadonly
+            ? ('flavorShowPondHistory(\''+p.id+'\')')
+            : ('flavorQuickLog(\''+p.id+'\')');
+          var pillTooltipSuffix = _flavorReadonly
+            ? ' — click to view sample history'
+            : (inManageMode ? '' : ' — click to log a sample');
+          html += '<span style="background:'+cellBg+';color:'+cellColor+';padding:10px 16px;border-radius:10px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;min-width:100px;min-height:44px;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:'+((inManageMode&&!_flavorReadonly)?'default':'pointer')+';transition:transform .08s ease,box-shadow .08s ease" title="'+flavorEsc(tooltip)+pillTooltipSuffix+'"'
+            + ((inManageMode && !_flavorReadonly) ? '' : ' onclick="'+pillClickHandler+'" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 8px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'0 1px 3px rgba(0,0,0,.06)\'"')
             + '>'
             + '<span style="flex:1;white-space:nowrap">'+accent+flavorEsc(p.number)+'</span>';
-          if(inManageMode){
+          if(inManageMode && !_flavorReadonly){
             html += '<button title="Rename pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:'+cellColor+';font-size:.82rem;padding:3px 8px;border-radius:6px;font-weight:700" onclick="event.stopPropagation();flavorEditPond(\''+p.id+'\')">✎</button>'
               + '<button title="Delete pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:#991b1b;font-size:1.05rem;padding:1px 8px;border-radius:6px;font-weight:700;line-height:1" onclick="event.stopPropagation();flavorDeletePond(\''+p.id+'\')">×</button>';
           }
@@ -755,7 +789,9 @@ function flavorRenderHistory(){
         + '<td style="padding:6px 10px">'+badge+'</td>'
         + '<td style="padding:6px 10px;color:#64748b">'+flavorEsc(s.sampled_by||'')+'</td>'
         + '<td style="padding:6px 10px;color:#64748b">'+flavorEsc(s.notes||'')+'</td>'
-        + '<td style="padding:6px 10px;text-align:right"><button style="'+FB_D+'" onclick="flavorDeleteSample(\''+s.id+'\')">Del</button></td>'
+        + '<td style="padding:6px 10px;text-align:right">'
+          + (_flavorReadonly ? '<span style="color:#94a3b8;font-size:.72rem">—</span>' : '<button style="'+FB_D+'" onclick="flavorDeleteSample(\''+s.id+'\')">Del</button>')
+        + '</td>'
         + '</tr>';
     });
     html += '</tbody></table></div>';
@@ -796,11 +832,13 @@ function flavorShowPondHistory(pondId){
       + '<div style="font-size:.76rem;color:#64748b;margin-top:3px">'+samples.length+' sample'+(samples.length===1?'':'s')+' on record</div>'
       + '</div>'
       + '<div style="display:flex;gap:6px">'
-      + '<button style="'+FB_P+'" onclick="flavorCloseHistoryAndLog(\''+pondId+'\')">+ Log Sample</button>'
+      + (_flavorReadonly ? '' : '<button style="'+FB_P+'" onclick="flavorCloseHistoryAndLog(\''+pondId+'\')">+ Log Sample</button>')
       + '<button style="'+FB_SUB+'" onclick="flavorCloseHistory()">Close</button>'
       + '</div></div>';
     if(samples.length === 0){
-      h += '<div style="padding:20px;text-align:center;color:#94a3b8;background:#f8fafc;border-radius:8px">No sample history for this pond yet. Click <strong>+ Log Sample</strong> to add the first one.</div>';
+      h += '<div style="padding:20px;text-align:center;color:#94a3b8;background:#f8fafc;border-radius:8px">'
+        + (_flavorReadonly ? 'No sample history for this pond yet.' : 'No sample history for this pond yet. Click <strong>+ Log Sample</strong> to add the first one.')
+        + '</div>';
     } else {
       h += '<div style="max-height:55vh;overflow-y:auto;border:1px solid #f1f5f9;border-radius:8px">';
       samples.forEach(function(s){

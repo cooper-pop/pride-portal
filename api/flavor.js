@@ -26,6 +26,45 @@ const VALID_GRADES = new Set([
   'good_resample_1','good_resample_2','good_ready','truck_sample'
 ]);
 
+// Resolves whose flavor data a given company reads.
+// If the company row has flavor_parent_slug set, the caller reads from that
+// company instead, optionally restricted to a single farmer. Returns
+//   { effectiveCompanyId, farmerFilter, readonly }
+// readonly=true whenever the caller is viewing a parent company's data.
+async function resolveFlavorScope(sql, myCompanyId) {
+  // Pull the linking config for this company. The columns are created by the
+  // init ALTERs in the handler, so they always exist by the time we get here.
+  let rows;
+  try {
+    rows = await sql`SELECT flavor_parent_slug, flavor_parent_farmer_name
+      FROM companies WHERE id=${myCompanyId}`;
+  } catch (e) {
+    // companies table might not have the columns on a very cold DB — fall through
+    rows = [];
+  }
+  const cfg = rows.length ? rows[0] : {};
+  if (!cfg || !cfg.flavor_parent_slug) {
+    return { effectiveCompanyId: myCompanyId, farmerFilter: null, readonly: false };
+  }
+  const [parent] = await sql`SELECT id FROM companies WHERE slug=${cfg.flavor_parent_slug}`;
+  if (!parent) {
+    // Misconfigured link — fail safe, let them see their own (empty) data
+    return { effectiveCompanyId: myCompanyId, farmerFilter: null, readonly: false };
+  }
+  let farmerFilter = null;
+  if (cfg.flavor_parent_farmer_name) {
+    const [farmer] = await sql`SELECT id FROM flv_farmers
+      WHERE company_id=${parent.id} AND archived=false
+        AND LOWER(TRIM(name))=LOWER(TRIM(${cfg.flavor_parent_farmer_name}))
+      LIMIT 1`;
+    if (farmer) farmerFilter = farmer.id;
+    // If the farmer name is set but doesn't resolve, return empty lists rather
+    // than leaking all data — use a sentinel that no real farmer row will match.
+    else farmerFilter = '00000000-0000-0000-0000-000000000000';
+  }
+  return { effectiveCompanyId: parent.id, farmerFilter, readonly: true };
+}
+
 async function ensureTables(sql) {
   await sql`CREATE TABLE IF NOT EXISTS flv_farmers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -97,7 +136,47 @@ module.exports = async function handler(req, res) {
 
   try {
     await ensureTables(sql);
-    // Per-action role gate
+    // ── Data-linking: a company (like BFN) can be configured to READ flavor
+    // data from another company (like POTP), optionally filtered to a single
+    // farmer. Set via POST /api/flavor?action=configure_link (admin only).
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS flavor_parent_slug TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS flavor_parent_farmer_name TEXT`;
+    const scope = await resolveFlavorScope(sql, company_id);
+    const effectiveCompanyId = scope.effectiveCompanyId;
+    const farmerFilter = scope.farmerFilter;  // null OR a farmer id within effectiveCompanyId
+    const readonly = scope.readonly;
+
+    // configure_link: ADMIN ONLY. Lets Cooper (as a POTP admin) tell BFN's
+    // company row to read flavor data from POTP and restrict to a specific
+    // farmer. Body: { company_slug, parent_company_slug, parent_farmer_name }
+    if (action === 'configure_link') {
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+      const viewerSlug = String(body.company_slug || '').trim();
+      const parentSlug = body.parent_company_slug === null ? null : String(body.parent_company_slug || '').trim();
+      const farmerName = body.parent_farmer_name === null ? null : String(body.parent_farmer_name || '').trim();
+      if (!viewerSlug) return res.status(400).json({ error: 'company_slug required' });
+      const [viewer] = await sql`SELECT id FROM companies WHERE slug=${viewerSlug}`;
+      if (!viewer) return res.status(404).json({ error: 'Viewer company not found: ' + viewerSlug });
+      if (parentSlug) {
+        const [parent] = await sql`SELECT id FROM companies WHERE slug=${parentSlug}`;
+        if (!parent) return res.status(404).json({ error: 'Parent company not found: ' + parentSlug });
+      }
+      await sql`UPDATE companies SET
+        flavor_parent_slug=${parentSlug || null},
+        flavor_parent_farmer_name=${farmerName || null}
+        WHERE id=${viewer.id}`;
+      return res.json({ ok: true, message: parentSlug ? 'Linked ' + viewerSlug + ' as read-only viewer of ' + parentSlug + (farmerName ? ' (farmer: ' + farmerName + ')' : '') : 'Cleared link on ' + viewerSlug });
+    }
+
+    // If linked to another company, block ALL mutations regardless of role
+    if (readonly && action && action !== 'get_state' && action !== 'get_pond_history') {
+      return res.status(403).json({
+        error: 'Read-only',
+        detail: 'This company reads flavor data from a parent company and cannot mutate it. Log into the owning company to make changes.'
+      });
+    }
+
+    // Per-action role gate (only when NOT linked — linked companies are read-only above)
     if (action && action.indexOf('delete_') === 0) {
       if (!perms.canPerform(user, 'flavor', 'delete')) return perms.deny(res, user, 'flavor', 'delete');
     } else if (action === 'bulk_add_ponds') {
@@ -111,34 +190,82 @@ module.exports = async function handler(req, res) {
     if (action === 'get_state') {
       // Everything the dashboard needs in one shot. Samples capped at 120 days
       // back — plenty to derive current status + window for any active pond.
+      // When the caller is a linked viewer (e.g., BFN reading POTP's
+      // "Battle Fish North" farmer), queries pull from the parent's company_id
+      // and filter to ponds under the specified farmer.
       const sinceDays = parseInt(req.query.since_days) || 120;
       const since = new Date();
       since.setDate(since.getDate() - sinceDays);
       const sinceStr = since.toISOString().split('T')[0];
-      const [farmers, pondGroups, ponds, samples] = await Promise.all([
-        sql`SELECT id, name, notes FROM flv_farmers
-            WHERE company_id = ${company_id} AND archived = false
-            ORDER BY name`,
-        sql`SELECT id, farmer_id, name, notes FROM flv_pond_groups
-            WHERE company_id = ${company_id} AND archived = false
-            ORDER BY name`,
-        sql`SELECT id, pond_group_id, number, acres, notes FROM flv_ponds
-            WHERE company_id = ${company_id} AND archived = false
-            ORDER BY number`,
-        sql`SELECT id, pond_id, sample_date, grade, sampled_by, notes, created_at
-            FROM flv_samples
-            WHERE company_id = ${company_id} AND sample_date >= ${sinceStr}
-            ORDER BY sample_date DESC, created_at DESC`
-      ]);
-      return res.json({ farmers, pond_groups: pondGroups, ponds, samples });
+
+      let farmers, pondGroups, ponds, samples;
+      if (farmerFilter) {
+        // Scoped to a single farmer inside the parent company.
+        [farmers, pondGroups, ponds, samples] = await Promise.all([
+          sql`SELECT id, name, notes FROM flv_farmers
+              WHERE company_id=${effectiveCompanyId} AND archived=false AND id=${farmerFilter}`,
+          sql`SELECT id, farmer_id, name, notes FROM flv_pond_groups
+              WHERE company_id=${effectiveCompanyId} AND archived=false AND farmer_id=${farmerFilter}
+              ORDER BY name`,
+          sql`SELECT p.id, p.pond_group_id, p.number, p.acres, p.notes
+              FROM flv_ponds p
+              JOIN flv_pond_groups g ON g.id = p.pond_group_id
+              WHERE p.company_id=${effectiveCompanyId} AND p.archived=false
+                AND g.archived=false AND g.farmer_id=${farmerFilter}
+              ORDER BY p.number`,
+          sql`SELECT s.id, s.pond_id, s.sample_date, s.grade, s.sampled_by, s.notes, s.created_at
+              FROM flv_samples s
+              JOIN flv_ponds p ON p.id = s.pond_id
+              JOIN flv_pond_groups g ON g.id = p.pond_group_id
+              WHERE s.company_id=${effectiveCompanyId} AND s.sample_date >= ${sinceStr}
+                AND g.farmer_id=${farmerFilter}
+              ORDER BY s.sample_date DESC, s.created_at DESC`
+        ]);
+      } else {
+        // Either own company or full parent — no farmer filter.
+        [farmers, pondGroups, ponds, samples] = await Promise.all([
+          sql`SELECT id, name, notes FROM flv_farmers
+              WHERE company_id=${effectiveCompanyId} AND archived=false
+              ORDER BY name`,
+          sql`SELECT id, farmer_id, name, notes FROM flv_pond_groups
+              WHERE company_id=${effectiveCompanyId} AND archived=false
+              ORDER BY name`,
+          sql`SELECT id, pond_group_id, number, acres, notes FROM flv_ponds
+              WHERE company_id=${effectiveCompanyId} AND archived=false
+              ORDER BY number`,
+          sql`SELECT id, pond_id, sample_date, grade, sampled_by, notes, created_at
+              FROM flv_samples
+              WHERE company_id=${effectiveCompanyId} AND sample_date >= ${sinceStr}
+              ORDER BY sample_date DESC, created_at DESC`
+        ]);
+      }
+      return res.json({
+        farmers, pond_groups: pondGroups, ponds, samples,
+        readonly: readonly,
+        // Useful debug/UX info about where the data came from
+        scope_info: readonly ? {
+          reading_from_company_id: effectiveCompanyId,
+          restricted_to_farmer_id: farmerFilter || null
+        } : null
+      });
     }
 
     if (action === 'get_pond_history') {
       const pondId = String(body.pond_id || req.query.pond_id || '').trim();
       if (!pondId) return res.status(400).json({ error: 'pond_id required' });
+      // For linked viewers, verify the pond is actually under the allowed farmer
+      // before returning its history. Defense-in-depth: prevents someone with a
+      // BFN session from guessing pond IDs from other POTP farmers.
+      if (farmerFilter) {
+        const allowed = await sql`SELECT p.id FROM flv_ponds p
+          JOIN flv_pond_groups g ON g.id = p.pond_group_id
+          WHERE p.id=${pondId} AND p.company_id=${effectiveCompanyId}
+            AND g.farmer_id=${farmerFilter} LIMIT 1`;
+        if (!allowed.length) return res.status(404).json({ error: 'Pond not found in your view' });
+      }
       const rows = await sql`SELECT id, sample_date, grade, sampled_by, notes, created_by, created_at
         FROM flv_samples
-        WHERE company_id = ${company_id} AND pond_id = ${pondId}
+        WHERE company_id=${effectiveCompanyId} AND pond_id=${pondId}
         ORDER BY sample_date DESC, created_at DESC
         LIMIT 500`;
       return res.json({ samples: rows });
