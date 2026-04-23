@@ -55,24 +55,48 @@ function flavorShowTab(tab){
     b.style.color = active ? '#1a3a6b' : '#94a3b8';
     b.style.fontWeight = active ? '600' : '400';
   });
-  if(tab==='dashboard') flavorRenderDashboard();
-  else if(tab==='log') flavorRenderLogForm();
-  else if(tab==='manage') flavorRenderManage();
-  else if(tab==='history') flavorRenderHistory();
+  try {
+    if(tab==='dashboard') flavorRenderDashboard();
+    else if(tab==='log') flavorRenderLogForm();
+    else if(tab==='manage') flavorRenderManage();
+    else if(tab==='history') flavorRenderHistory();
+  } catch (err) {
+    console.error('[flavor] ' + tab + ' render failed:', err);
+    var panel = document.getElementById('flavor-panel');
+    if (panel) {
+      panel.innerHTML = '<div style="padding:20px;color:#dc2626;font-family:monospace;white-space:pre-wrap;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:14px">'
+        + '<div style="font-weight:700;margin-bottom:8px">Error rendering the ' + tab + ' tab</div>'
+        + '<div style="font-size:.82rem">' + (err && err.message ? err.message : String(err)) + '</div>'
+        + (err && err.stack ? '<div style="font-size:.72rem;color:#7f1d1d;margin-top:8px;opacity:.7">' + err.stack.split('\n').slice(0, 5).join('<br>') + '</div>' : '')
+        + '</div>';
+    }
+  }
 }
 window.flavorShowTab = flavorShowTab;
 
 // ═══ Data load ══════════════════════════════════════════════════════════════
 function flavorLoadState(cb){
   apiCall('GET','/api/flavor?action=get_state').then(function(d){
-    _flavorState = {
-      farmers: Array.isArray(d.farmers) ? d.farmers : [],
-      pond_groups: Array.isArray(d.pond_groups) ? d.pond_groups : [],
-      ponds: Array.isArray(d.ponds) ? d.ponds : [],
-      samples: Array.isArray(d.samples) ? d.samples : []
-    };
+    try {
+      _flavorState = {
+        farmers: Array.isArray(d && d.farmers) ? d.farmers : [],
+        pond_groups: Array.isArray(d && d.pond_groups) ? d.pond_groups : [],
+        ponds: Array.isArray(d && d.ponds) ? d.ponds : [],
+        samples: Array.isArray(d && d.samples) ? d.samples : []
+      };
+      // Normalize sample_date into 'YYYY-MM-DD' strings regardless of whether Neon
+      // returned them as strings or Date objects — every downstream helper assumes strings.
+      _flavorState.samples.forEach(function(s){
+        if(s.sample_date instanceof Date) s.sample_date = s.sample_date.toISOString().split('T')[0];
+        else if(typeof s.sample_date === 'string' && s.sample_date.length > 10) s.sample_date = s.sample_date.split('T')[0];
+      });
+    } catch (e) {
+      console.error('[flavor] state load failed:', e);
+      _flavorState = { farmers: [], pond_groups: [], ponds: [], samples: [] };
+    }
     if(cb) cb();
   }).catch(function(e){
+    console.error('[flavor] API get_state failed:', e);
     var panel = document.getElementById('flavor-panel');
     if(panel) panel.innerHTML = '<div style="padding:20px;color:#dc2626">Failed to load flavor data: '+ ((e&&e.message)||'unknown') +'</div>';
   });
