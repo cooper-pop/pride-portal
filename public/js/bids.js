@@ -8,6 +8,11 @@ var _bidsCategoryFilter = '';
 var _bidsVendorFilter = '';
 var _bidsSearch = '';
 var _bidsCompareCategoryId = '';
+// AI comparison cache — keyed by category_id, holds the last recommendation
+// result so switching tabs doesn't force a re-call. Cleared when the user
+// picks a different category.
+var _bidsAIRecommendations = {};
+var _bidsAILoading = false;
 
 var DOC_TYPE_LABELS = {
   current_agreement: '📘 Current Agreement',
@@ -789,7 +794,7 @@ function bidsRenderCompare(){
   var html = '<div style="padding:14px;max-width:100vw;margin:0 auto">'
     + '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
     + '<div style="font-weight:700;font-size:.95rem;margin-right:auto">Side-by-side Comparison</div>'
-    + '<select style="'+BINP+';max-width:340px;margin:0" onchange="_bidsCompareCategoryId=this.value;bidsRenderCompare()">'+catOpts+'</select>'
+    + '<select style="'+BINP+';max-width:340px;margin:0" onchange="_bidsAIRecommendations[_bidsCompareCategoryId]=undefined;_bidsCompareCategoryId=this.value;bidsRenderCompare()">'+catOpts+'</select>'
     + '</div>';
 
   if(!_bidsCompareCategoryId){
@@ -807,6 +812,13 @@ function bidsRenderCompare(){
     panel.innerHTML = html + '</div>';
     return;
   }
+
+  // AI Recommendation banner — only makes sense with 2+ vendors extracted.
+  // Dedupe by vendor_id since the analyzer picks one doc per vendor.
+  var uniqVendorIds = {};
+  docs.forEach(function(d){ uniqVendorIds[d.vendor_id] = true; });
+  var uniqVendorCount = Object.keys(uniqVendorIds).length;
+  html += bidsRenderAIRecommendationBanner(uniqVendorCount);
 
   // Build comparison table: one column per document
   var rowLabels = [
@@ -886,6 +898,179 @@ function bidsRenderCompare(){
   html += '</div>';
   panel.innerHTML = html;
 }
+
+// ═══ AI RECOMMENDATION ════════════════════════════════════════════════════
+// Renders the banner/card at the top of the Compare tab. Three states:
+//   1. <2 vendors extracted → show disabled helper banner
+//   2. No cached result + not loading → show "Run AI Recommendation" button
+//   3. Loading → spinner
+//   4. Cached result → render the full scorecard
+// Banner is always rendered inline; the scorecard is a big card below.
+function bidsRenderAIRecommendationBanner(vendorCount){
+  if(vendorCount < 2){
+    return '<div style="'+CARD2+';background:#f8fafc;border:1px dashed #cbd5e1;color:#64748b;padding:12px 14px;display:flex;align-items:center;gap:10px">'
+      + '<span style="font-size:1.2rem">🤖</span>'
+      + '<div style="font-size:.82rem">Upload proposals from at least 2 vendors in this category to enable AI comparison.</div>'
+      + '</div>';
+  }
+
+  var cached = _bidsAIRecommendations[_bidsCompareCategoryId];
+
+  // Loading state
+  if(_bidsAILoading){
+    return '<div style="'+CARD2+';background:#eff6ff;border:1px solid #bfdbfe;padding:16px 18px;text-align:center">'
+      + '<div class="spinner-wrap" style="display:inline-block"><div class="spinner"></div></div>'
+      + '<div style="margin-top:8px;color:#1e40af;font-weight:600;font-size:.86rem">Claude is analyzing all '+vendorCount+' proposals…</div>'
+      + '<div style="font-size:.74rem;color:#64748b;margin-top:4px">Usually takes 15–30 seconds.</div>'
+      + '</div>';
+  }
+
+  // No cached result → CTA
+  if(!cached){
+    return '<div style="'+CARD2+';background:linear-gradient(135deg,#eff6ff,#ede9fe);border:1px solid #c7d2fe;padding:16px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+      + '<div style="flex:1;min-width:260px">'
+      + '<div style="font-weight:700;font-size:.95rem;color:#1e293b;margin-bottom:4px">🤖 AI Recommendation</div>'
+      + '<div style="font-size:.8rem;color:#475569">Let Claude read all '+vendorCount+' proposals and tell you which plan is the best deal — and why.</div>'
+      + '</div>'
+      + '<button style="'+BB_S+';padding:9px 18px;font-size:.82rem" onclick="bidsRunAIRecommendation()">✨ Analyze & Recommend</button>'
+      + '</div>';
+  }
+
+  // Result rendered below — banner is just the header + re-run button
+  var r = cached.comparison || {};
+  var rec = r.recommendation || {};
+  var confColor = rec.confidence === 'high' ? '#065f46'
+                 : rec.confidence === 'medium' ? '#92400e'
+                 : '#991b1b';
+  var confBg = rec.confidence === 'high' ? '#d1fae5'
+             : rec.confidence === 'medium' ? '#fef3c7'
+             : '#fee2e2';
+  var html = '<div style="'+CARD2+';background:#fff;border:2px solid #1a3a6b;padding:0;overflow:hidden">';
+
+  // Header
+  html += '<div style="background:linear-gradient(135deg,#1a3a6b,#3730a3);color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+    + '<span style="font-size:1.4rem">🤖</span>'
+    + '<div style="flex:1;min-width:220px">'
+    + '<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;opacity:.85">AI Recommendation</div>'
+    + '<div style="font-size:1rem;font-weight:700">'+bidsEsc(rec.winner_vendor_name || 'Analysis complete')+'</div>'
+    + '</div>'
+    + (rec.confidence ? '<span style="background:'+confBg+';color:'+confColor+';padding:3px 10px;border-radius:12px;font-size:.7rem;font-weight:700;text-transform:uppercase">'+bidsEsc(rec.confidence)+' confidence</span>' : '')
+    + '<button style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);padding:5px 12px;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer" onclick="bidsRunAIRecommendation(true)">↻ Re-analyze</button>'
+    + '</div>';
+
+  // Headline + key reasons
+  html += '<div style="padding:14px 18px">';
+  if(rec.headline){
+    html += '<div style="font-size:.9rem;color:#0f172a;margin-bottom:10px;line-height:1.5"><strong>Why:</strong> '+bidsEsc(rec.headline)+'</div>';
+  }
+  if(Array.isArray(rec.key_reasons) && rec.key_reasons.length){
+    html += '<ul style="margin:0 0 14px;padding-left:22px;line-height:1.6">';
+    rec.key_reasons.forEach(function(reason){
+      html += '<li style="font-size:.82rem;color:#334155;margin-bottom:3px">'+bidsEsc(String(reason))+'</li>';
+    });
+    html += '</ul>';
+  }
+
+  // Scorecards
+  if(Array.isArray(r.scorecards) && r.scorecards.length){
+    html += '<div style="font-weight:700;font-size:.78rem;color:#475569;margin:14px 0 8px;text-transform:uppercase;letter-spacing:.05em">Vendor Scorecards</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">';
+    r.scorecards.forEach(function(sc){
+      var isWinner = sc.vendor_id === rec.winner_vendor_id;
+      var score = Math.max(0, Math.min(10, Number(sc.score) || 0));
+      var scoreColor = score >= 8 ? '#065f46' : score >= 6 ? '#1e40af' : score >= 4 ? '#92400e' : '#991b1b';
+      html += '<div style="background:'+(isWinner?'#ecfdf5':'#fafbfc')+';border:1px solid '+(isWinner?'#10b981':'#e2e8f0')+';border-radius:8px;padding:10px 12px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        + '<div style="font-weight:700;font-size:.84rem;color:#0f172a">'+bidsEsc(sc.vendor_name || '')+(isWinner ? ' 🏆' : '')+'</div>'
+        + '<div style="background:'+scoreColor+';color:#fff;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700">'+score+'/10</div>'
+        + '</div>';
+      if(sc.one_line_summary){
+        html += '<div style="font-size:.76rem;color:#475569;margin-bottom:6px;line-height:1.4">'+bidsEsc(sc.one_line_summary)+'</div>';
+      }
+      if(Array.isArray(sc.pros) && sc.pros.length){
+        html += '<div style="font-size:.74rem;color:#065f46;margin-bottom:3px"><strong>✅</strong> '+sc.pros.map(function(p){ return bidsEsc(String(p)); }).join(' · ')+'</div>';
+      }
+      if(Array.isArray(sc.cons) && sc.cons.length){
+        html += '<div style="font-size:.74rem;color:#991b1b"><strong>⚠</strong> '+sc.cons.map(function(c){ return bidsEsc(String(c)); }).join(' · ')+'</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Side-by-side highlights
+  if(Array.isArray(r.side_by_side_highlights) && r.side_by_side_highlights.length){
+    html += '<div style="font-weight:700;font-size:.78rem;color:#475569;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.05em">Where They Differ</div>';
+    html += '<div style="background:#fafbfc;border-radius:8px;padding:10px 12px">';
+    r.side_by_side_highlights.forEach(function(h){
+      html += '<div style="border-bottom:1px solid #e2e8f0;padding:8px 0">'
+        + '<div style="font-weight:600;font-size:.78rem;color:#1a3a6b;margin-bottom:4px">'+bidsEsc(h.dimension || '')+'</div>';
+      if(Array.isArray(h.values)){
+        html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.76rem;color:#334155;margin-bottom:4px">';
+        h.values.forEach(function(v){
+          html += '<span><strong>'+bidsEsc(v.vendor_name || '')+':</strong> '+bidsEsc(String(v.value || '—'))+'</span>';
+        });
+        html += '</div>';
+      }
+      if(h.note){
+        html += '<div style="font-size:.74rem;color:#64748b;font-style:italic">'+bidsEsc(h.note)+'</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Risks + next steps side-by-side
+  if((Array.isArray(r.risks_to_discuss) && r.risks_to_discuss.length)
+      || (Array.isArray(r.recommended_next_steps) && r.recommended_next_steps.length)){
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:18px">';
+    if(Array.isArray(r.risks_to_discuss) && r.risks_to_discuss.length){
+      html += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">'
+        + '<div style="font-weight:700;font-size:.78rem;color:#991b1b;margin-bottom:6px">⚠ Risks to Discuss</div>'
+        + '<ul style="margin:0;padding-left:18px;line-height:1.5">';
+      r.risks_to_discuss.forEach(function(rr){
+        html += '<li style="font-size:.76rem;color:#7f1d1d;margin-bottom:3px">'+bidsEsc(String(rr))+'</li>';
+      });
+      html += '</ul></div>';
+    }
+    if(Array.isArray(r.recommended_next_steps) && r.recommended_next_steps.length){
+      html += '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px">'
+        + '<div style="font-weight:700;font-size:.78rem;color:#1e40af;margin-bottom:6px">→ Recommended Next Steps</div>'
+        + '<ul style="margin:0;padding-left:18px;line-height:1.5">';
+      r.recommended_next_steps.forEach(function(ns){
+        html += '<li style="font-size:.76rem;color:#1e3a8a;margin-bottom:3px">'+bidsEsc(String(ns))+'</li>';
+      });
+      html += '</ul></div>';
+    }
+    html += '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function bidsRunAIRecommendation(force){
+  if(!_bidsCompareCategoryId) return;
+  if(_bidsAILoading) return;
+  // `force=true` from the Re-analyze button blows away the cache.
+  if(force) _bidsAIRecommendations[_bidsCompareCategoryId] = undefined;
+
+  _bidsAILoading = true;
+  bidsRenderCompare();
+
+  apiCall('POST','/api/bids?action=compare_vendors', {
+    category_id: _bidsCompareCategoryId
+  }).then(function(r){
+    _bidsAIRecommendations[_bidsCompareCategoryId] = r;
+  }).catch(function(err){
+    toast('⚠️ AI recommendation failed: ' + (err && err.message || 'unknown error'));
+  }).finally(function(){
+    _bidsAILoading = false;
+    bidsRenderCompare();
+  });
+}
+
+window.bidsRunAIRecommendation = bidsRunAIRecommendation;
 
 // Negotiation email drafting
 function bidsDraftNegotiationEmail(vendorId, categoryId, targetDocId){

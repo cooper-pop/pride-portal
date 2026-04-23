@@ -657,6 +657,172 @@ Context:\n` + JSON.stringify(context, null, 2);
       });
     }
 
+    // COMPARE VENDORS ──────────────────────────────────────────────────
+    // AI-powered side-by-side comparison + recommendation across every
+    // vendor's latest document in a category. Returns winner + reasons,
+    // per-vendor scorecards, risks to discuss, and concrete next steps.
+    //
+    // Input: { category_id }
+    // One document per vendor is used — the one flagged is_current_agreement
+    // if any, else the most recent by created_at.
+    if (action === 'compare_vendors') {
+      const categoryId = String(body.category_id || '').trim();
+      if (!categoryId) return res.status(400).json({ error: 'category_id required' });
+
+      const [categoryRows] = await Promise.all([
+        sql`SELECT name, description FROM bid_categories
+            WHERE id = ${categoryId} AND company_id = ${company_id} AND archived = false LIMIT 1`
+      ]);
+      if (!categoryRows.length) return res.status(404).json({ error: 'Category not found' });
+      const category = categoryRows[0];
+
+      // One document per vendor in this category. DISTINCT ON (vendor_id)
+      // with ORDER BY vendor, is_current_agreement DESC, created_at DESC
+      // prefers the current agreement (if flagged), else the most recent doc.
+      const docs = await sql`
+        SELECT DISTINCT ON (d.vendor_id)
+          d.id, d.title, d.doc_type, d.extracted_data, d.is_current_agreement,
+          d.file_url, d.created_at,
+          v.id AS vendor_id, v.name AS vendor_name,
+          v.contact_name, v.contact_email
+        FROM bid_documents d
+        JOIN bid_vendors v ON v.id = d.vendor_id
+        WHERE d.company_id = ${company_id}
+          AND d.category_id = ${categoryId}
+          AND d.archived = false
+          AND v.archived = false
+          AND d.extraction_status = 'done'
+          AND d.extracted_data IS NOT NULL
+        ORDER BY d.vendor_id, d.is_current_agreement DESC NULLS LAST, d.created_at DESC
+      `;
+
+      if (docs.length < 2) {
+        return res.status(400).json({
+          error: 'Need at least 2 vendors with extracted documents to compare.',
+          have: docs.length
+        });
+      }
+
+      // Build the structured payload. We pass Claude a stable vendor list
+      // (with our internal vendor_id) plus each vendor's extracted data, so
+      // the response can reference specific vendor_ids in its recommendation.
+      const vendors = docs.map(d => ({
+        vendor_id: d.vendor_id,
+        vendor_name: d.vendor_name,
+        doc_title: d.title,
+        doc_type: d.doc_type,
+        is_current_agreement: !!d.is_current_agreement,
+        extracted: d.extracted_data
+      }));
+
+      const comparePrompt = `You are a commercial contract analyst for a catfish processing facility. You'll be given ${vendors.length} vendors' extracted contract/proposal data for the category "${category.name}".
+
+Your job: decide which vendor offers the best overall value and explain why in terms a small-business owner can act on.
+
+Consider:
+- Total cost (annual, per-unit, total contract value) — weighted heavily
+- Contract term length and renewal flexibility (month-to-month > multi-year auto-renew)
+- Cancellation terms, notice required
+- Coverage / scope / inclusions vs exclusions
+- Red flags, gotchas, unfavorable fine print
+- Warranty, lead time, service terms (for goods/services)
+- Coverage limits, deductibles, liability (for insurance)
+- Whether one is the "current agreement" — status quo has switching costs, so a new vendor must be meaningfully better to justify change
+- Anything unique or distinctive ("comparison_notes")
+
+Return ONLY valid JSON (no markdown, no commentary) in this exact shape:
+
+{
+  "category_name": "${category.name}",
+  "compared_vendor_count": ${vendors.length},
+  "recommendation": {
+    "winner_vendor_id": "<vendor_id from the list>",
+    "winner_vendor_name": "<vendor_name>",
+    "confidence": "high | medium | low",
+    "headline": "One sentence: why the winner is the best choice",
+    "key_reasons": [
+      "Concrete reason 1 — reference actual numbers/terms from their proposal",
+      "Concrete reason 2",
+      "Concrete reason 3"
+    ]
+  },
+  "scorecards": [
+    {
+      "vendor_id": "<vendor_id>",
+      "vendor_name": "<vendor_name>",
+      "score": 1-10,
+      "one_line_summary": "Single line characterizing this vendor's offer",
+      "pros": ["1-2 concrete strengths"],
+      "cons": ["1-2 concrete weaknesses"]
+    }
+  ],
+  "side_by_side_highlights": [
+    {
+      "dimension": "e.g., Annual cost | Contract term | Liability limit",
+      "values": [
+        {"vendor_name": "<name>", "value": "<concrete value or 'not specified'>"}
+      ],
+      "note": "One-line takeaway comparing the values"
+    }
+  ],
+  "risks_to_discuss": [
+    "Risk/gotcha present in one or more proposals that should be negotiated or clarified"
+  ],
+  "recommended_next_steps": [
+    "Concrete action: e.g., 'Ask Vendor X to match Vendor Y's 30-day cancellation notice'"
+  ]
+}
+
+Rules:
+- winner_vendor_id MUST match one of the vendor_id values in the input.
+- scorecards must include EVERY vendor in the input, in the same order.
+- side_by_side_highlights should surface 3-6 dimensions where the vendors genuinely differ. Skip dimensions where all vendors say the same thing.
+- Be specific: quote actual dollar amounts, percentages, dates from the extracted_data.
+- If data is missing for a vendor on a given dimension, say "not specified" rather than guessing.
+- Keep every individual string under 300 characters. Keep lists short (2-4 items).
+- confidence = "high" when the winner has clear numerical advantages; "medium" when trade-offs are real but one still comes out ahead; "low" when vendors are genuinely close or data is thin.
+
+Input vendors:
+` + JSON.stringify({ category: category.name, vendors }, null, 2);
+
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const msg = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: comparePrompt }]
+      });
+      const raw = (msg.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim()
+        .replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim();
+      let parsed;
+      try { parsed = JSON.parse(raw); }
+      catch (e) {
+        parsed = salvageTruncatedJson(raw);
+        if (!parsed) return res.status(500).json({ error: 'AI response not JSON', raw: raw.slice(0, 500) });
+      }
+
+      // Audit log — AI comparison is a manager-level analysis action worth tracking
+      await logAudit(sql, req, user, {
+        action: 'bids.compare_vendors',
+        resource_type: 'bid_category',
+        resource_id: categoryId,
+        details: {
+          category: category.name,
+          vendor_count: vendors.length,
+          winner: parsed && parsed.recommendation ? parsed.recommendation.winner_vendor_name : null,
+          confidence: parsed && parsed.recommendation ? parsed.recommendation.confidence : null
+        }
+      });
+
+      return res.json({
+        ok: true,
+        comparison: parsed,
+        category: category.name,
+        vendor_count: vendors.length,
+        // Echo the vendor list so the frontend can cross-reference ids
+        vendors: vendors.map(v => ({ vendor_id: v.vendor_id, vendor_name: v.vendor_name }))
+      });
+    }
+
     return res.status(400).json({ error: 'Unknown action: ' + action });
   } catch (err) {
     console.error('Bids API error:', err);
