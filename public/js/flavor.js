@@ -496,7 +496,7 @@ function flavorRenderManage(){
         var sortedPonds = ponds.slice().sort(function(a, b){
           return String(a.number).localeCompare(String(b.number), undefined, { numeric:true, sensitivity:'base' });
         });
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
         sortedPonds.forEach(function(p){
           var st = derivePondStatus(p.id);
           var cellBg = '#fff', cellColor = '#334155', accent = '', tooltip = 'No sample yet';
@@ -522,13 +522,14 @@ function flavorRenderManage(){
           }
           // Pill: rounded, status-colored. Click the pill itself to quick-log a sample.
           // In manage mode the ✎ / × buttons appear; otherwise they're hidden.
-          html += '<span style="background:'+cellBg+';color:'+cellColor+';padding:5px 12px;border-radius:999px;font-size:.76rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:'+(inManageMode?'default':'pointer')+'" title="'+flavorEsc(tooltip)+(inManageMode?'':' — click to log a sample')+'"'
-            + (inManageMode ? '' : ' onclick="flavorQuickLog(\''+p.id+'\')"')
+          // Rounded-rectangle pill: larger, more readable, still color-coded.
+          html += '<span style="background:'+cellBg+';color:'+cellColor+';padding:10px 16px;border-radius:10px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;min-width:100px;min-height:44px;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:'+(inManageMode?'default':'pointer')+';transition:transform .08s ease,box-shadow .08s ease" title="'+flavorEsc(tooltip)+(inManageMode?'':' — click to log a sample')+'"'
+            + (inManageMode ? '' : ' onclick="flavorQuickLog(\''+p.id+'\')" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 8px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'0 1px 3px rgba(0,0,0,.06)\'"')
             + '>'
-            + '<span>'+accent+flavorEsc(p.number)+'</span>';
+            + '<span style="flex:1;white-space:nowrap">'+accent+flavorEsc(p.number)+'</span>';
           if(inManageMode){
-            html += '<button title="Rename pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:'+cellColor+';font-size:.72rem;padding:1px 6px;border-radius:10px;font-weight:700" onclick="event.stopPropagation();flavorEditPond(\''+p.id+'\')">✎</button>'
-              + '<button title="Delete pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:#991b1b;font-size:.9rem;padding:0 6px;border-radius:10px;font-weight:700;line-height:1" onclick="event.stopPropagation();flavorDeletePond(\''+p.id+'\')">×</button>';
+            html += '<button title="Rename pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:'+cellColor+';font-size:.82rem;padding:3px 8px;border-radius:6px;font-weight:700" onclick="event.stopPropagation();flavorEditPond(\''+p.id+'\')">✎</button>'
+              + '<button title="Delete pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:#991b1b;font-size:1.05rem;padding:1px 8px;border-radius:6px;font-weight:700;line-height:1" onclick="event.stopPropagation();flavorDeletePond(\''+p.id+'\')">×</button>';
           }
           html += '</span>';
         });
