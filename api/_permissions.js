@@ -37,10 +37,11 @@ const WIDGET_PERMS = {
   // ── Financial (managers+) ────────────────────────────────────────────
   bids:      { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
   // ── Production (supervisors can view + create; managers+ can edit/delete) ─
-  yield:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
-  trimmer:   { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
-  injection: { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
-  flavor:    { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  yield:         { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
+  trimmer:       { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
+  injection:     { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
+  flavor:        { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
+  fishschedule:  { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
   // ── Maintenance (supervisors can view + create; managers+ can edit/delete) ─
   parts:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
@@ -57,8 +58,9 @@ const WIDGET_CATEGORIES = {
   yield:     'production',
   trimmer:   'production',
   injection: 'production',
-  flavor:    'production',
-  parts:     'maintenance',
+  flavor:       'production',
+  fishschedule: 'production',
+  parts:        'maintenance',
   todo:      'maintenance',
   ai:        'tools',
   settings:  'settings'

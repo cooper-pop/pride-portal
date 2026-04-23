@@ -1,645 +1,475 @@
-// fish-schedule.js - Live Fish Scheduling Widget
-function buildFishScheduleWidget() {
-  // Initialize with current week
-  const today = new Date();
-  const monday = new Date(today.setDate(today.getDate() - today.getDay() + 1));
-  window.fishCurrentWeek = monday.toISOString().split('T')[0];
-  
-  const tabs = [
-    { id: 'weekly', label: '📅 Weekly Schedule', active: true },
-    { id: 'vats', label: '🏭 Vat Status', active: false },
-    { id: 'producers', label: '🚛 Producers', active: false },
-    { id: 'coordination', label: '📞 Coordination Hub', active: false }
+// fish-schedule.js — Live Fish Scheduling widget (Phase 1)
+//
+// Weekly calendar of expected deliveries from farmers / live haulers. Each
+// day has 4 time-slot lanes: Start Up (previous evening) / Morning / Noon /
+// Afternoon. Per delivery: farmer + expected pounds + optional notes. Days
+// can be toggled to No Kill.
+//
+// Later phases add per-vat tracking + actual vs expected logging.
+
+(function () {
+  var TIME_SLOTS = [
+    { key: 'startup',   label: 'Start Up',  icon: '🌅', desc: 'prev evening' },
+    { key: 'morning',   label: 'Morning',   icon: '☀️', desc: '' },
+    { key: 'noon',      label: 'Noon',      icon: '🕛', desc: '' },
+    { key: 'afternoon', label: 'Afternoon', icon: '🌆', desc: '' }
   ];
-  
-  const tabsHtml = tabs.map(t =>
-    `<button class="widget-tab${t.active ? ' active' : ''}" onclick="fishShowTab('${t.id}')">${t.label}</button>`
-  ).join('');
-  
-  document.getElementById('widget-tabs').innerHTML = tabsHtml;
-  
-  const content = `
-    <div class="fish-container">
-      <!-- Weekly Schedule Tab -->
-      <div id="fish-tab-weekly" class="tab-panel active">
-        <div class="fish-controls">
-          <div class="fish-nav">
-            <button onclick="fishChangeWeek(-1)" class="nav-btn">‹</button>
-            <h3 id="fish-week-title">Week of ${formatWeekTitle(window.fishCurrentWeek)}</h3>
-            <button onclick="fishChangeWeek(1)" class="nav-btn">›</button>
-          </div>
-          <div class="fish-actions">
-            <button onclick="fishQuickSchedule()" class="btn-primary">⚡ Quick Schedule</button>
-            <button onclick="fishAddDelivery()" class="btn-secondary">+ Add Delivery</button>
-          </div>
-        </div>
-        <div id="fish-weekly-grid" class="fish-weekly-grid">
-          <div class="loading">Loading weekly schedule...</div>
-        </div>
-      </div>
-      
-      <!-- Vat Status Tab -->
-      <div id="fish-tab-vats" class="tab-panel">
-        <div class="vats-controls">
-          <button onclick="fishRefreshVats()" class="btn-secondary">🔄 Refresh Status</button>
-          <button onclick="fishCapacityAnalysis()" class="btn-primary">📊 Capacity Analysis</button>
-        </div>
-        <div id="fish-vats-grid" class="vats-grid">
-          <div class="loading">Loading vat status...</div>
-        </div>
-      </div>
-      
-      <!-- Producers Tab -->
-      <div id="fish-tab-producers" class="tab-panel">
-        <div class="producers-controls">
-          <button onclick="fishAddProducer()" class="btn-primary">+ Add Producer</button>
-          <button onclick="fishBulkImport()" class="btn-secondary">📥 Import Schedule</button>
-        </div>
-        <div id="fish-producers-list" class="producers-list">
-          <div class="loading">Loading producers...</div>
-        </div>
-      </div>
-      
-      <!-- Coordination Hub Tab -->
-      <div id="fish-tab-coordination" class="tab-panel">
-        <div class="coordination-header">
-          <h3>🏭 James Gaters - Coordination Hub</h3>
-          <div class="coordination-date" id="fish-coordination-date"></div>
-        </div>
-        <div class="coordination-grid">
-          <div class="coord-section">
-            <h4>🚨 Today's Deliveries</h4>
-            <div id="fish-today-deliveries">Loading...</div>
-          </div>
-          <div class="coord-section">
-            <h4>⚠️ Issues & Alerts</h4>
-            <div id="fish-alerts">Loading...</div>
-          </div>
-          <div class="coord-section">
-            <h4>📞 Contact Log</h4>
-            <div id="fish-contact-log">
-              <div class="contact-entry">
-                <input type="text" placeholder="Producer/Driver name..." id="contact-name">
-                <input type="time" id="contact-time" value="${new Date().toTimeString().slice(0,5)}">
-                <input type="text" placeholder="Notes..." id="contact-notes">
-                <button onclick="fishLogContact()" class="btn-sm">Log</button>
-              </div>
-            </div>
-          </div>
-          <div class="coord-section">
-            <h4>🎯 Vat Assignments</h4>
-            <div id="fish-vat-assignments">Loading...</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.getElementById('widget-content').innerHTML = content;
-  
-  // Initialize coordination date
-  document.getElementById('fish-coordination-date').textContent = 
-    new Date().toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'});
-  
-  // Load initial data
-  fishLoadWeeklySchedule();
-}
+  var DAY_ABBR = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
-function fishShowTab(tabId) {
-  // Update tab buttons
-  document.querySelectorAll('.widget-tab').forEach(tab => tab.classList.remove('active'));
-  event.target.classList.add('active');
-  
-  // Update tab panels
-  document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
-  document.getElementById(`fish-tab-${tabId}`).classList.add('active');
-  
-  // Load tab-specific data
-  if (tabId === 'weekly') {
-    fishLoadWeeklySchedule();
-  } else if (tabId === 'vats') {
-    fishLoadVatStatus();
-  } else if (tabId === 'producers') {
-    fishLoadProducers();
-  } else if (tabId === 'coordination') {
-    fishLoadCoordination();
+  var _fsState = {
+    tab: 'schedule',
+    weekStart: '',    // ISO YYYY-MM-DD (Sunday)
+    farmers: [],      // [{id, name, color}]
+    days: [],         // [{day_date, is_no_kill, deliveries: [...]}]
+    loading: false
+  };
+
+  // Button / card styles (match other widgets)
+  var BTN = 'padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600';
+  var BTN_P = BTN + ';background:#1a3a6b;color:#fff';
+  var BTN_SUB = BTN + ';background:#f1f5f9;color:#334155';
+  var BTN_D = 'padding:2px 8px;border-radius:5px;border:none;cursor:pointer;font-size:.68rem;background:#fee2e2;color:#b91c1c';
+  var INP = 'width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:.85rem;box-sizing:border-box';
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-}
+  function fmtLbs(n) {
+    if (n == null || n === '' || isNaN(n)) return '—';
+    return Number(n).toLocaleString('en-US') + ' lbs';
+  }
+  function isoDate(d) { return d.toISOString().split('T')[0]; }
+  // Week = Sunday through Saturday. Given any ISO date (or today), returns
+  // that week's Sunday as a YYYY-MM-DD string.
+  function weekStartOf(iso) {
+    var d = new Date((iso || isoDate(new Date())) + 'T00:00:00');
+    d.setDate(d.getDate() - d.getDay());
+    return isoDate(d);
+  }
+  function addDaysIso(iso, n) {
+    var d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return isoDate(d);
+  }
+  function prettyDay(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return DAY_ABBR[d.getDay()] + ' ' + d.getDate();
+  }
+  function prettyRange(weekStart) {
+    var a = new Date(weekStart + 'T00:00:00');
+    var b = new Date(weekStart + 'T00:00:00'); b.setDate(b.getDate() + 6);
+    var opts = { month: 'short', day: 'numeric' };
+    return a.toLocaleDateString('en-US', opts) + ' – ' + b.toLocaleDateString('en-US', opts) + ', ' + b.getFullYear();
+  }
 
-function fishChangeWeek(delta) {
-  const currentWeek = new Date(window.fishCurrentWeek);
-  currentWeek.setDate(currentWeek.getDate() + (delta * 7));
-  window.fishCurrentWeek = currentWeek.toISOString().split('T')[0];
-  
-  document.getElementById('fish-week-title').textContent = 
-    `Week of ${formatWeekTitle(window.fishCurrentWeek)}`;
-  fishLoadWeeklySchedule();
-}
-
-function fishLoadWeeklySchedule() {
-  const weekStart = window.fishCurrentWeek;
-  
-  apiCall('GET', `/api/fish-schedule?action=weekly_view&week_start=${weekStart}`).then(deliveries => {
-    const gridEl = document.getElementById('fish-weekly-grid');
-    if (!gridEl) return;
-    
-    // Create week grid structure
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const weekDates = [];
-    
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(weekStart);
-      date.setDate(date.getDate() + i);
-      weekDates.push(date.toISOString().split('T')[0]);
-    }
-    
-    let gridHtml = '<div class="week-header">';
-    days.forEach((day, index) => {
-      const date = new Date(weekDates[index]);
-      gridHtml += `
-        <div class="day-header">
-          <div class="day-name">${day}</div>
-          <div class="day-date">${date.getMonth() + 1}/${date.getDate()}</div>
-        </div>
-      `;
-    });
-    gridHtml += '</div>';
-    
-    gridHtml += '<div class="week-content">';
-    weekDates.forEach((dateStr, dayIndex) => {
-      const dayDeliveries = deliveries.filter(d => d.delivery_date === dateStr);
-      const totalLbs = dayDeliveries.reduce((sum, d) => sum + (d.estimated_lbs || 0), 0);
-      
-      gridHtml += `
-        <div class="day-column" data-date="${dateStr}">
-          <div class="day-summary">
-            <span class="delivery-count">${dayDeliveries.length} deliveries</span>
-            <span class="total-weight">${totalLbs.toLocaleString()} lbs</span>
-          </div>
-          ${dayDeliveries.map(delivery => `
-            <div class="delivery-card ${delivery.delivery_status}" onclick="fishEditDelivery('${delivery.delivery_id}')">
-              <div class="delivery-producer">${delivery.producer_name}</div>
-              <div class="delivery-details">
-                <span class="delivery-time">${delivery.scheduled_time || '—'}</span>
-                <span class="delivery-weight">${(delivery.estimated_lbs || 0).toLocaleString()} lbs</span>
-                <span class="delivery-vat">Vat ${delivery.vat_number || '?'}</span>
-              </div>
-              <div class="delivery-status-badge ${delivery.delivery_status}">${getStatusLabel(delivery.delivery_status)}</div>
-            </div>
-          `).join('')}
-          <button class="add-delivery-btn" onclick="fishAddDelivery('${dateStr}')">+ Add</button>
-        </div>
-      `;
-    });
-    gridHtml += '</div>';
-    
-    gridEl.innerHTML = gridHtml;
-    
-  }).catch(err => {
-    console.error('Error loading weekly schedule:', err);
-    document.getElementById('fish-weekly-grid').innerHTML = '<div class="error">Error loading schedule</div>';
-  });
-}
-
-function fishLoadVatStatus() {
-  apiCall('GET', '/api/fish-schedule?action=vats').then(vats => {
-    const gridEl = document.getElementById('fish-vats-grid');
-    if (!gridEl) return;
-    
-    const vatsHtml = vats.map(vat => {
-      const utilizationPercent = (vat.current_load_lbs / vat.capacity_lbs) * 100;
-      const statusColor = getVatStatusColor(vat.status);
-      
-      return `
-        <div class="vat-card ${vat.status}" onclick="fishEditVat(${vat.vat_number})">
-          <div class="vat-header">
-            <span class="vat-number">Vat ${vat.vat_number}</span>
-            <span class="vat-status" style="color: ${statusColor}">${vat.status.toUpperCase()}</span>
-          </div>
-          <div class="vat-capacity">
-            <div class="capacity-bar">
-              <div class="capacity-fill" style="width: ${utilizationPercent}%"></div>
-            </div>
-            <div class="capacity-text">
-              ${(vat.current_load_lbs / 1000).toFixed(1)}k / ${(vat.capacity_lbs / 1000).toFixed(0)}k lbs
-            </div>
-          </div>
-          <div class="vat-metrics">
-            ${vat.temperature ? `<span>🌡️ ${vat.temperature}°F</span>` : ''}
-            ${vat.oxygen_level ? `<span>💨 ${vat.oxygen_level}%</span>` : ''}
-            <span>📅 ${vat.scheduled_deliveries} scheduled</span>
-          </div>
-          ${vat.notes ? `<div class="vat-notes">${vat.notes}</div>` : ''}
-        </div>
-      `;
+  // ═══ ENTRY ═════════════════════════════════════════════════════════════
+  function buildFishScheduleWidget() {
+    var wt = document.getElementById('widget-tabs');
+    var tabs = [
+      { id: 'schedule', label: '📅 Schedule' },
+      { id: 'farmers',  label: '🚜 Farmers' }
+    ];
+    wt.innerHTML = tabs.map(function (t) {
+      return '<button class="wtab" id="fs-tab-' + t.id + '" onclick="fsShowTab(\'' + t.id + '\')" '
+        + 'style="padding:6px 12px;border:none;background:transparent;cursor:pointer;font-size:.78rem;'
+        + 'border-bottom:2px solid transparent;color:#94a3b8">' + t.label + '</button>';
     }).join('');
-    
-    gridEl.innerHTML = vatsHtml;
-  }).catch(err => {
-    console.error('Error loading vats:', err);
-    document.getElementById('fish-vats-grid').innerHTML = '<div class="error">Error loading vat status</div>';
-  });
-}
 
-function fishLoadProducers() {
-  apiCall('GET', '/api/fish-schedule?action=producers').then(producers => {
-    const listEl = document.getElementById('fish-producers-list');
-    if (!listEl) return;
-    
-    const producersHtml = producers.map(producer => `
-      <div class="producer-card">
-        <div class="producer-header">
-          <h4>${producer.producer_name}</h4>
-          <div class="producer-rating">
-            ${getStarRating(producer.quality_rating || 3)}
-          </div>
-        </div>
-        <div class="producer-details">
-          <div class="producer-contact">
-            <strong>Contact:</strong> ${producer.contact_person || 'TBD'}
-            ${producer.phone ? `<br><strong>Phone:</strong> ${producer.phone}` : ''}
-          </div>
-          <div class="producer-schedule">
-            <strong>Delivery Days:</strong> ${(producer.delivery_days || []).join(', ')}
-          </div>
-          <div class="producer-stats">
-            <span><strong>Typical Load:</strong> ${(producer.typical_load_size || 0).toLocaleString()} lbs</span>
-            <span><strong>Total Deliveries:</strong> ${producer.total_deliveries || 0}</span>
-            ${producer.avg_delivery_size ? `<span><strong>Avg Size:</strong> ${(producer.avg_delivery_size || 0).toLocaleString()} lbs</span>` : ''}
-          </div>
-        </div>
-        <div class="producer-actions">
-          <button onclick="fishScheduleProducer('${producer.producer_id}')" class="btn-sm">📅 Schedule</button>
-          <button onclick="fishEditProducer('${producer.producer_id}')" class="btn-sm">✏️ Edit</button>
-        </div>
-      </div>
-    `).join('');
-    
-    listEl.innerHTML = producersHtml;
-  }).catch(err => {
-    console.error('Error loading producers:', err);
-    document.getElementById('fish-producers-list').innerHTML = '<div class="error">Error loading producers</div>';
-  });
-}
+    if (!_fsState.weekStart) _fsState.weekStart = weekStartOf();
+    fsShowTab('schedule');
+  }
 
-function fishLoadCoordination() {
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Load today's deliveries
-  apiCall('GET', `/api/fish-schedule?action=schedule&start_date=${today}&end_date=${today}`).then(deliveries => {
-    const todayEl = document.getElementById('fish-today-deliveries');
-    if (!todayEl) return;
-    
-    if (deliveries.length === 0) {
-      todayEl.innerHTML = '<div class="no-deliveries">No deliveries scheduled for today</div>';
+  function fsShowTab(tab) {
+    _fsState.tab = tab;
+    ['schedule', 'farmers'].forEach(function (t) {
+      var btn = document.getElementById('fs-tab-' + t);
+      if (!btn) return;
+      var active = (t === tab);
+      btn.style.color = active ? '#1a3a6b' : '#94a3b8';
+      btn.style.borderBottomColor = active ? '#1a3a6b' : 'transparent';
+    });
+    if (tab === 'schedule') fsLoadAndRenderSchedule();
+    else if (tab === 'farmers') fsLoadAndRenderFarmers();
+  }
+
+  // ═══ SCHEDULE TAB ══════════════════════════════════════════════════════
+  function fsLoadAndRenderSchedule() {
+    var panel = document.getElementById('widget-content');
+    panel.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading schedule…</div>';
+    apiCall('GET', '/api/fish-schedule?action=get_state&week_start=' + _fsState.weekStart)
+      .then(function (r) {
+        _fsState.farmers = r.farmers || [];
+        _fsState.days = r.days || [];
+        fsRenderSchedule();
+      })
+      .catch(function (err) {
+        panel.innerHTML = '<div style="padding:20px;color:#ef4444">Failed to load: ' + esc(err.message) + '</div>';
+      });
+  }
+
+  function fsRenderSchedule() {
+    var panel = document.getElementById('widget-content');
+    if (!panel) return;
+
+    var canEdit = (typeof userCan === 'function') && userCan('fishschedule', 'edit');
+    var canCreate = (typeof userCan === 'function') && userCan('fishschedule', 'create');
+    var canDelete = (typeof userCan === 'function') && userCan('fishschedule', 'delete');
+
+    // Weekly total = sum of expected_lbs across every delivery this week
+    var weeklyTotal = 0;
+    _fsState.days.forEach(function (day) {
+      day.deliveries.forEach(function (dl) { weeklyTotal += (parseInt(dl.expected_lbs, 10) || 0); });
+    });
+
+    var html = '<div style="padding:14px;max-width:100%;margin:0 auto">';
+
+    // Header: nav + range + total
+    html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+      + '<button style="' + BTN_SUB + '" onclick="fsWeekNav(-1)">← Prev</button>'
+      + '<button style="' + BTN_SUB + '" onclick="fsGoToday()">This Week</button>'
+      + '<button style="' + BTN_SUB + '" onclick="fsWeekNav(1)">Next →</button>'
+      + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:1rem;margin-left:12px">'
+      + prettyRange(_fsState.weekStart) + '</div>'
+      + '<div style="font-size:.76rem;color:#64748b;font-weight:600">Weekly Total</div>'
+      + '<div style="font-size:1.05rem;color:#1a3a6b;font-weight:700">' + fmtLbs(weeklyTotal) + '</div>'
+      + '</div>';
+
+    if (_fsState.farmers.length === 0) {
+      html += '<div style="background:#fef3c7;border:1px solid #fde68a;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.82rem;color:#92400e">'
+        + '⚠️ No farmers added yet. Switch to the <strong>🚜 Farmers</strong> tab to add your first farmer before scheduling deliveries.'
+        + '</div>';
+    }
+
+    // 7-day grid. auto-fit minmax means it'll stack on narrow screens.
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;align-items:stretch">';
+    _fsState.days.forEach(function (day) {
+      html += fsRenderDayCard(day, { canEdit: canEdit, canCreate: canCreate, canDelete: canDelete });
+    });
+    html += '</div>';
+
+    html += '</div>';
+    panel.innerHTML = html;
+  }
+
+  function fsRenderDayCard(day, permsLocal) {
+    var dailyTotal = 0;
+    day.deliveries.forEach(function (dl) { dailyTotal += (parseInt(dl.expected_lbs, 10) || 0); });
+
+    var isToday = (day.day_date === isoDate(new Date()));
+    var header = isToday
+      ? '<div style="background:#1a3a6b;color:#fff;padding:8px 10px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between">'
+      : '<div style="background:#f1f5f9;color:#334155;padding:8px 10px;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between">';
+    header += '<div style="font-weight:700;font-size:.82rem">' + prettyDay(day.day_date) + '</div>';
+
+    if (permsLocal.canEdit) {
+      header += '<button title="Toggle No Kill" onclick="fsToggleNoKill(\'' + day.day_date + '\')" style="background:' + (day.is_no_kill ? '#fee2e2' : 'rgba(255,255,255,.2)') + ';color:' + (day.is_no_kill ? '#991b1b' : (isToday ? '#fff' : '#334155')) + ';border:none;border-radius:5px;padding:2px 8px;font-size:.68rem;font-weight:700;cursor:pointer">'
+        + (day.is_no_kill ? '🚫 No Kill' : 'Set No Kill') + '</button>';
+    } else if (day.is_no_kill) {
+      header += '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:5px;font-size:.68rem;font-weight:700">🚫 No Kill</span>';
+    }
+    header += '</div>';
+
+    var bodyBg = day.is_no_kill ? '#fafafa' : '#fff';
+    var bodyOpacity = day.is_no_kill ? 0.55 : 1;
+
+    var body = '<div style="background:' + bodyBg + ';border-radius:0 0 8px 8px;padding:6px;opacity:' + bodyOpacity + ';flex:1;display:flex;flex-direction:column">';
+
+    TIME_SLOTS.forEach(function (slot) {
+      var slotDeliveries = day.deliveries.filter(function (d) { return d.time_slot === slot.key; });
+      body += '<div style="border-bottom:1px solid #f1f5f9;padding:5px 4px 7px">';
+      body += '<div style="display:flex;align-items:center;justify-content:space-between;font-size:.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">'
+        + '<span>' + slot.icon + ' ' + slot.label + (slot.desc ? ' <span style="text-transform:none;font-weight:400;color:#94a3b8">(' + slot.desc + ')</span>' : '') + '</span>'
+        + (permsLocal.canCreate && !day.is_no_kill
+          ? '<button title="Add delivery" onclick="fsAddDelivery(\'' + day.day_date + '\',\'' + slot.key + '\')" style="background:none;border:1px dashed #cbd5e1;color:#64748b;border-radius:4px;padding:0 6px;font-size:.78rem;font-weight:700;cursor:pointer;line-height:1.2">+</button>'
+          : '')
+        + '</div>';
+
+      if (slotDeliveries.length === 0) {
+        body += '<div style="font-size:.72rem;color:#cbd5e1;font-style:italic;padding:2px 4px">—</div>';
+      } else {
+        slotDeliveries.forEach(function (dl) {
+          var farmer = _fsState.farmers.find(function (f) { return f.id === dl.farmer_id; });
+          var farmerName = farmer ? farmer.name : '(deleted)';
+          var color = farmer ? (farmer.color || '#1a3a6b') : '#64748b';
+          body += '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid ' + color + ';border-radius:5px;padding:4px 6px;margin-bottom:3px;display:flex;align-items:center;gap:4px">'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:.74rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(farmerName) + '">' + esc(farmerName) + '</div>'
+            + '<div style="font-size:.7rem;color:#1a3a6b;font-weight:700">' + fmtLbs(dl.expected_lbs) + '</div>'
+            + (dl.notes ? '<div style="font-size:.66rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(dl.notes) + '">' + esc(dl.notes) + '</div>' : '')
+            + '</div>'
+            + (permsLocal.canEdit ? '<button title="Edit" onclick="fsEditDelivery(' + dl.id + ')" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:.82rem;padding:0 4px">✎</button>' : '')
+            + (permsLocal.canDelete ? '<button title="Delete" onclick="fsDeleteDelivery(' + dl.id + ')" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:.82rem;padding:0 4px">×</button>' : '')
+            + '</div>';
+        });
+      }
+      body += '</div>';
+    });
+
+    body += '<div style="padding:6px 8px;background:#f8fafc;border-radius:5px;display:flex;justify-content:space-between;align-items:center;font-size:.74rem;margin-top:6px">'
+      + '<span style="color:#64748b;font-weight:600">Daily Total</span>'
+      + '<span style="color:#1a3a6b;font-weight:700">' + fmtLbs(dailyTotal) + '</span>'
+      + '</div>';
+
+    body += '</div>';
+
+    return '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:260px">' + header + body + '</div>';
+  }
+
+  function fsWeekNav(delta) {
+    _fsState.weekStart = addDaysIso(_fsState.weekStart, delta * 7);
+    fsLoadAndRenderSchedule();
+  }
+  function fsGoToday() {
+    _fsState.weekStart = weekStartOf();
+    fsLoadAndRenderSchedule();
+  }
+
+  function fsToggleNoKill(dayDate) {
+    var day = _fsState.days.find(function (d) { return d.day_date === dayDate; });
+    var newVal = !(day && day.is_no_kill);
+    apiCall('POST', '/api/fish-schedule?action=save_day', {
+      day_date: dayDate,
+      is_no_kill: newVal,
+      notes: (day && day.notes) || null
+    }).then(function () {
+      if (day) day.is_no_kill = newVal;
+      fsRenderSchedule();
+      toast(newVal ? '🚫 Marked No Kill' : 'Cleared No Kill');
+    }).catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
+  // ── Delivery modal ───────────────────────────────────────────────────
+  function fsAddDelivery(dayDate, timeSlot) {
+    fsOpenDeliveryModal({ day_date: dayDate, time_slot: timeSlot });
+  }
+  function fsEditDelivery(id) {
+    var found;
+    _fsState.days.some(function (day) {
+      var d = day.deliveries.find(function (x) { return x.id === id; });
+      if (d) {
+        found = { id: d.id, day_date: day.day_date, farmer_id: d.farmer_id,
+                  time_slot: d.time_slot, expected_lbs: d.expected_lbs, notes: d.notes };
+        return true;
+      }
+      return false;
+    });
+    if (found) fsOpenDeliveryModal(found);
+  }
+  function fsDeleteDelivery(id) {
+    if (!confirm('Delete this delivery?')) return;
+    apiCall('POST', '/api/fish-schedule?action=delete_delivery', { id: id })
+      .then(function () { toast('Deleted'); fsLoadAndRenderSchedule(); })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
+  function fsOpenDeliveryModal(initial) {
+    var isEdit = !!initial.id;
+    var overlay = document.createElement('div');
+    overlay.id = 'fs-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    var farmerOpts = _fsState.farmers.map(function (f) {
+      return '<option value="' + f.id + '"' + (f.id === initial.farmer_id ? ' selected' : '') + '>' + esc(f.name) + '</option>';
+    }).join('');
+    var slotOpts = TIME_SLOTS.map(function (s) {
+      return '<option value="' + s.key + '"' + (s.key === initial.time_slot ? ' selected' : '') + '>' + s.icon + ' ' + s.label + '</option>';
+    }).join('');
+
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+      + '<div style="font-weight:700;font-size:1.05rem;color:#1a3a6b;margin-bottom:12px">' + (isEdit ? '✎ Edit Delivery' : '+ New Delivery') + '</div>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Date</label>'
+      + '<input id="fs-m-date" type="date" value="' + esc(initial.day_date || '') + '" style="' + INP + '">'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Time Slot</label>'
+      + '<select id="fs-m-slot" style="' + INP + '">' + slotOpts + '</select>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Farmer</label>'
+      + '<select id="fs-m-farmer" style="' + INP + '">' + (farmerOpts || '<option value="">(no farmers — add one first)</option>') + '</select>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Expected Pounds</label>'
+      + '<input id="fs-m-lbs" type="number" min="0" step="100" placeholder="e.g., 25000" value="' + (initial.expected_lbs == null ? '' : initial.expected_lbs) + '" style="' + INP + '">'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Notes <span style="font-weight:400;color:#94a3b8">(optional)</span></label>'
+      + '<textarea id="fs-m-notes" rows="2" placeholder="e.g., truck #3, call driver at 4pm" style="' + INP + ';resize:vertical">' + esc(initial.notes || '') + '</textarea>'
+      + '<div id="fs-m-err" style="color:#ef4444;font-size:.78rem;margin-top:8px;display:none"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">'
+      + (isEdit ? '<button style="' + BTN_D + ';padding:8px 14px;font-size:.78rem" onclick="fsDeleteFromModal(' + initial.id + ')">Delete</button>' : '')
+      + '<button style="' + BTN_SUB + ';padding:8px 14px" onclick="document.getElementById(\'fs-modal\').remove()">Cancel</button>'
+      + '<button style="' + BTN_P + ';padding:8px 14px" onclick="fsSaveDelivery(' + (initial.id || 'null') + ')">Save</button>'
+      + '</div>'
+      + '</div>';
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    setTimeout(function () { var el = document.getElementById('fs-m-lbs'); if (el) el.focus(); }, 80);
+  }
+
+  function fsSaveDelivery(id) {
+    var dayDate = document.getElementById('fs-m-date').value;
+    var timeSlot = document.getElementById('fs-m-slot').value;
+    var farmerId = document.getElementById('fs-m-farmer').value;
+    var lbs = document.getElementById('fs-m-lbs').value;
+    var notes = document.getElementById('fs-m-notes').value.trim();
+    var err = document.getElementById('fs-m-err');
+    err.style.display = 'none';
+    if (!dayDate || !timeSlot || !farmerId) {
+      err.textContent = 'Date, slot, and farmer are required.';
+      err.style.display = 'block';
       return;
     }
-    
-    const deliveriesHtml = deliveries.map(delivery => `
-      <div class="coord-delivery ${delivery.delivery_status}">
-        <div class="coord-delivery-header">
-          <span class="coord-producer">${delivery.producer_name}</span>
-          <span class="coord-time">${delivery.scheduled_time || 'TBD'}</span>
-          <span class="coord-status ${delivery.delivery_status}">${getStatusLabel(delivery.delivery_status)}</span>
-        </div>
-        <div class="coord-delivery-details">
-          Vat ${delivery.vat_number || '?'} • ${(delivery.estimated_lbs || 0).toLocaleString()} lbs
-          ${delivery.truck_driver ? ` • Driver: ${delivery.truck_driver}` : ''}
-        </div>
-        <div class="coord-actions">
-          <button onclick="fishUpdateStatus('${delivery.delivery_id}', 'en_route')" class="status-btn">🚛 En Route</button>
-          <button onclick="fishUpdateStatus('${delivery.delivery_id}', 'arrived')" class="status-btn">📍 Arrived</button>
-          <button onclick="fishUpdateStatus('${delivery.delivery_id}', 'completed')" class="status-btn">✅ Complete</button>
-        </div>
-      </div>
-    `).join('');
-    
-    todayEl.innerHTML = deliveriesHtml;
-  });
-  
-  // Load alerts and vat assignments
-  fishLoadAlerts();
-  fishLoadVatAssignments();
-}
-
-// Quick scheduling functions
-function fishQuickSchedule() {
-  const modal = document.createElement('div');
-  modal.className = 'fish-modal';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>⚡ Quick Schedule Setup</h3>
-        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="quick-schedule-options">
-          <button onclick="fishApplyTemplate('standard_week')" class="template-btn">
-            📋 Standard Week Template
-            <small>Apply usual weekly pattern</small>
-          </button>
-          <button onclick="fishCopyPreviousWeek()" class="template-btn">
-            📅 Copy Previous Week
-            <small>Duplicate last week's schedule</small>
-          </button>
-          <button onclick="fishBulkScheduleProducers()" class="template-btn">
-            🚛 Bulk Schedule Producers
-            <small>Schedule multiple producers at once</small>
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-function fishAddDelivery(targetDate = null) {
-  apiCall('GET', '/api/fish-schedule?action=producers').then(producers => {
-    const modal = document.createElement('div');
-    modal.className = 'fish-modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>🚛 Schedule Delivery</h3>
-          <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <form onsubmit="fishSubmitDelivery(event)">
-            <div class="form-row">
-              <div class="form-group">
-                <label>Producer:</label>
-                <select id="delivery-producer" required>
-                  <option value="">Select producer...</option>
-                  ${producers.map(p => `<option value="${p.producer_id}">${p.producer_name}</option>`).join('')}
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Date:</label>
-                <input type="date" id="delivery-date" value="${targetDate || ''}" required>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Time:</label>
-                <input type="time" id="delivery-time">
-              </div>
-              <div class="form-group">
-                <label>Estimated Weight (lbs):</label>
-                <input type="number" id="delivery-weight" step="100" min="0" placeholder="e.g., 25000">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Vat Number:</label>
-                <select id="delivery-vat">
-                  <option value="">Auto-assign...</option>
-                  ${Array.from({length: 16}, (_, i) => `<option value="${i + 1}">Vat ${i + 1}</option>`).join('')}
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Driver:</label>
-                <input type="text" id="delivery-driver" placeholder="Driver name...">
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Coordinated by:</label>
-              <input type="text" id="delivery-coordinator" value="James Gaters">
-            </div>
-            <div class="form-group">
-              <label>Notes:</label>
-              <textarea id="delivery-notes" rows="2" placeholder="Additional notes..."></textarea>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn-primary">Schedule Delivery</button>
-              <button type="button" onclick="this.closest('.fish-modal').remove()" class="btn-secondary">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  });
-}
-
-function fishSubmitDelivery(event) {
-  event.preventDefault();
-  
-  const formData = {
-    action: 'create_delivery',
-    producer_id: document.getElementById('delivery-producer').value,
-    delivery_date: document.getElementById('delivery-date').value,
-    scheduled_time: document.getElementById('delivery-time').value || null,
-    estimated_lbs: document.getElementById('delivery-weight').value || 0,
-    vat_number: document.getElementById('delivery-vat').value || null,
-    truck_driver: document.getElementById('delivery-driver').value || null,
-    coordinated_by: document.getElementById('delivery-coordinator').value,
-    notes: document.getElementById('delivery-notes').value || null
-  };
-  
-  apiCall('POST', '/api/fish-schedule', formData).then(() => {
-    document.querySelector('.fish-modal').remove();
-    fishLoadWeeklySchedule();
-    showToast('✅ Delivery scheduled successfully!');
-  }).catch(err => {
-    showToast('❌ Error scheduling delivery: ' + err.message, 'error');
-  });
-}
-
-// Status and capacity functions
-function fishUpdateStatus(deliveryId, newStatus) {
-  const updateData = {
-    action: 'update_delivery_status',
-    delivery_id: deliveryId,
-    status: newStatus
-  };
-  
-  if (newStatus === 'arrived') {
-    updateData.actual_arrival_time = new Date().toISOString();
+    var body = {
+      day_date: dayDate,
+      time_slot: timeSlot,
+      farmer_id: parseInt(farmerId, 10),
+      expected_lbs: lbs === '' ? null : parseInt(lbs, 10),
+      notes: notes || null
+    };
+    if (id) body.id = id;
+    apiCall('POST', '/api/fish-schedule?action=save_delivery', body)
+      .then(function () {
+        document.getElementById('fs-modal').remove();
+        toast(id ? 'Saved' : 'Delivery added');
+        fsLoadAndRenderSchedule();
+      })
+      .catch(function (e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+      });
   }
-  
-  apiCall('POST', '/api/fish-schedule', updateData).then(() => {
-    fishLoadCoordination();
-    fishLoadWeeklySchedule();
-    showToast(`✅ Status updated to ${getStatusLabel(newStatus)}!`);
-  }).catch(err => {
-    showToast('❌ Error updating status: ' + err.message, 'error');
-  });
-}
 
-function fishCapacityAnalysis() {
-  const today = new Date().toISOString().split('T')[0];
-  
-  apiCall('GET', `/api/fish-schedule?action=capacity_analysis&target_date=${today}`).then(analysis => {
-    const modal = document.createElement('div');
-    modal.className = 'fish-modal';
-    modal.innerHTML = `
-      <div class="modal-content capacity-modal">
-        <div class="modal-header">
-          <h3>📊 Capacity Analysis - ${new Date().toLocaleDateString()}</h3>
-          <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="capacity-grid">
-            ${analysis.map(vat => {
-              const utilizationPercent = (vat.current_load_lbs / vat.capacity_lbs) * 100;
-              const availablePercent = (vat.available_capacity / vat.capacity_lbs) * 100;
-              
-              return `
-                <div class="capacity-vat ${vat.status}">
-                  <div class="capacity-vat-header">
-                    <span>Vat ${vat.vat_number}</span>
-                    <span class="vat-status ${vat.status}">${vat.status}</span>
-                  </div>
-                  <div class="capacity-bars">
-                    <div class="capacity-bar">
-                      <div class="bar-segment current" style="width: ${utilizationPercent}%"></div>
-                      <div class="bar-segment scheduled" style="width: ${(vat.scheduled_lbs / vat.capacity_lbs) * 100}%"></div>
-                    </div>
-                  </div>
-                  <div class="capacity-details">
-                    <div>Current: ${(vat.current_load_lbs / 1000).toFixed(1)}k lbs</div>
-                    <div>Scheduled: ${(vat.scheduled_lbs / 1000).toFixed(1)}k lbs</div>
-                    <div>Available: ${(vat.available_capacity / 1000).toFixed(1)}k lbs</div>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-          <div class="capacity-legend">
-            <span><div class="legend-bar current"></div>Current Load</span>
-            <span><div class="legend-bar scheduled"></div>Scheduled Today</span>
-            <span><div class="legend-bar available"></div>Available Capacity</span>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  });
-}
-
-// Initialize data function
-function fishInitializeData() {
-  apiCall('GET', '/api/fish-schedule?action=seed_initial').then(result => {
-    showToast('✅ ' + result.message);
-    fishLoadWeeklySchedule();
-    fishLoadVatStatus();
-    fishLoadProducers();
-  }).catch(err => {
-    showToast('❌ Error initializing data: ' + err.message, 'error');
-  });
-}
-
-// Utility functions
-function formatWeekTitle(weekStart) {
-  const start = new Date(weekStart);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  
-  return `${start.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${end.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;
-}
-
-function getStatusLabel(status) {
-  const labels = {
-    scheduled: 'Scheduled',
-    en_route: 'En Route',
-    arrived: 'Arrived',
-    unloading: 'Unloading',
-    completed: 'Complete',
-    cancelled: 'Cancelled'
-  };
-  return labels[status] || status;
-}
-
-function getVatStatusColor(status) {
-  const colors = {
-    available: '#22c55e',
-    loading: '#f59e0b',
-    processing: '#3b82f6',
-    cleaning: '#8b5cf6',
-    maintenance: '#ef4444'
-  };
-  return colors[status] || '#64748b';
-}
-
-function getStarRating(rating) {
-  const stars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
-  return `<span class="star-rating">${stars}</span>`;
-}
-
-function fishLoadAlerts() {
-  // Placeholder for alerts functionality
-  document.getElementById('fish-alerts').innerHTML = `
-    <div class="alert-item warning">
-      <span class="alert-icon">⚠️</span>
-      <span class="alert-text">Vat 3 needs cleaning after current batch</span>
-    </div>
-    <div class="alert-item info">
-      <span class="alert-icon">ℹ️</span>
-      <span class="alert-text">Weather delay possible for Friday deliveries</span>
-    </div>
-  `;
-}
-
-function fishLoadVatAssignments() {
-  // Placeholder for vat assignments
-  document.getElementById('fish-vat-assignments').innerHTML = `
-    <div class="vat-assignment">
-      <span class="vat-number">Vat 1-4:</span>
-      <span class="assignment">Battle Fish North (50t)</span>
-    </div>
-    <div class="vat-assignment">
-      <span class="vat-number">Vat 5-8:</span>
-      <span class="assignment">External Producers</span>
-    </div>
-    <div class="vat-assignment">
-      <span class="vat-number">Vat 9-12:</span>
-      <span class="assignment">Available</span>
-    </div>
-  `;
-}
-
-function fishLogContact() {
-  const name = document.getElementById('contact-name').value;
-  const time = document.getElementById('contact-time').value;
-  const notes = document.getElementById('contact-notes').value;
-  
-  if (!name || !notes) {
-    showToast('Please fill in name and notes', 'error');
-    return;
+  function fsDeleteFromModal(id) {
+    if (!confirm('Delete this delivery?')) return;
+    apiCall('POST', '/api/fish-schedule?action=delete_delivery', { id: id })
+      .then(function () {
+        var m = document.getElementById('fs-modal'); if (m) m.remove();
+        toast('Deleted');
+        fsLoadAndRenderSchedule();
+      })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
   }
-  
-  const logEntry = document.createElement('div');
-  logEntry.className = 'contact-logged';
-  logEntry.innerHTML = `
-    <div class="contact-logged-header">
-      <span class="contact-logged-name">${name}</span>
-      <span class="contact-logged-time">${time}</span>
-    </div>
-    <div class="contact-logged-notes">${notes}</div>
-  `;
-  
-  document.getElementById('fish-contact-log').appendChild(logEntry);
-  
-  // Clear form
-  document.getElementById('contact-name').value = '';
-  document.getElementById('contact-notes').value = '';
-  document.getElementById('contact-time').value = new Date().toTimeString().slice(0,5);
-  
-  showToast('✅ Contact logged successfully!');
-}
 
-// Export functions to global scope
-window.buildFishScheduleWidget = buildFishScheduleWidget;
-window.fishShowTab = fishShowTab;
-window.fishChangeWeek = fishChangeWeek;
-window.fishLoadWeeklySchedule = fishLoadWeeklySchedule;
-window.fishLoadVatStatus = fishLoadVatStatus;
-window.fishLoadProducers = fishLoadProducers;
-window.fishLoadCoordination = fishLoadCoordination;
-window.fishQuickSchedule = fishQuickSchedule;
-window.fishAddDelivery = fishAddDelivery;
-window.fishSubmitDelivery = fishSubmitDelivery;
-window.fishUpdateStatus = fishUpdateStatus;
-window.fishCapacityAnalysis = fishCapacityAnalysis;
-window.fishInitializeData = fishInitializeData;
-window.fishLogContact = fishLogContact;
+  // ═══ FARMERS TAB ═══════════════════════════════════════════════════════
+  function fsLoadAndRenderFarmers() {
+    var panel = document.getElementById('widget-content');
+    panel.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading farmers…</div>';
+    apiCall('GET', '/api/fish-schedule?action=get_state&week_start=' + _fsState.weekStart)
+      .then(function (r) {
+        _fsState.farmers = r.farmers || [];
+        fsRenderFarmers();
+      })
+      .catch(function (err) {
+        panel.innerHTML = '<div style="padding:20px;color:#ef4444">Failed to load: ' + esc(err.message) + '</div>';
+      });
+  }
+
+  function fsRenderFarmers() {
+    var panel = document.getElementById('widget-content');
+    var canCreate = (typeof userCan === 'function') && userCan('fishschedule', 'create');
+    var canEdit = (typeof userCan === 'function') && userCan('fishschedule', 'edit');
+    var canDelete = (typeof userCan === 'function') && userCan('fishschedule', 'delete');
+
+    var html = '<div style="padding:14px;max-width:720px;margin:0 auto">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      + '<div style="font-weight:700;color:#1a3a6b;font-size:1rem">🚜 Farmers / Live Haulers</div>'
+      + (canCreate ? '<button style="' + BTN_P + '" onclick="fsEditFarmer(null)">+ Add Farmer</button>' : '')
+      + '</div>';
+
+    if (_fsState.farmers.length === 0) {
+      html += '<div style="background:#fef3c7;border:1px solid #fde68a;padding:14px;border-radius:8px;color:#92400e;font-size:.86rem">'
+        + 'No farmers yet. Add your live haulers (Battle Fish North, Adams Lane, DREC, etc.) so you can schedule deliveries.'
+        + '</div>';
+    } else {
+      html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
+      _fsState.farmers.forEach(function (f, i) {
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;' + (i > 0 ? 'border-top:1px solid #f1f5f9' : '') + '">'
+          + '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + esc(f.color || '#1a3a6b') + ';flex-shrink:0"></span>'
+          + '<div style="flex:1;font-weight:600;color:#0f172a;font-size:.88rem">' + esc(f.name) + '</div>'
+          + (f.notes ? '<div style="font-size:.74rem;color:#64748b;margin-right:8px">' + esc(f.notes) + '</div>' : '')
+          + (canEdit ? '<button style="' + BTN_SUB + ';padding:4px 10px;font-size:.74rem" onclick="fsEditFarmer(' + f.id + ')">Edit</button>' : '')
+          + (canDelete ? '<button style="' + BTN_D + ';margin-left:4px" onclick="fsDeleteFarmer(' + f.id + ',\'' + esc(f.name).replace(/'/g, '') + '\')">Remove</button>' : '')
+          + '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    panel.innerHTML = html;
+  }
+
+  function fsEditFarmer(id) {
+    var f = id ? _fsState.farmers.find(function (x) { return x.id === id; }) : null;
+    var isEdit = !!f;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'fs-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    var colors = ['#1a3a6b', '#0369a1', '#0891b2', '#059669', '#ca8a04', '#ea580c', '#dc2626', '#7c3aed', '#be185d'];
+    var swatchHtml = colors.map(function (c) {
+      var selStyle = (f && f.color === c) ? 'border:3px solid #0f172a' : 'border:2px solid #fff';
+      return '<button type="button" data-color="' + c + '" onclick="document.getElementById(\'fs-fm-color\').value=\'' + c + '\';document.querySelectorAll(\'[data-color]\').forEach(function(b){b.style.border=\'2px solid #fff\'});this.style.border=\'3px solid #0f172a\'" style="width:30px;height:30px;border-radius:50%;background:' + c + ';cursor:pointer;' + selStyle + '"></button>';
+    }).join('');
+
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:420px;width:100%">'
+      + '<div style="font-weight:700;color:#1a3a6b;font-size:1.05rem;margin-bottom:12px">' + (isEdit ? '✎ Edit Farmer' : '+ New Farmer') + '</div>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Name</label>'
+      + '<input id="fs-fm-name" type="text" placeholder="e.g., Battle Fish North" value="' + esc(f ? f.name : '') + '" style="' + INP + '">'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:10px 0 4px">Color</label>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + swatchHtml + '</div>'
+      + '<input id="fs-fm-color" type="hidden" value="' + esc(f ? f.color : '#1a3a6b') + '">'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:10px 0 4px">Notes <span style="font-weight:400;color:#94a3b8">(optional)</span></label>'
+      + '<input id="fs-fm-notes" type="text" placeholder="e.g., primary supplier, contact James" value="' + esc(f ? f.notes : '') + '" style="' + INP + '">'
+      + '<div id="fs-fm-err" style="color:#ef4444;font-size:.78rem;margin-top:8px;display:none"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">'
+      + '<button style="' + BTN_SUB + ';padding:8px 14px" onclick="document.getElementById(\'fs-modal\').remove()">Cancel</button>'
+      + '<button style="' + BTN_P + ';padding:8px 14px" onclick="fsSaveFarmer(' + (id || 'null') + ')">Save</button>'
+      + '</div>'
+      + '</div>';
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    setTimeout(function () { var el = document.getElementById('fs-fm-name'); if (el) el.focus(); }, 80);
+  }
+
+  function fsSaveFarmer(id) {
+    var name = document.getElementById('fs-fm-name').value.trim();
+    var color = document.getElementById('fs-fm-color').value;
+    var notes = document.getElementById('fs-fm-notes').value.trim();
+    var err = document.getElementById('fs-fm-err');
+    err.style.display = 'none';
+    if (!name) {
+      err.textContent = 'Name is required.';
+      err.style.display = 'block';
+      return;
+    }
+    var body = { name: name, color: color, notes: notes || null };
+    if (id) body.id = id;
+    apiCall('POST', '/api/fish-schedule?action=save_farmer', body)
+      .then(function () {
+        document.getElementById('fs-modal').remove();
+        toast(id ? 'Saved' : 'Farmer added');
+        fsLoadAndRenderFarmers();
+      })
+      .catch(function (e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+      });
+  }
+
+  function fsDeleteFarmer(id, name) {
+    if (!confirm('Remove ' + (name || 'this farmer') + '? Historical deliveries stay intact, but they won\'t appear in the farmer dropdown for new deliveries.')) return;
+    apiCall('POST', '/api/fish-schedule?action=delete_farmer', { id: id })
+      .then(function () { toast('Removed'); fsLoadAndRenderFarmers(); })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
+  // Expose globally for inline onclick handlers
+  window.buildFishScheduleWidget = buildFishScheduleWidget;
+  window.fsShowTab = fsShowTab;
+  window.fsWeekNav = fsWeekNav;
+  window.fsGoToday = fsGoToday;
+  window.fsToggleNoKill = fsToggleNoKill;
+  window.fsAddDelivery = fsAddDelivery;
+  window.fsEditDelivery = fsEditDelivery;
+  window.fsDeleteDelivery = fsDeleteDelivery;
+  window.fsSaveDelivery = fsSaveDelivery;
+  window.fsDeleteFromModal = fsDeleteFromModal;
+  window.fsEditFarmer = fsEditFarmer;
+  window.fsSaveFarmer = fsSaveFarmer;
+  window.fsDeleteFarmer = fsDeleteFarmer;
+})();

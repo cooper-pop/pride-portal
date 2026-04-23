@@ -36,14 +36,15 @@ function buildDash() {
   var apps = [];
   if (currentCompany === 'potp') {
     apps = [
-      { id:'bids',      label:'Contract Bids',  icon:'📑', color:'#0f766e', category:'financial' },
-      { id:'yield',     label:'Yield Calc',     icon:'⚖️', color:'#1a3a6b', category:'production' },
-      { id:'injection', label:'Injection Calc', icon:'💉', color:'#c0392b', category:'production' },
-      { id:'trimmer',   label:'Trimmer Log',    icon:'✂️', color:'#1d9e75', category:'production' },
-      { id:'flavor',    label:'Flavor Sample',  icon:'🧪', color:'#0891b2', category:'production' },
-      { id:'todo',      label:'To-Do List',     icon:'📋', color:'#1a3a6b', category:'maintenance' },
-      { id:'parts',     label:'Parts',          icon:'⚙️', color:'#7c3aed', category:'maintenance' },
-      { id:'ai',        label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' }
+      { id:'bids',         label:'Contract Bids',  icon:'📑', color:'#0f766e', category:'financial' },
+      { id:'yield',        label:'Yield Calc',     icon:'⚖️', color:'#1a3a6b', category:'production' },
+      { id:'injection',    label:'Injection Calc', icon:'💉', color:'#c0392b', category:'production' },
+      { id:'trimmer',      label:'Trimmer Log',    icon:'✂️', color:'#1d9e75', category:'production' },
+      { id:'flavor',       label:'Flavor Sample',  icon:'🧪', color:'#0891b2', category:'production' },
+      { id:'fishschedule', label:'Live Fish',      icon:'🐟', color:'#0369a1', category:'production' },
+      { id:'todo',         label:'To-Do List',     icon:'📋', color:'#1a3a6b', category:'maintenance' },
+      { id:'parts',        label:'Parts',          icon:'⚙️', color:'#7c3aed', category:'maintenance' },
+      { id:'ai',           label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' }
     ];
   } else if (currentCompany === 'bfn') {
     // Battle Fish North portal — data is company-scoped automatically via the

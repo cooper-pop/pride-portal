@@ -50,8 +50,9 @@ var WIDGET_PERMS = {
   yield:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   trimmer:   { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   injection: { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
-  flavor:    { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
-  parts:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
+  flavor:        { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
+  fishschedule:  { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
+  parts:         { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   ai:        { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
   settings:  { view:'admin',      create:'admin',      edit:'admin',      delete:'admin' }
