@@ -458,13 +458,44 @@ function flavorRenderManage(){
         + '<button style="'+FB_D+'" onclick="flavorDeletePondGroup(\''+g.id+'\')">Del</button>'
         + '</div></div>';
       if(ponds.length > 0){
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
-        ponds.forEach(function(p){
-          html += '<span style="background:#f1f5f9;color:#334155;padding:3px 9px;border-radius:12px;font-size:.72rem;display:inline-flex;align-items:center;gap:4px">'
-            + flavorEsc(p.number)
-            + '<button title="Edit" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:.7rem;padding:0 2px" onclick="flavorEditPond(\''+p.id+'\')">✎</button>'
-            + '<button title="Delete" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.7rem;padding:0 2px" onclick="flavorDeletePond(\''+p.id+'\')">×</button>'
-            + '</span>';
+        // Excel-style grid: responsive cells color-coded by the pond's current flavor status.
+        // Sort ponds by their number using a natural (numeric-aware) comparator so "1 North"
+        // comes before "10 North" instead of alphabetic ordering.
+        var sortedPonds = ponds.slice().sort(function(a, b){
+          return String(a.number).localeCompare(String(b.number), undefined, { numeric:true, sensitivity:'base' });
+        });
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:1px;background:#e2e8f0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">';
+        sortedPonds.forEach(function(p){
+          var st = derivePondStatus(p.id);
+          var cellBg = '#fff', cellColor = '#334155', accent = '', tooltip = 'No sample yet';
+          if(st.state === 'ready'){
+            cellBg = '#dcfce7'; cellColor = '#166534';
+            tooltip = 'Ready to Harvest · ' + (st.days_left>=0 ? st.days_left+' days left' : 'expired');
+            if(st.days_left <= ALERT_THRESHOLD_DAYS && st.days_left >= 0) accent = '🚨 ';
+            if(st.expired){ cellBg = '#fee2e2'; cellColor = '#991b1b'; accent = '⚠ '; tooltip = 'Window expired — needs retest'; }
+          } else if(st.state === 'in_resample'){
+            cellBg = '#fef3c7'; cellColor = '#92400e';
+            tooltip = (st.meta ? st.meta.label : 'In Resample') + ' · ' + (st.days_left>=0 ? st.days_left+' days left' : 'expired');
+            if(st.days_left <= ALERT_THRESHOLD_DAYS && st.days_left >= 0) accent = '🚨 ';
+            if(st.expired){ cellBg = '#fee2e2'; cellColor = '#991b1b'; accent = '⚠ '; tooltip = 'Window expired — needs retest'; }
+          } else if(st.state === 'off'){
+            var sev = st.meta ? st.meta.severity : 3;
+            if(sev <= 1){ cellBg = '#fef3c7'; cellColor = '#92400e'; }
+            else if(sev <= 2){ cellBg = '#fed7aa'; cellColor = '#9a3412'; }
+            else { cellBg = '#fecaca'; cellColor = '#7f1d1d'; }
+            tooltip = (st.meta ? st.meta.label : 'Off') + ' · ' + (st.days_since_sample||0) + 'd ago';
+          } else if(st.state === 'delivered'){
+            cellBg = '#dbeafe'; cellColor = '#1e40af';
+            tooltip = 'Truck Sample · ' + (st.latest ? st.latest.sample_date : '');
+          }
+          html += '<div style="background:'+cellBg+';color:'+cellColor+';padding:6px 8px;display:flex;align-items:center;justify-content:space-between;gap:4px;font-size:.76rem;font-weight:600;min-height:32px" title="'+flavorEsc(tooltip)+'">'
+            + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+accent+flavorEsc(p.number)+'</span>'
+            + '<span style="display:flex;gap:1px;flex-shrink:0">'
+              + '<button title="Log sample" style="background:rgba(255,255,255,.5);border:none;cursor:pointer;color:'+cellColor+';font-size:.68rem;padding:1px 4px;border-radius:3px;font-weight:700" onclick="flavorQuickLog(\''+p.id+'\')">+</button>'
+              + '<button title="Edit pond" style="background:rgba(255,255,255,.5);border:none;cursor:pointer;color:'+cellColor+';font-size:.68rem;padding:1px 4px;border-radius:3px" onclick="flavorEditPond(\''+p.id+'\')">✎</button>'
+              + '<button title="Delete pond" style="background:rgba(255,255,255,.5);border:none;cursor:pointer;color:#991b1b;font-size:.72rem;padding:1px 4px;border-radius:3px;font-weight:700" onclick="flavorDeletePond(\''+p.id+'\')">×</button>'
+            + '</span>'
+            + '</div>';
         });
         html += '</div>';
       }
