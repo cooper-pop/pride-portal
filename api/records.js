@@ -24,6 +24,7 @@ function normalizeRows(rows) {
 }
 const { neon } = require('@neondatabase/serverless');
 const perms = require('./_permissions');
+const { logAudit } = require('./_audit');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -72,6 +73,7 @@ module.exports = async function handler(req, res) {
     const cfgData = req.body;
     await sql`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
     await sql`INSERT INTO app_config (key, value) VALUES ('grade_config', ${JSON.stringify(cfgData)}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+    await logAudit(sql, req, user, { action: 'records.save_grade_config', resource_type: 'config', resource_id: 'grade_config', details: { keys: Object.keys(cfgData || {}) } });
     return res.json({ ok: true });
   }
 
@@ -86,6 +88,7 @@ module.exports = async function handler(req, res) {
         ON CONFLICT (full_name) DO UPDATE SET emp_number = EXCLUDED.emp_number`;
       count++;
     }
+    await logAudit(sql, req, user, { action: 'records.bulk_update_roster', resource_type: 'roster', details: { count: updates.length } });
     return res.json({ ok: true, updated: count });
   }
 
@@ -93,6 +96,7 @@ module.exports = async function handler(req, res) {
     const name = req.body && req.body.full_name;
     if (!name) return res.status(400).json({ error: 'full_name required' });
     await sql`DELETE FROM trimmer_roster WHERE full_name = ${name}`;
+    await logAudit(sql, req, user, { action: 'records.delete_roster_entry', resource_type: 'roster', resource_id: name, details: {} });
     return res.json({ ok: true });
   }
 
@@ -108,6 +112,7 @@ module.exports = async function handler(req, res) {
       }
       count++;
     }
+    await logAudit(sql, req, user, { action: 'records.fix_entry_emp', resource_type: 'trimmer_entry', details: { count } });
     return res.json({ok:true, fixed:count});
   }
 
@@ -119,6 +124,7 @@ module.exports = async function handler(req, res) {
       await sql`UPDATE injection_records SET category=${u.cat}, item=${u.item} WHERE id=${u.id}`;
       fixed++;
     }
+    await logAudit(sql, req, user, { action: 'records.remap_import_categories', resource_type: 'injection_record', details: { count: fixed } });
     return res.json({ok:true, fixed});
   }
 
@@ -135,6 +141,7 @@ module.exports = async function handler(req, res) {
         WHERE id = ${id}`;
       fixed++;
     }
+    await logAudit(sql, req, user, { action: 'records.bulk_fix_imports', resource_type: 'injection_record', details: { count: fixed } });
     return res.json({ok:true, fixed});
   }
 
@@ -202,6 +209,7 @@ if (action === 'get_roster') {
         const {full_name, emp_number, trim_number} = body;
         if (!full_name || !emp_number) return res.status(400).json({error:'full_name and emp_number required'});
         const rows = await sql`INSERT INTO trimmer_roster (full_name, emp_number, trim_number) VALUES (${full_name}, ${emp_number}, ${trim_number||''}) ON CONFLICT (full_name) DO UPDATE SET emp_number=EXCLUDED.emp_number, trim_number=EXCLUDED.trim_number, updated_at=NOW() RETURNING *`;
+        await logAudit(sql, req, user, { action: 'records.save_roster', resource_type: 'roster', details: { full_name, emp_number } });
         return res.json({ ok: true, roster: rows[0] });
       }
       if (action === 'seed_roster') {
@@ -212,6 +220,7 @@ NaN
           await sql`INSERT INTO trimmer_roster (full_name, emp_number, trim_number) VALUES (${emp.name}, ${emp.emp}, ${emp.trim}) ON CONFLICT (full_name) DO UPDATE SET emp_number=EXCLUDED.emp_number, trim_number=EXCLUDED.trim_number, updated_at=NOW()`;
         }
         const count = await sql`SELECT COUNT(*) FROM trimmer_roster`;
+        await logAudit(sql, req, user, { action: 'records.seed_roster', resource_type: 'roster', details: { count: count[0].count } });
         return res.json({ ok: true, seeded: count[0].count });
       }
       if (action === 'validate_entry') {
@@ -465,11 +474,20 @@ NaN
       if (type==='yield') {
         const {record_date,shift,line,live_weight_lbs,dressed_weight_lbs,fillet_weight_lbs,trim_weight_lbs,yield_pct,notes}=body;
         const [r] = await sql`INSERT INTO yield_records(company_id,user_id,record_date,shift,line,live_weight_lbs,dressed_weight_lbs,fillet_weight_lbs,trim_weight_lbs,yield_pct,notes) VALUES(${user.company_id},${user.user_id},${record_date},${shift||line},${line},${live_weight_lbs},${dressed_weight_lbs},${fillet_weight_lbs},${trim_weight_lbs},${yield_pct},${notes}) RETURNING *`;
+        const yieldDetails = {};
+        if (body.date !== undefined) yieldDetails.date = body.date;
+        if (body.total_weight !== undefined) yieldDetails.total_weight = body.total_weight;
+        await logAudit(sql, req, user, { action: 'records.save_yield', resource_type: 'yield_record', resource_id: r.id, details: yieldDetails });
         return res.json(normalizeRows([r]));
       }
       if (type==='injection') {
         const {record_date,shift,category,item,batch_num,pre_injection_lbs,post_injection_lbs,brine_pct,target_brine_pct,total_pct,total_lbs,batch_data,notes}=body;
         const [r] = await sql`INSERT INTO injection_records(company_id,user_id,record_date,shift,category,item,batch_num,pre_injection_lbs,post_injection_lbs,brine_pct,target_brine_pct,total_pct,total_lbs,batch_data,notes) VALUES(${user.company_id},${user.user_id},${record_date},${shift},${category},${item},${batch_num},${pre_injection_lbs},${post_injection_lbs},${brine_pct},${target_brine_pct},${total_pct},${total_lbs},${batch_data||{}},${notes}) RETURNING *`;
+        const injDetails = {};
+        if (body.date !== undefined) injDetails.date = body.date;
+        if (body.category !== undefined) injDetails.category = body.category;
+        if (body.item !== undefined) injDetails.item = body.item;
+        await logAudit(sql, req, user, { action: 'records.save_injection', resource_type: 'injection_record', resource_id: r.id, details: injDetails });
         return res.json(normalizeRows([r]));
       }
       if (type==='trimmer') {
@@ -480,6 +498,7 @@ NaN
             await sql`INSERT INTO trimmer_entries(report_id,emp_number,full_name,trim_number,minutes_worked,incoming_lbs,fillet_lbs,nugget_lbs,misccut_lbs,fillet_yield_pct,nugget_yield_pct,misccut_yield_pct,total_weight_lbs,total_yield_pct,realtime_lbs_per_hour,eighthour_lbs_per_hour,hours_worked,flagged,validation_flags) VALUES(${report.id},${e.emp_number||''},${e.full_name||''},${e.trim_number||''},${parseFloat(e.minutes_worked||e.total_minutes)||0},${parseFloat(e.incoming_lbs)||0},${parseFloat(e.fillet_lbs)||0},${parseFloat(e.nugget_lbs)||0},${parseFloat(e.misccut_lbs)||0},${parseFloat(e.fillet_yield_pct)||0},${parseFloat(e.nugget_yield_pct)||0},${parseFloat(e.misccut_yield_pct)||0},${parseFloat(e.total_lbs||e.total_weight_lbs)||0},${parseFloat(e.total_yield_pct)||0},${parseFloat(e.realtime_lbs_per_hour)||0},${parseFloat(e.eighthour_lbs_per_hour)||0},${parseFloat(e.hours_worked)||0},${e.flagged||false},${JSON.stringify(Array.isArray(e.validation_flags)?e.validation_flags:[])})`;
           }
         }
+        await logAudit(sql, req, user, { action: 'records.save_trimmer', resource_type: 'trimmer_report', resource_id: report.id, details: { date: body.date, entry_count: (body.entries || []).length } });
         return res.json({success:true,report_id:report.id});
       }
       return res.status(400).json({error:'Unknown type'});
@@ -500,6 +519,7 @@ NaN
       const { emp_number, new_name } = req.body;
       if (!emp_number || !new_name) return res.status(400).json({ error: 'Missing fields' });
       const upd = await sql`UPDATE trimmer_entries SET full_name = ${new_name} WHERE emp_number = ${emp_number}`;
+      await logAudit(sql, req, user, { action: 'records.rename_employee', resource_type: 'trimmer_entry', details: { emp_number: req.body.emp_number, old_name: req.body.old_name, new_name: req.body.new_name } });
       return res.json({ updated: upd.rowCount || 0, emp_number, new_name });
     }
     if (req.method==='PATCH' && type==='trimmer') {
@@ -507,6 +527,7 @@ NaN
       const { report_date } = req.body;
       if (!report_date) return res.status(400).json({error:'Missing report_date'});
       await sql`UPDATE trimmer_reports SET report_date=${report_date} WHERE id=${id} AND company_id=${user.company_id}`;
+      await logAudit(sql, req, user, { action: 'records.update_trimmer_report', resource_type: 'trimmer_report', resource_id: id, details: { report_date: req.body.report_date } });
       return res.json({success:true});
     }
     if (req.method==='DELETE') {
@@ -518,6 +539,8 @@ NaN
       if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
       await sql`DELETE FROM trimmer_entries WHERE id=${id}`;
     }
+    const delResourceMap = { 'yield': 'yield_record', 'injection': 'injection_record', 'trimmer': 'trimmer_report', 'trimmer-entry': 'trimmer_entry' };
+    await logAudit(sql, req, user, { action: 'records.delete_record', resource_type: delResourceMap[type] || type, resource_id: id, details: { type } });
     return res.json({success:true});
     }
       // PATCH individual trimmer entry fields (admin only)
@@ -549,6 +572,7 @@ NaN
       const lph = mins>0 ? (tot/(mins/60)) : 0;
       const lph8 = tot / 8; await sql`UPDATE trimmer_entries SET fillet_yield_pct=${fil_pct},nugget_yield_pct=${nug_pct},misccut_yield_pct=${mis_pct},total_yield_pct=${tot_pct},total_weight_lbs=${tot},realtime_lbs_per_hour=${lph},eighthour_lbs_per_hour=${lph8} WHERE id=${id}`;
     }
+    await logAudit(sql, req, user, { action: 'records.update_trimmer_entry', resource_type: 'trimmer_entry', details: { count: updates.length } });
     return res.json({ success: true });
   }
 
@@ -587,6 +611,8 @@ NaN
       } else {
         return res.status(400).json({error:'Unknown type'});
       }
+      const putResourceMap = { 'yield': 'yield_record', 'injection': 'injection_record', 'trimmer': 'trimmer_report', 'trimmer-entry': 'trimmer_entry' };
+      await logAudit(sql, req, user, { action: 'records.update_field', resource_type: putResourceMap[recType] || recType, resource_id: recId, details: { type: recType, field, value, fields: [field] } });
       return res.json({ok:true});
     }
 

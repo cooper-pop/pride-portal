@@ -501,8 +501,8 @@ function flavorRenderManage(){
       + (_flavorReadonly ? '' :
          '<div style="display:flex;gap:6px">'
          + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorAddPondGroup(\''+f.id+'\')">+ Pond Group</button>'
-         + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorEditFarmer(\''+f.id+'\')">Edit</button>'
-         + '<button style="'+FB_D+'" onclick="flavorDeleteFarmer(\''+f.id+'\')">Del</button>'
+         + (userCan('flavor','edit') ? '<button style="'+FB_SUB+';padding:3px 9px;font-size:.72rem" onclick="flavorEditFarmer(\''+f.id+'\')">Edit</button>' : '')
+         + (userCan('flavor','delete') ? '<button style="'+FB_D+'" onclick="flavorDeleteFarmer(\''+f.id+'\')">Del</button>' : '')
          + '</div>')
       + '</div>';
     if(groups.length === 0){
@@ -524,8 +524,8 @@ function flavorRenderManage(){
       } else {
         html += '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorAddPond(\''+g.id+'\')">+ Pond</button>'
           + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorBulkAddPonds(\''+g.id+'\')">Bulk Add</button>'
-          + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorEditPondGroup(\''+g.id+'\')">Rename</button>'
-          + '<button style="'+FB_D+'" onclick="flavorPondDeleteMenu(\''+g.id+'\')">Del</button>';
+          + (userCan('flavor','edit') ? '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorEditPondGroup(\''+g.id+'\')">Rename</button>' : '')
+          + (userCan('flavor','delete') ? '<button style="'+FB_D+'" onclick="flavorPondDeleteMenu(\''+g.id+'\')">Del</button>' : '');
       }
       html += '</div></div>';
       if(ponds.length > 0){
@@ -572,8 +572,12 @@ function flavorRenderManage(){
             + '>'
             + '<span style="flex:1;white-space:nowrap">'+accent+flavorEsc(p.number)+'</span>';
           if(inManageMode && !_flavorReadonly){
-            html += '<button title="Rename pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:'+cellColor+';font-size:.82rem;padding:3px 8px;border-radius:6px;font-weight:700" onclick="event.stopPropagation();flavorEditPond(\''+p.id+'\')">✎</button>'
-              + '<button title="Delete pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:#991b1b;font-size:1.05rem;padding:1px 8px;border-radius:6px;font-weight:700;line-height:1" onclick="event.stopPropagation();flavorDeletePond(\''+p.id+'\')">×</button>';
+            if(userCan('flavor','edit')){
+              html += '<button title="Rename pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:'+cellColor+';font-size:.82rem;padding:3px 8px;border-radius:6px;font-weight:700" onclick="event.stopPropagation();flavorEditPond(\''+p.id+'\')">✎</button>';
+            }
+            if(userCan('flavor','delete')){
+              html += '<button title="Delete pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:#991b1b;font-size:1.05rem;padding:1px 8px;border-radius:6px;font-weight:700;line-height:1" onclick="event.stopPropagation();flavorDeletePond(\''+p.id+'\')">×</button>';
+            }
           }
           html += '</span>';
         });
@@ -790,7 +794,7 @@ function flavorRenderHistory(){
         + '<td style="padding:6px 10px;color:#64748b">'+flavorEsc(s.sampled_by||'')+'</td>'
         + '<td style="padding:6px 10px;color:#64748b">'+flavorEsc(s.notes||'')+'</td>'
         + '<td style="padding:6px 10px;text-align:right">'
-          + (_flavorReadonly ? '<span style="color:#94a3b8;font-size:.72rem">—</span>' : '<button style="'+FB_D+'" onclick="flavorDeleteSample(\''+s.id+'\')">Del</button>')
+          + ((!_flavorReadonly && userCan('flavor','delete')) ? '<button style="'+FB_D+'" onclick="flavorDeleteSample(\''+s.id+'\')">Del</button>' : '<span style="color:#94a3b8;font-size:.72rem">—</span>')
         + '</td>'
         + '</tr>';
     });

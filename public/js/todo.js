@@ -71,8 +71,10 @@ async function todoRender() {
   try { await apiCall('POST','/api/tasks?action=spawn_instances',{}); } catch(e){}
   var isAdmin = currentUser&&currentUser.role==='admin';
   var canView = currentUser&&(currentUser.role==='admin'||currentUser.role==='manager');
+  // Manage tab shows task-definition edit/delete controls — managers get it too (edit/delete perms)
+  var canManage = userCan('todo','edit') || userCan('todo','delete');
   var tabs = ['📋 My Tasks','📅 Schedule','💬 Messages','📊 Grades'];
-  if(isAdmin) tabs.push('⚙️ Manage');
+  if(canManage) tabs.push('⚙️ Manage');
   var tabBar = '<div style="display:flex;border-bottom:2px solid #e2e8f0;overflow-x:auto;white-space:nowrap">';
   tabs.forEach(function(t,i) {
     var active = _todoTab===i;
@@ -380,13 +382,19 @@ async function todoGrades(body) {
 
 // ── TAB 4: MANAGE ──
 async function todoManage(body) {
-  if(!currentUser||currentUser.role!=='admin'){ body.innerHTML='<p>Admin only</p>'; return; }
+  // Managers+ may view Manage tab (edit/delete perms). Individual buttons further-gated below.
+  if(!userCan('todo','edit') && !userCan('todo','delete')){ body.innerHTML='<p>Insufficient permissions</p>'; return; }
   var allTasks = await apiCall('POST','/api/tasks',{action:'all_tasks'});
   var grades = await apiCall('POST','/api/tasks',{action:'grades'});
   _todoAllTasks = allTasks; _todoUsers = grades;
+  var _isAdminMgr = currentUser && currentUser.role==='admin';
   var html = '<div style="display:flex;gap:8px;margin-bottom:16px">';
-  html += '<button id="todo-new-task-btn" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">+ New Task</button>';
-  html += '<button id="todo-send-msg-btn2" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">✉️ Message User</button><button onclick="todoShowResetGrades()" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:600;font-size:.82rem">🔄 Reset Grades</button></div>';
+  // Creating a NEW task definition stays admin-only per org convention
+  if(_isAdminMgr) html += '<button id="todo-new-task-btn" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">+ New Task</button>';
+  html += '<button id="todo-send-msg-btn2" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:600;font-size:.82rem">✉️ Message User</button>';
+  // Reset Grades wipes all instances — gated on delete (manager+)
+  if(userCan('todo','delete')) html += '<button onclick="todoShowResetGrades()" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:600;font-size:.82rem">🔄 Reset Grades</button>';
+  html += '</div>';
   try {
     var eng = await apiCall('POST','/api/tasks',{action:'engagement'});
     html += '<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:14px">';
@@ -432,8 +440,12 @@ async function todoManage(body) {
   else allTasks.forEach(function(t) {
     html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:flex-start">';
     html += '<div><div style="font-weight:600;font-size:.85rem">'+catIcon(t.category)+' '+t.title+'</div>';
-    html += '<div style="font-size:.73rem;color:#64748b">'+(t.assigned_username||t.assigned_to)+' · '+(t.recurring!=='none'?'🔄 '+t.recurring:'One-time')+' · '+fmtDate(t.due_date)+' · ✅ '+t.completions+' done'+(parseInt(t.overdue_count)>0?' · 🔴 '+t.overdue_count+' overdue':'')+(currentUser&&currentUser.role==='admin'?'<div style="display:flex;gap:6px;margin-top:8px"><button class="sched-edit-btn" data-tid="'+t.task_id+'" data-iid="'+t.id+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit</button><button class="sched-del-inst-btn" data-iid="'+t.id+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:6px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete</button></div>':'')+'</div></div>';
-    html += '<button class="todo-del-task" data-tid="'+t.id+'" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:.75rem">Delete</button></div></div>';
+    var _editBtn = userCan('todo','edit') ? '<button class="sched-edit-btn" data-tid="'+t.task_id+'" data-iid="'+t.id+'" style="flex:1;background:#1a3a6b;color:#fff;border:none;border-radius:6px;padding:6px;cursor:pointer;font-size:.75rem;font-weight:600">✏️ Edit</button>' : '';
+    var _delInstBtn = userCan('todo','delete') ? '<button class="sched-del-inst-btn" data-iid="'+t.id+'" style="flex:1;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:6px;cursor:pointer;font-size:.75rem;font-weight:600">🗑️ Delete</button>' : '';
+    var _instActions = (_editBtn||_delInstBtn) ? '<div style="display:flex;gap:6px;margin-top:8px">'+_editBtn+_delInstBtn+'</div>' : '';
+    html += '<div style="font-size:.73rem;color:#64748b">'+(t.assigned_username||t.assigned_to)+' · '+(t.recurring!=='none'?'🔄 '+t.recurring:'One-time')+' · '+fmtDate(t.due_date)+' · ✅ '+t.completions+' done'+(parseInt(t.overdue_count)>0?' · 🔴 '+t.overdue_count+' overdue':'')+_instActions+'</div></div>';
+    // Delete task definition — gated on userCan('todo','delete') (manager+)
+    html += (userCan('todo','delete') ? '<button class="todo-del-task" data-tid="'+t.id+'" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:.75rem">Delete</button>' : '')+'</div></div>';
   });
   body.innerHTML = html;
   var newBtn = document.getElementById('todo-new-task-btn');

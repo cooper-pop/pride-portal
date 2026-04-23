@@ -1,5 +1,6 @@
 const { neon } = require('@neondatabase/serverless');
 const perms = require('./_permissions');
+const { logAudit } = require('./_audit');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Flavor Sample API
@@ -165,6 +166,12 @@ module.exports = async function handler(req, res) {
         flavor_parent_slug=${parentSlug || null},
         flavor_parent_farmer_name=${farmerName || null}
         WHERE id=${viewer.id}`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.configure_link',
+        resource_type: 'company_link',
+        resource_id: viewer.id,
+        details: { parent_slug: body.parent_company_slug, farmer_name: body.parent_farmer_name }
+      });
       return res.json({ ok: true, message: parentSlug ? 'Linked ' + viewerSlug + ' as read-only viewer of ' + parentSlug + (farmerName ? ' (farmer: ' + farmerName + ')' : '') : 'Cleared link on ' + viewerSlug });
     }
 
@@ -279,10 +286,22 @@ module.exports = async function handler(req, res) {
         const [f] = await sql`UPDATE flv_farmers
           SET name = ${name}, notes = ${body.notes || ''}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        await logAudit(sql, req, user, {
+          action: 'flavor.save_farmer',
+          resource_type: 'farmer',
+          resource_id: body.id,
+          details: { name: body.name, updated: !!body.id }
+        });
         return res.json({ ok: true, farmer: f });
       }
       const [f] = await sql`INSERT INTO flv_farmers (company_id, name, notes)
         VALUES (${company_id}, ${name}, ${body.notes || ''}) RETURNING *`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.save_farmer',
+        resource_type: 'farmer',
+        resource_id: f && f.id,
+        details: { name: body.name, updated: !!body.id }
+      });
       return res.json({ ok: true, farmer: f });
     }
     if (action === 'delete_farmer') {
@@ -297,6 +316,12 @@ module.exports = async function handler(req, res) {
         WHERE company_id = ${company_id} AND pond_group_id IN (
           SELECT id FROM flv_pond_groups WHERE farmer_id = ${body.id} AND company_id = ${company_id}
         )`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.delete_farmer',
+        resource_type: 'farmer',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -310,10 +335,22 @@ module.exports = async function handler(req, res) {
         const [g] = await sql`UPDATE flv_pond_groups
           SET name = ${name}, notes = ${body.notes || ''}, farmer_id = ${farmerId}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        await logAudit(sql, req, user, {
+          action: 'flavor.save_pond_group',
+          resource_type: 'pond_group',
+          resource_id: body.id,
+          details: { name: body.name, farmer_id: body.farmer_id, updated: !!body.id }
+        });
         return res.json({ ok: true, pond_group: g });
       }
       const [g] = await sql`INSERT INTO flv_pond_groups (company_id, farmer_id, name, notes)
         VALUES (${company_id}, ${farmerId}, ${name}, ${body.notes || ''}) RETURNING *`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.save_pond_group',
+        resource_type: 'pond_group',
+        resource_id: g && g.id,
+        details: { name: body.name, farmer_id: body.farmer_id, updated: !!body.id }
+      });
       return res.json({ ok: true, pond_group: g });
     }
     if (action === 'delete_pond_group') {
@@ -322,6 +359,12 @@ module.exports = async function handler(req, res) {
         WHERE id = ${body.id} AND company_id = ${company_id}`;
       await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
         WHERE pond_group_id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.delete_pond_group',
+        resource_type: 'pond_group',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -338,16 +381,34 @@ module.exports = async function handler(req, res) {
           SET number = ${number}, pond_group_id = ${groupId},
               acres = ${acres}, notes = ${body.notes || ''}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        await logAudit(sql, req, user, {
+          action: 'flavor.save_pond',
+          resource_type: 'pond',
+          resource_id: body.id,
+          details: { name: body.name, pond_group_id: body.pond_group_id, updated: !!body.id }
+        });
         return res.json({ ok: true, pond: p });
       }
       const [p] = await sql`INSERT INTO flv_ponds (company_id, pond_group_id, number, acres, notes)
         VALUES (${company_id}, ${groupId}, ${number}, ${acres}, ${body.notes || ''}) RETURNING *`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.save_pond',
+        resource_type: 'pond',
+        resource_id: p && p.id,
+        details: { name: body.name, pond_group_id: body.pond_group_id, updated: !!body.id }
+      });
       return res.json({ ok: true, pond: p });
     }
     if (action === 'delete_pond') {
       if (!body.id) return res.status(400).json({ error: 'id required' });
       await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
         WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.delete_pond',
+        resource_type: 'pond',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -360,6 +421,12 @@ module.exports = async function handler(req, res) {
       const result = await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
         WHERE company_id = ${company_id} AND pond_group_id = ${groupId} AND archived = false
         RETURNING id`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.delete_all_ponds_in_group',
+        resource_type: 'pond_group',
+        resource_id: body.pond_group_id,
+        details: {}
+      });
       return res.json({ ok: true, deleted: result.length });
     }
 
@@ -391,7 +458,15 @@ module.exports = async function handler(req, res) {
       const existingKeys = new Set(existing.map(r => r.key));
       const toInsert = numbers.filter(n => !existingKeys.has(n.toLowerCase()));
       const skipped = numbers.length - toInsert.length;
-      if (toInsert.length === 0) return res.json({ ok: true, created: 0, skipped });
+      if (toInsert.length === 0) {
+        await logAudit(sql, req, user, {
+          action: 'flavor.bulk_add_ponds',
+          resource_type: 'pond',
+          resource_id: null,
+          details: { pond_group_id: body.pond_group_id, count: 0 }
+        });
+        return res.json({ ok: true, created: 0, skipped });
+      }
 
       // Insert in parallel chunks of 50 so we never exhaust connection slots.
       const CHUNK = 50;
@@ -406,6 +481,12 @@ module.exports = async function handler(req, res) {
         ));
         created += results.reduce((a, b) => a + b, 0);
       }
+      await logAudit(sql, req, user, {
+        action: 'flavor.bulk_add_ponds',
+        resource_type: 'pond',
+        resource_id: null,
+        details: { pond_group_id: body.pond_group_id, count: toInsert.length }
+      });
       return res.json({ ok: true, created, skipped });
     }
 
@@ -422,6 +503,12 @@ module.exports = async function handler(req, res) {
           sampled_by = ${body.sampled_by || ''}, notes = ${body.notes || ''},
           updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        await logAudit(sql, req, user, {
+          action: 'flavor.save_sample',
+          resource_type: 'sample',
+          resource_id: body.id,
+          details: { pond_id: body.pond_id, grade: body.grade, updated: !!body.id }
+        });
         return res.json({ ok: true, sample: s });
       }
       const [s] = await sql`INSERT INTO flv_samples
@@ -429,11 +516,23 @@ module.exports = async function handler(req, res) {
         VALUES (${company_id}, ${pondId}, ${sampleDate}, ${grade},
                 ${body.sampled_by || ''}, ${body.notes || ''}, ${user_id})
         RETURNING *`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.save_sample',
+        resource_type: 'sample',
+        resource_id: s && s.id,
+        details: { pond_id: body.pond_id, grade: body.grade, updated: !!body.id }
+      });
       return res.json({ ok: true, sample: s });
     }
     if (action === 'delete_sample') {
       if (!body.id) return res.status(400).json({ error: 'id required' });
       await sql`DELETE FROM flv_samples WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'flavor.delete_sample',
+        resource_type: 'sample',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 

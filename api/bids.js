@@ -3,6 +3,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const cloudinary = require('cloudinary').v2;
 const { PDFDocument } = require('pdf-lib');
 const perms = require('./_permissions');
+const { logAudit } = require('./_audit');
 let waitUntil;
 try { waitUntil = require('@vercel/functions').waitUntil; }
 catch (e) { waitUntil = (p) => p; }
@@ -331,16 +332,34 @@ module.exports = async function handler(req, res) {
         const [c] = await sql`UPDATE bid_categories
           SET name = ${name}, description = ${body.description || ''}, notes = ${body.notes || ''}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        await logAudit(sql, req, user, {
+          action: 'bids.save_category',
+          resource_type: 'bid_category',
+          resource_id: (c && c.id) || body.id,
+          details: { name: body.name, updated: !!body.id }
+        });
         return res.json({ ok: true, category: c });
       }
       const [c] = await sql`INSERT INTO bid_categories (company_id, name, description, notes)
         VALUES (${company_id}, ${name}, ${body.description || ''}, ${body.notes || ''}) RETURNING *`;
+      await logAudit(sql, req, user, {
+        action: 'bids.save_category',
+        resource_type: 'bid_category',
+        resource_id: c && c.id,
+        details: { name: body.name, updated: !!body.id }
+      });
       return res.json({ ok: true, category: c });
     }
     if (action === 'delete_category') {
       if (!body.id) return res.status(400).json({ error: 'id required' });
       await sql`UPDATE bid_categories SET archived = true, updated_at = NOW()
         WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'bids.delete_category',
+        resource_type: 'bid_category',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -362,17 +381,35 @@ module.exports = async function handler(req, res) {
               contact_email = ${fields.contact_email}, phone = ${fields.phone},
               website = ${fields.website}, notes = ${fields.notes}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${company_id} RETURNING *`;
+        await logAudit(sql, req, user, {
+          action: 'bids.save_vendor',
+          resource_type: 'bid_vendor',
+          resource_id: (v && v.id) || body.id,
+          details: { name: body.name, updated: !!body.id }
+        });
         return res.json({ ok: true, vendor: v });
       }
       const [v] = await sql`INSERT INTO bid_vendors (company_id, name, contact_name, contact_email, phone, website, notes)
         VALUES (${company_id}, ${fields.name}, ${fields.contact_name}, ${fields.contact_email},
                 ${fields.phone}, ${fields.website}, ${fields.notes}) RETURNING *`;
+      await logAudit(sql, req, user, {
+        action: 'bids.save_vendor',
+        resource_type: 'bid_vendor',
+        resource_id: v && v.id,
+        details: { name: body.name, updated: !!body.id }
+      });
       return res.json({ ok: true, vendor: v });
     }
     if (action === 'delete_vendor') {
       if (!body.id) return res.status(400).json({ error: 'id required' });
       await sql`UPDATE bid_vendors SET archived = true, updated_at = NOW()
         WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'bids.delete_vendor',
+        resource_type: 'bid_vendor',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -401,7 +438,21 @@ module.exports = async function handler(req, res) {
             AND id <> ${doc.id} AND archived = false`;
       }
 
-      if (!file_url) return res.json({ ok: true, document: doc, extraction_status: 'none' });
+      const saveDocDetails = {};
+      if (body.filename !== undefined) saveDocDetails.filename = body.filename;
+      if (body.category_id !== undefined) saveDocDetails.category_id = body.category_id;
+      if (body.vendor_id !== undefined) saveDocDetails.vendor_id = body.vendor_id;
+      saveDocDetails.is_current_agreement = !!body.is_current_agreement;
+
+      if (!file_url) {
+        await logAudit(sql, req, user, {
+          action: 'bids.save_document',
+          resource_type: 'bid_document',
+          resource_id: doc && doc.id,
+          details: saveDocDetails
+        });
+        return res.json({ ok: true, document: doc, extraction_status: 'none' });
+      }
 
       const bgPromise = runBidExtractionInBackground({
         sql, companyId: company_id, docId: doc.id,
@@ -409,6 +460,12 @@ module.exports = async function handler(req, res) {
       });
       try { waitUntil(bgPromise); } catch (e) { /* local fallback */ }
 
+      await logAudit(sql, req, user, {
+        action: 'bids.save_document',
+        resource_type: 'bid_document',
+        resource_id: doc && doc.id,
+        details: saveDocDetails
+      });
       return res.json({ ok: true, document: doc, extraction_status: 'pending', poll_doc_id: doc.id });
     }
 
@@ -426,6 +483,12 @@ module.exports = async function handler(req, res) {
         sql, companyId: company_id, docId: id, fileUrl: doc.file_url, title: doc.title || ''
       });
       try { waitUntil(bgPromise); } catch (e) { /* local fallback */ }
+      await logAudit(sql, req, user, {
+        action: 'bids.reindex_document',
+        resource_type: 'bid_document',
+        resource_id: id,
+        details: {}
+      });
       return res.json({ ok: true, extraction_status: 'pending', poll_doc_id: id });
     }
 
@@ -447,6 +510,15 @@ module.exports = async function handler(req, res) {
           WHERE company_id = ${company_id} AND category_id = ${doc.category_id}
             AND vendor_id = ${doc.vendor_id} AND id <> ${doc.id} AND archived = false`;
       }
+      await logAudit(sql, req, user, {
+        action: 'bids.update_document_meta',
+        resource_type: 'bid_document',
+        resource_id: id,
+        details: {
+          is_current_agreement: !!body.is_current_agreement,
+          updated_fields: Object.keys(body).filter(k => k !== 'id' && k !== 'action')
+        }
+      });
       return res.json({ ok: true, document: doc });
     }
 
@@ -465,6 +537,12 @@ module.exports = async function handler(req, res) {
           await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
         } catch (err) { console.error('Cloudinary destroy failed:', err); }
       }
+      await logAudit(sql, req, user, {
+        action: 'bids.delete_document',
+        resource_type: 'bid_document',
+        resource_id: id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 

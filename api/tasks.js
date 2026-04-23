@@ -1,5 +1,6 @@
 const { neon } = require('@neondatabase/serverless');
 const perms = require('./_permissions');
+const { logAudit } = require('./_audit');
 
 function getUser(req) {
   try {
@@ -235,6 +236,12 @@ module.exports = async function handler(req, res) {
         await sql`INSERT INTO task_instances (task_id, company_id, assigned_to, instance_date)
           VALUES (${taskId}, ${companyId}, ${u.id}, ${instDate}) ON CONFLICT DO NOTHING`;
       }
+      await logAudit(sql, req, user, {
+        action: 'tasks.create_task',
+        resource_type: 'task',
+        resource_id: task[0].id,
+        details: { title: body.title, frequency: body.frequency, assignee_count: users.length }
+      });
       return res.json({ok:true, task:task[0]});
     }
 
@@ -260,6 +267,12 @@ module.exports = async function handler(req, res) {
           await sql`INSERT INTO task_messages (company_id,from_user_id,to_user_id,body,photo)
             VALUES (${companyId},${userId},${admin.id},${msgBody},${parts_photo||null})`;
         }
+        await logAudit(sql, req, user, {
+          action: 'tasks.update_instance_waiting_parts',
+          resource_type: 'task_instance',
+          resource_id: body.instance_id,
+          details: { reason: 'waiting_parts', part_description: body.part_description }
+        });
         return res.json({ok:true});
       }
       await sql`
@@ -275,6 +288,12 @@ module.exports = async function handler(req, res) {
         await sql`INSERT INTO engagement_logs (company_id, user_id, session_date, tasks_completed)
           VALUES (${companyId}, ${userId}, CURRENT_DATE, 1)`.catch(()=>{});
       }
+      await logAudit(sql, req, user, {
+        action: 'tasks.update_instance',
+        resource_type: 'task_instance',
+        resource_id: body.instance_id,
+        details: { status: body.status, completed_by: body.completed_by }
+      });
       return res.json({ok:true});
     }
 
@@ -286,6 +305,12 @@ module.exports = async function handler(req, res) {
       if (photo && photo.length > 1400000) return res.status(400).json({error:'Photo exceeds 1MB'});
       await sql`INSERT INTO task_messages (company_id, from_user_id, to_user_id, body, photo)
         VALUES (${companyId}, ${userId}, ${to_user_id}, ${msgBody}, ${photo||null})`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.send_message',
+        resource_type: 'message',
+        resource_id: null,
+        details: { to: body.to, subject: body.subject }
+      });
       return res.json({ok:true});
     }
 
@@ -294,6 +319,12 @@ module.exports = async function handler(req, res) {
       const { message_id } = body;
       await sql`UPDATE task_messages SET acknowledged=TRUE, acknowledged_at=NOW()
         WHERE id=${message_id} AND to_user_id=${userId}`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.ack_message',
+        resource_type: 'message',
+        resource_id: body.message_id,
+        details: {}
+      });
       return res.json({ok:true});
     }
 
@@ -302,6 +333,12 @@ module.exports = async function handler(req, res) {
       const { task_time_seconds } = body;
       await sql`INSERT INTO engagement_logs (company_id, user_id, session_date, task_time_seconds)
         VALUES (${companyId}, ${userId}, CURRENT_DATE, ${task_time_seconds||0})`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.log_session',
+        resource_type: 'engagement',
+        resource_id: null,
+        details: { duration_minutes: body.duration_minutes }
+      });
       return res.json({ok:true});
     }
 
@@ -310,6 +347,12 @@ module.exports = async function handler(req, res) {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       const { task_id } = body;
       await sql`UPDATE tasks SET is_active=FALSE WHERE id=${task_id} AND company_id=${companyId}`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.delete_task',
+        resource_type: 'task',
+        resource_id: body.task_id,
+        details: {}
+      });
       return res.json({ok:true});
     }
 
@@ -341,6 +384,12 @@ module.exports = async function handler(req, res) {
           }
         }
       }
+      await logAudit(sql, req, user, {
+        action: 'tasks.spawn_instances',
+        resource_type: 'task_instance',
+        resource_id: null,
+        details: { count: spawned }
+      });
       return res.json({ok:true, spawned});
     }
 
@@ -358,6 +407,12 @@ module.exports = async function handler(req, res) {
         await sql`INSERT INTO task_messages (company_id,from_user_id,to_user_id,body)
           VALUES (${companyId},${userId},${inst[0].assigned_to},${'✅ Part ordered for task "'+inst[0].title+'".'+eta+' You will be notified when it arrives.'})`;
       }
+      await logAudit(sql, req, user, {
+        action: 'tasks.mark_parts_ordered',
+        resource_type: 'task_instance',
+        resource_id: body.instance_id,
+        details: { eta: body.eta }
+      });
       return res.json({ok:true});
     }
 
@@ -373,6 +428,12 @@ module.exports = async function handler(req, res) {
         await sql`INSERT INTO task_messages (company_id,from_user_id,to_user_id,body)
           VALUES (${companyId},${userId},${inst[0].assigned_to},${'🚀 Part has arrived! Task "'+inst[0].title+'" is ready to complete. Please finish as soon as possible.'})`;
       }
+      await logAudit(sql, req, user, {
+        action: 'tasks.mark_parts_received',
+        resource_type: 'task_instance',
+        resource_id: body.instance_id,
+        details: {}
+      });
       return res.json({ok:true});
     }
 
@@ -394,6 +455,12 @@ module.exports = async function handler(req, res) {
     if (action === 'reset_instances') {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       await sql`DELETE FROM task_instances WHERE company_id=${companyId}`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.reset_instances',
+        resource_type: 'task_instance',
+        resource_id: null,
+        details: {}
+      });
       return res.json({ok:true});
     }
 
@@ -402,6 +469,12 @@ module.exports = async function handler(req, res) {
       if (user.role !== 'admin') return res.status(403).json({error:'Admin only'});
       const { instance_id } = body;
       await sql`DELETE FROM task_instances WHERE id=${instance_id} AND company_id=${companyId}`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.delete_instance',
+        resource_type: 'task_instance',
+        resource_id: body.instance_id,
+        details: {}
+      });
       return res.json({ok:true});
     }
 
@@ -426,6 +499,12 @@ module.exports = async function handler(req, res) {
         shift=COALESCE(${shift||null},shift),
         recurring=COALESCE(${recurring||null},recurring)
         WHERE id=${task_id} AND company_id=${companyId}`;
+      await logAudit(sql, req, user, {
+        action: 'tasks.update_task',
+        resource_type: 'task',
+        resource_id: body.task_id,
+        details: { title: body.title, updated_fields: Object.keys(body).filter(k => !['action', 'task_id'].includes(k)) }
+      });
       return res.json({ok:true});
     }
 

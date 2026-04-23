@@ -1,6 +1,7 @@
 const { neon } = require('@neondatabase/serverless');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { logAudit } = require('./_audit');
 
 function verifyToken(req) {
   const auth = req.headers.authorization;
@@ -71,6 +72,18 @@ module.exports = async function handler(req, res) {
     const [newUser] = await sql`INSERT INTO users (company_id, username, full_name, email, role, password_hash, active, force_password_change)
       VALUES (${targetCompany.id}, ${username}, ${full_name}, ${email||null}, ${role}, ${hash}, true, ${force})
       RETURNING id, username, full_name, email, role`;
+    await logAudit(sql, req, user, {
+      action: 'user.create_for_company',
+      resource_type: 'user',
+      resource_id: newUser.id,
+      details: {
+        target_company_slug: targetCompany.slug,
+        target_company_id: targetCompany.id,
+        new_username: newUser.username,
+        new_role: newUser.role,
+        force_password_change: force
+      }
+    });
     return res.json({ ok: true, user: newUser, company: targetCompany });
   }
 
@@ -102,6 +115,12 @@ module.exports = async function handler(req, res) {
         VALUES (${company_id}, ${username}, ${full_name}, ${email}, ${role}, ${hash}, true, true)`;
       created.push({ username, full_name, email, role, temp_password: tempPassword });
     }
+    await logAudit(sql, req, user, {
+      action: 'user.bulk_seed',
+      resource_type: 'user',
+      // Never log temp_password — just the usernames that were seeded.
+      details: { count: created.length, usernames: created.map(c => c.username) }
+    });
     return res.json({ created });
   }
 
@@ -113,6 +132,12 @@ module.exports = async function handler(req, res) {
     if (existing.length) return res.status(400).json({ error: 'Username already exists' });
     const hash = await bcrypt.hash(password, 12);
     const [newUser] = await sql`INSERT INTO users (company_id, username, full_name, email, role, password_hash, active, force_password_change) VALUES (${company_id}, ${username}, ${full_name}, ${email||null}, ${role}, ${hash}, true, true) RETURNING id, username, full_name, email, role, active`;
+    await logAudit(sql, req, user, {
+      action: 'user.create',
+      resource_type: 'user',
+      resource_id: newUser.id,
+      details: { new_username: newUser.username, new_role: newUser.role, email: email || null }
+    });
     return res.json(newUser);
   }
 
@@ -131,6 +156,14 @@ module.exports = async function handler(req, res) {
       const isSelf = id === user.user_id;
       const forceChange = isAdmin && !isSelf;
       await sql`UPDATE users SET password_hash=${hash}, force_password_change=${forceChange} WHERE id=${id} AND company_id=${company_id}`;
+      await logAudit(sql, req, user, {
+        // Separate actions for self-change vs admin-reset so the audit reader
+        // can spot "admin reset someone else's password" quickly.
+        action: isSelf ? 'user.password_change_self' : 'user.password_reset_by_admin',
+        resource_type: 'user',
+        resource_id: id,
+        details: { force_password_change: forceChange }
+      });
     }
     if (full_name !== undefined || email !== undefined || role !== undefined || active !== undefined) {
       await sql`UPDATE users SET
@@ -139,6 +172,23 @@ module.exports = async function handler(req, res) {
         role=COALESCE(${role}, role),
         active=COALESCE(${active}, active)
         WHERE id=${id} AND company_id=${company_id}`;
+      // Record which fields changed. Role changes and deactivations deserve
+      // their own action names so they're easy to grep in the audit log.
+      const changed = {};
+      if (full_name !== undefined) changed.full_name = full_name;
+      if (email !== undefined) changed.email = email;
+      if (role !== undefined) changed.role = role;
+      if (active !== undefined) changed.active = active;
+      let action = 'user.update';
+      if (role !== undefined && Object.keys(changed).length === 1) action = 'user.role_change';
+      else if (active === false && Object.keys(changed).length === 1) action = 'user.deactivate';
+      else if (active === true && Object.keys(changed).length === 1) action = 'user.reactivate';
+      await logAudit(sql, req, user, {
+        action,
+        resource_type: 'user',
+        resource_id: id,
+        details: changed
+      });
     }
     // Admin-only: flip force_password_change without touching the password itself.
     // Lets an admin mark an existing account "must change password on next login"
@@ -147,6 +197,12 @@ module.exports = async function handler(req, res) {
       if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
       await sql`UPDATE users SET force_password_change=${!!force_password_change}
         WHERE id=${id} AND company_id=${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'user.force_password_change_flag',
+        resource_type: 'user',
+        resource_id: id,
+        details: { force_password_change: !!force_password_change }
+      });
     }
     return res.json({ success: true });
   }
@@ -156,6 +212,12 @@ module.exports = async function handler(req, res) {
     const id = new URL(req.url, 'http://x').searchParams.get('id');
     if (!id) return res.status(400).json({ error: 'Missing id' });
     await sql`UPDATE users SET active=false WHERE id=${id} AND company_id=${company_id}`;
+    await logAudit(sql, req, user, {
+      action: 'user.deactivate',
+      resource_type: 'user',
+      resource_id: id,
+      details: { method: 'DELETE' }
+    });
     return res.json({ success: true });
   }
 

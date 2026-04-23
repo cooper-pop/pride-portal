@@ -1,5 +1,6 @@
 const { neon } = require('@neondatabase/serverless');
 const perms = require('./_permissions');
+const { logAudit } = require('./_audit');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -253,12 +254,20 @@ module.exports = async function handler(req, res) {
       // replace behavior callers are expecting. Inventory rows reference machines by their TEXT id,
       // so re-inserting with the same id keeps those references valid.
       await sql`DELETE FROM parts_machines WHERE company_id = ${company_id}`;
+      let insertedCount = 0;
       for (const m of machines) {
         const id = String(m.id || '').trim();
         if (!id) continue;
         await sql`INSERT INTO parts_machines (id, company_id, name, make, model, year, notes)
           VALUES (${id}, ${company_id}, ${m.name || ''}, ${m.make || ''}, ${m.model || ''}, ${m.year || ''}, ${m.notes || ''})`;
+        insertedCount++;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.save_machines',
+        resource_type: 'machine',
+        resource_id: null,
+        details: { count: insertedCount }
+      });
       return res.json({ ok: true, count: machines.length });
     }
     if (action === 'get_machine_part_counts') {
@@ -342,21 +351,42 @@ module.exports = async function handler(req, res) {
           ${p.machine_tag || ''}, ${p.supplier || ''}, ${p.barcode || ''}, ${isCustom}, ${vendorsJson}::jsonb, ${p.notes || ''}, ${company_id})
           RETURNING *`;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.save_part',
+        resource_type: 'part',
+        resource_id: (p.id || (rows[0] && rows[0].id)) || null,
+        details: { name: body.name, part_number: body.part_number, quantity: body.quantity, updated: !!body.id }
+      });
       return res.json({ ok: true, part: rows[0] });
     }
 
     if (action === 'delete_part') {
       await sql`DELETE FROM parts_inventory WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'parts.delete_part',
+        resource_type: 'part',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
     if (action === 'update_part') {
       const { id, quantity, field, value } = body;
+      let updatedField = null;
       if (!field || field === 'quantity') {
         await sql`UPDATE parts_inventory SET quantity = ${value !== undefined ? value : quantity}, updated_at = NOW() WHERE id = ${id}`;
+        updatedField = 'quantity';
       } else if (field === 'location') {
         await sql`UPDATE parts_inventory SET location = ${value}, updated_at = NOW() WHERE id = ${id}`;
+        updatedField = 'location';
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.update_part',
+        resource_type: 'part',
+        resource_id: id,
+        details: { updated_fields: updatedField ? [updatedField] : [] }
+      });
       return res.json({ ok: true });
     }
 
@@ -380,6 +410,12 @@ module.exports = async function handler(req, res) {
       await sql`UPDATE parts_inventory SET quantity = ${newQty}, total_value = ${totalVal}, updated_at = NOW() WHERE id = ${id}`;
       await sql`INSERT INTO parts_adjustments (part_id, company_id, delta, new_quantity, reason, notes, user_id)
         VALUES (${id}, ${company_id}, ${actualDelta}, ${newQty}, ${reason || ''}, ${notes || ''}, ${user_id})`;
+      await logAudit(sql, req, user, {
+        action: 'parts.adjust_part',
+        resource_type: 'part',
+        resource_id: id,
+        details: { delta: body.delta, reason: body.reason }
+      });
       return res.json({ ok: true, delta: actualDelta, new_quantity: newQty });
     }
 
@@ -446,11 +482,23 @@ module.exports = async function handler(req, res) {
           }
         }
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.save_invoice',
+        resource_type: 'invoice',
+        resource_id: (inv.id || (rows[0] && rows[0].id)) || null,
+        details: { vendor: body.vendor, invoice_number: body.invoice_number, total: body.total, updated: !!body.id }
+      });
       return res.json({ ok: true, invoice: rows[0] });
     }
 
     if (action === 'delete_invoice') {
       await sql`DELETE FROM parts_invoices WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'parts.delete_invoice',
+        resource_type: 'invoice',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -478,11 +526,23 @@ module.exports = async function handler(req, res) {
           ${cr.notes || ''}, ${company_id})
           RETURNING *`;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.save_cross_ref',
+        resource_type: 'cross_ref',
+        resource_id: (cr.id || (rows[0] && rows[0].id)) || null,
+        details: { part_number: body.part_number, alias: body.alias, updated: !!body.id }
+      });
       return res.json({ ok: true, ref: rows[0] });
     }
 
     if (action === 'delete_cross_ref') {
       await sql`DELETE FROM parts_cross_ref WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'parts.delete_cross_ref',
+        resource_type: 'cross_ref',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
@@ -510,6 +570,12 @@ module.exports = async function handler(req, res) {
           ${o.task_id || null}, ${o.notes || ''}, ${company_id}, ${user_id})
           RETURNING *`;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.save_parts_order',
+        resource_type: 'parts_order',
+        resource_id: (o.id || (rows[0] && rows[0].id)) || null,
+        details: { part_id: body.part_id, quantity: body.quantity, vendor: body.vendor, updated: !!body.id }
+      });
       return res.json({ ok: true, order: rows[0] });
     }
 
@@ -524,6 +590,12 @@ module.exports = async function handler(req, res) {
       if (task_id) {
         await sql`UPDATE tasks SET status = 'parts_ordered', updated_at = NOW() WHERE id = ${task_id}`;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.update_tracking',
+        resource_type: 'parts_order',
+        resource_id: body.order_id,
+        details: { tracking_number: body.tracking_number, status: body.status }
+      });
       return res.json({ ok: true });
     }
 
@@ -569,6 +641,12 @@ module.exports = async function handler(req, res) {
       if (task_id) {
         await sql`UPDATE tasks SET status = 'in_progress', updated_at = NOW() WHERE id = ${task_id}`;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.receive_part',
+        resource_type: 'parts_order',
+        resource_id: body.order_id,
+        details: { quantity_received: body.quantity_received }
+      });
       return res.json({ ok: true, received_count: receivedCount });
     }
 
@@ -590,11 +668,23 @@ module.exports = async function handler(req, res) {
           VALUES (${m.title || ''}, ${m.manufacturer || ''}, ${m.model || ''}, ${m.file_url || ''}, ${m.notes || ''}, ${company_id})
           RETURNING *`;
       }
+      await logAudit(sql, req, user, {
+        action: 'parts.save_manual',
+        resource_type: 'manual',
+        resource_id: (m.id || (rows[0] && rows[0].id)) || null,
+        details: { filename: body.filename, machine_id: body.machine_id, updated: !!body.id }
+      });
       return res.json({ ok: true, manual: rows[0] });
     }
 
     if (action === 'delete_manual') {
       await sql`DELETE FROM parts_manuals WHERE id = ${body.id} AND company_id = ${company_id}`;
+      await logAudit(sql, req, user, {
+        action: 'parts.delete_manual',
+        resource_type: 'manual',
+        resource_id: body.id,
+        details: {}
+      });
       return res.json({ ok: true });
     }
 
