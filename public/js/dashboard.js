@@ -185,16 +185,30 @@ function loadSettingsUsers(){
 }
 
 function settingsTab(tab){
-  document.getElementById('settings-tab-users').style.display=tab==='users'?'block':'none';
-  document.getElementById('settings-tab-grades').style.display=tab==='grades'?'block':'none';
-  document.getElementById('stab-users').style.color=tab==='users'?'#1a3a6b':'#94a3b8';
-  document.getElementById('stab-users').style.borderBottomColor=tab==='users'?'#1a3a6b':'transparent';
-  document.getElementById('stab-grades').style.color=tab==='grades'?'#1a3a6b':'#94a3b8';
-  document.getElementById('stab-grades').style.borderBottomColor=tab==='grades'?'#1a3a6b':'transparent';
+  // Toggle panel visibility
+  var panels = ['users','grades','audit'];
+  panels.forEach(function(p){
+    var el = document.getElementById('settings-tab-'+p);
+    if (el) el.style.display = (tab===p?'block':'none');
+  });
+  // Toggle tab-button highlighting
+  panels.forEach(function(p){
+    var btn = document.getElementById('stab-'+p);
+    if (!btn) return;
+    var active = (tab===p);
+    btn.style.color = active ? '#1a3a6b' : '#94a3b8';
+    btn.style.borderBottomColor = active ? '#1a3a6b' : 'transparent';
+  });
+  // Per-tab loaders
   if(tab==='grades'){
     apiCall('GET','/api/records?action=get_grade_config')
       .then(function(cfg){window._gradeConfig=cfg||{};renderGradeConfigInSettings();})
       .catch(function(){window._gradeConfig={};renderGradeConfigInSettings();});
+  } else if (tab==='audit'){
+    // Audit Log renderer lives in public/js/audit.js — always admin-only
+    // (backend enforces via requireAccess('settings','view'); the gear-icon
+    // itself is also admin-only on the dashboard).
+    if (typeof loadAuditLog === 'function') loadAuditLog();
   }
 }
 

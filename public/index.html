@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="POTP Portal"/>
-<link rel="stylesheet" href="/css/style.css?v=1777065600"/>
+<link rel="stylesheet" href="/css/style.css?v=1777152000"/>
 <title>Employee Portal</title>
 </head>
 <body>
@@ -58,9 +58,10 @@
       <button onclick="showAddUserModal()" style="background:#1a3a6b;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:.82rem;font-weight:600;cursor:pointer">+ Add User</button>
     </div>
     <!-- Settings Tabs -->
-    <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:16px;gap:0">
+    <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:16px;gap:0;flex-wrap:wrap">
       <button id="stab-users" onclick="settingsTab('users')" style="padding:10px 20px;border:none;background:none;font-size:.83rem;font-weight:600;cursor:pointer;color:#1a3a6b;border-bottom:2px solid #1a3a6b;margin-bottom:-2px">&#128101; Users</button>
       <button id="stab-grades" onclick="settingsTab('grades')" style="padding:10px 20px;border:none;background:none;font-size:.83rem;font-weight:600;cursor:pointer;color:#94a3b8;border-bottom:2px solid transparent;margin-bottom:-2px">&#9881;&#65039; Grade Settings</button>
+      <button id="stab-audit" onclick="settingsTab('audit')" style="padding:10px 20px;border:none;background:none;font-size:.83rem;font-weight:600;cursor:pointer;color:#94a3b8;border-bottom:2px solid transparent;margin-bottom:-2px">&#128269; Audit Log</button>
     </div>
     <!-- Users Tab -->
     <div id="settings-tab-users">
@@ -69,6 +70,10 @@
     <!-- Grade Settings Tab -->
     <div id="settings-tab-grades" style="display:none">
       <div id="grade-config-section-settings"></div>
+    </div>
+    <!-- Audit Log Tab -->
+    <div id="settings-tab-audit" style="display:none">
+      <div id="audit-log-section"></div>
     </div>
   </div>
 </div>
@@ -148,16 +153,17 @@
 
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/js/utils.js?v=1777065600000"></script>
-<script src="/js/auth.js?v=1777065600000"></script>
-<script src="/js/dashboard.js?v=1777065600000"></script>
-<script src="/js/yield.js?v=1777065600000"></script>
-<script src="/js/injector.js?v=1777065600000"></script>
-<script src="/js/trimmer.js?v=1777065600000"></script>
-<script src="/js/ai.js?v=1777065600000"></script>
-<script src="/js/admin.js?v=1777065600000"></script>
-<script src="/js/todo.js?v=1777065600000"></script>
-  <script src="/js/print.js?v=1777065600000"></script>
+<script src="/js/utils.js?v=1777152000000"></script>
+<script src="/js/auth.js?v=1777152000000"></script>
+<script src="/js/dashboard.js?v=1777152000000"></script>
+<script src="/js/yield.js?v=1777152000000"></script>
+<script src="/js/injector.js?v=1777152000000"></script>
+<script src="/js/trimmer.js?v=1777152000000"></script>
+<script src="/js/ai.js?v=1777152000000"></script>
+<script src="/js/admin.js?v=1777152000000"></script>
+<script src="/js/audit.js?v=1777152000000"></script>
+<script src="/js/todo.js?v=1777152000000"></script>
+  <script src="/js/print.js?v=1777152000000"></script>
 <script>
 (function() {
   // Show company selection immediately as default
@@ -173,8 +179,8 @@
   }
 })();
 </script>
-<script src="/js/parts.js?v=1777065600"></script>
-<script src="/js/flavor.js?v=1777065600"></script>
-<script src="/js/bids.js?v=1777065600"></script>
+<script src="/js/parts.js?v=1777152000"></script>
+<script src="/js/flavor.js?v=1777152000"></script>
+<script src="/js/bids.js?v=1777152000"></script>
 
 </html>
