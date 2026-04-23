@@ -23,25 +23,63 @@ function buildDash() {
   document.getElementById('dash-greeting').textContent = greet + ', ' + (currentUser.full_name || currentUser.username) + ' 👋';
   document.getElementById('admin-btn').style.display = currentUser.role === 'admin' ? 'block' : 'none';
 
+  // Category order defines how sections stack on the dock. Empty categories
+  // are skipped. To add a new widget, put it in the apps list below with the
+  // appropriate `category` key — it'll land in the right section automatically.
+  var categories = [
+    { id:'financial',   label:'Financial',   icon:'💰' },
+    { id:'production',  label:'Production',  icon:'🏭' },
+    { id:'maintenance', label:'Maintenance', icon:'🛠️' },
+    { id:'tools',       label:'Tools',       icon:'🧰' }
+  ];
+
   var apps = [];
   if (currentCompany === 'potp') {
     apps = [
-      { id:'yield',     label:'Yield Calc',    icon:'⚖️', color:'#1a3a6b' },
-      { id:'injection', label:'Injection Calc', icon:'💉',   color:'#c0392b' },
-      { id:'trimmer',   label:'Trimmer Log',   icon:'✂️', color:'#1d9e75' },
-      { id:'ai',        label:'AI Analysis',   icon:'🤖',    color:'#8e44ad' },
-      { id:'todo',      label:'To-Do List',    icon:'📋',    color:'#1a3a6b' },
-      { id:'parts',     label:'Parts',          icon:'⚙️', color:'#7c3aed' },
-      { id:'flavor',    label:'Flavor Sample',  icon:'🧪', color:'#0891b2' },
-      { id:'bids',      label:'Contract Bids',  icon:'📑', color:'#0f766e' },
+      { id:'bids',      label:'Contract Bids',  icon:'📑', color:'#0f766e', category:'financial' },
+      { id:'yield',     label:'Yield Calc',     icon:'⚖️', color:'#1a3a6b', category:'production' },
+      { id:'injection', label:'Injection Calc', icon:'💉', color:'#c0392b', category:'production' },
+      { id:'trimmer',   label:'Trimmer Log',    icon:'✂️', color:'#1d9e75', category:'production' },
+      { id:'flavor',    label:'Flavor Sample',  icon:'🧪', color:'#0891b2', category:'production' },
+      { id:'todo',      label:'To-Do List',     icon:'📋', color:'#1a3a6b', category:'maintenance' },
+      { id:'parts',     label:'Parts',          icon:'⚙️', color:'#7c3aed', category:'maintenance' },
+      { id:'ai',        label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' }
     ];
-  } else {
-    apps = [{ id:'coming', label:'Coming Soon', icon:'🚧', color:'#5a6a85' }];
   }
   var dock = document.getElementById('dash-dock');
-  dock.innerHTML = apps.map(function(a){
-    return '<div class="app-icon" onclick="openWidget(\''+a.id+'\',\''+a.label+'\')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
-  }).join('');
+  if (apps.length === 0) {
+    // Non-POTP companies (BFN today) still land on "Coming Soon"
+    dock.innerHTML = '<div class="dock-section"><div class="dock-section-tiles">'
+      + '<div class="app-icon"><div class="app-icon-img" style="background:#5a6a85">🚧</div><div class="app-icon-label">Coming Soon</div></div>'
+      + '</div></div>';
+    return;
+  }
+  var html = '';
+  categories.forEach(function(cat){
+    var tiles = apps.filter(function(a){ return a.category === cat.id; });
+    if (tiles.length === 0) return;
+    html += '<div class="dock-section">';
+    html += '<div class="dock-section-title"><span>' + cat.icon + '</span><span>' + cat.label + '</span></div>';
+    html += '<div class="dock-section-tiles">';
+    html += tiles.map(function(a){
+      return '<div class="app-icon" onclick="openWidget(\''+a.id+'\',\''+a.label+'\')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
+    }).join('');
+    html += '</div></div>';
+  });
+  // Uncategorized apps (defensive) — shouldn't happen normally, but if a new
+  // widget is added without a category key, it shows up in a fallback block
+  // so it isn't silently hidden.
+  var uncategorized = apps.filter(function(a){ return !categories.find(function(c){return c.id===a.category;}); });
+  if (uncategorized.length > 0) {
+    html += '<div class="dock-section">';
+    html += '<div class="dock-section-title"><span>📦</span><span>Other</span></div>';
+    html += '<div class="dock-section-tiles">';
+    html += uncategorized.map(function(a){
+      return '<div class="app-icon" onclick="openWidget(\''+a.id+'\',\''+a.label+'\')"><div class="app-icon-img" style="background:'+a.color+'">'+a.icon+'</div><div class="app-icon-label">'+a.label+'</div></div>';
+    }).join('');
+    html += '</div></div>';
+  }
+  dock.innerHTML = html;
 }
 
 function closeWidget() {
