@@ -220,6 +220,18 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
 
+    // Archive every active pond in a group without deleting the group itself —
+    // used by the Manage Ponds modal's "Delete all ponds" option so the user
+    // can clear a group and rebuild it without losing the group's place in the UI.
+    if (action === 'delete_all_ponds_in_group') {
+      const groupId = String(body.pond_group_id || '').trim();
+      if (!groupId) return res.status(400).json({ error: 'pond_group_id required' });
+      const result = await sql`UPDATE flv_ponds SET archived = true, updated_at = NOW()
+        WHERE company_id = ${company_id} AND pond_group_id = ${groupId} AND archived = false
+        RETURNING id`;
+      return res.json({ ok: true, deleted: result.length });
+    }
+
     // Bulk-add ponds — user can paste a comma- or newline-separated list like
     // "1 North, 1 South, 2 East, 2 Middle, 2 West" and get individual pond rows.
     // Scales to hundreds of ponds: one SELECT for existing names, then chunked

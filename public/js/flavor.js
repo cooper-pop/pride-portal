@@ -7,6 +7,9 @@ var _flavorState = { farmers: [], pond_groups: [], ponds: [], samples: [] };
 var _flavorTab = 'dashboard';
 var _flavorFarmerFilter = '';      // '' = all farmers
 var _flavorSearch = '';
+// When a group is in "manage mode" its pond pills expose the ✎ / × buttons for
+// individual edit/delete. null = no group is in manage mode.
+var _flavorPondManageGroupId = null;
 
 // ═══ Grade metadata ═════════════════════════════════════════════════════════
 var FLAVOR_GRADES = [
@@ -472,23 +475,28 @@ function flavorRenderManage(){
     }
     groups.forEach(function(g){
       var ponds = _flavorState.ponds.filter(function(p){return p.pond_group_id===g.id;});
+      var inManageMode = (_flavorPondManageGroupId === g.id);
       html += '<div style="padding:10px 14px;border-top:1px solid #f1f5f9">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-        + '<div style="font-weight:600;font-size:.84rem;color:#334155">📍 '+flavorEsc(g.name)+' <span style="color:#94a3b8;font-weight:400;font-size:.76rem">('+ponds.length+' pond'+(ponds.length===1?'':'s')+')</span></div>'
-        + '<div style="display:flex;gap:6px">'
-        + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorAddPond(\''+g.id+'\')">+ Pond</button>'
-        + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorBulkAddPonds(\''+g.id+'\')">Bulk Add</button>'
-        + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorEditPondGroup(\''+g.id+'\')">Edit</button>'
-        + '<button style="'+FB_D+'" onclick="flavorDeletePondGroup(\''+g.id+'\')">Del</button>'
-        + '</div></div>';
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap">'
+        + '<div style="font-weight:600;font-size:.84rem;color:#334155">📍 '+flavorEsc(g.name)+' <span style="color:#94a3b8;font-weight:400;font-size:.76rem">('+ponds.length+' pond'+(ponds.length===1?'':'s')+')</span>'
+          + (inManageMode ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-size:.66rem;font-weight:700;margin-left:4px">MANAGE MODE</span>' : '')
+          + '</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      if(inManageMode){
+        html += '<button style="'+FB_P+';padding:3px 12px;font-size:.72rem" onclick="flavorExitPondManageMode()">✓ Done</button>';
+      } else {
+        html += '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorAddPond(\''+g.id+'\')">+ Pond</button>'
+          + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorBulkAddPonds(\''+g.id+'\')">Bulk Add</button>'
+          + '<button style="'+FB_SUB+';padding:3px 9px;font-size:.7rem" onclick="flavorEditPondGroup(\''+g.id+'\')">Rename</button>'
+          + '<button style="'+FB_D+'" onclick="flavorPondDeleteMenu(\''+g.id+'\')">Del</button>';
+      }
+      html += '</div></div>';
       if(ponds.length > 0){
-        // Excel-style grid: responsive cells color-coded by the pond's current flavor status.
-        // Sort ponds by their number using a natural (numeric-aware) comparator so "1 North"
-        // comes before "10 North" instead of alphabetic ordering.
+        // Natural-numeric sort so "2 North" precedes "10 North".
         var sortedPonds = ponds.slice().sort(function(a, b){
           return String(a.number).localeCompare(String(b.number), undefined, { numeric:true, sensitivity:'base' });
         });
-        html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:1px;background:#e2e8f0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
         sortedPonds.forEach(function(p){
           var st = derivePondStatus(p.id);
           var cellBg = '#fff', cellColor = '#334155', accent = '', tooltip = 'No sample yet';
@@ -512,14 +520,17 @@ function flavorRenderManage(){
             cellBg = '#dbeafe'; cellColor = '#1e40af';
             tooltip = 'Truck Sample · ' + (st.latest ? st.latest.sample_date : '');
           }
-          html += '<div style="background:'+cellBg+';color:'+cellColor+';padding:6px 8px;display:flex;align-items:center;justify-content:space-between;gap:4px;font-size:.76rem;font-weight:600;min-height:32px" title="'+flavorEsc(tooltip)+'">'
-            + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+accent+flavorEsc(p.number)+'</span>'
-            + '<span style="display:flex;gap:1px;flex-shrink:0">'
-              + '<button title="Log sample" style="background:rgba(255,255,255,.5);border:none;cursor:pointer;color:'+cellColor+';font-size:.68rem;padding:1px 4px;border-radius:3px;font-weight:700" onclick="flavorQuickLog(\''+p.id+'\')">+</button>'
-              + '<button title="Edit pond" style="background:rgba(255,255,255,.5);border:none;cursor:pointer;color:'+cellColor+';font-size:.68rem;padding:1px 4px;border-radius:3px" onclick="flavorEditPond(\''+p.id+'\')">✎</button>'
-              + '<button title="Delete pond" style="background:rgba(255,255,255,.5);border:none;cursor:pointer;color:#991b1b;font-size:.72rem;padding:1px 4px;border-radius:3px;font-weight:700" onclick="flavorDeletePond(\''+p.id+'\')">×</button>'
-            + '</span>'
-            + '</div>';
+          // Pill: rounded, status-colored. Click the pill itself to quick-log a sample.
+          // In manage mode the ✎ / × buttons appear; otherwise they're hidden.
+          html += '<span style="background:'+cellBg+';color:'+cellColor+';padding:5px 12px;border-radius:999px;font-size:.76rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:'+(inManageMode?'default':'pointer')+'" title="'+flavorEsc(tooltip)+(inManageMode?'':' — click to log a sample')+'"'
+            + (inManageMode ? '' : ' onclick="flavorQuickLog(\''+p.id+'\')"')
+            + '>'
+            + '<span>'+accent+flavorEsc(p.number)+'</span>';
+          if(inManageMode){
+            html += '<button title="Rename pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:'+cellColor+';font-size:.72rem;padding:1px 6px;border-radius:10px;font-weight:700" onclick="event.stopPropagation();flavorEditPond(\''+p.id+'\')">✎</button>'
+              + '<button title="Delete pond" style="background:rgba(255,255,255,.6);border:none;cursor:pointer;color:#991b1b;font-size:.9rem;padding:0 6px;border-radius:10px;font-weight:700;line-height:1" onclick="event.stopPropagation();flavorDeletePond(\''+p.id+'\')">×</button>';
+          }
+          html += '</span>';
         });
         html += '</div>';
       }
@@ -632,6 +643,59 @@ window.flavorEditPond = flavorEditPond;
 window.flavorDeletePond = flavorDeletePond;
 window.flavorQuickLog = flavorQuickLog;
 window.flavorRefresh = flavorRefresh;
+
+// ═══ Pond deletion menu (per pond group) ═══════════════════════════════════
+// Click the Del button at the top of a pond group → modal with three choices:
+// "Delete one pond" (enters manage mode), "Delete all ponds" (bulk), or Cancel.
+function flavorPondDeleteMenu(groupId){
+  var g = _flavorState.pond_groups.find(function(x){return x.id===groupId;});
+  if(!g) return;
+  var pondCount = _flavorState.ponds.filter(function(p){return p.pond_group_id===groupId;}).length;
+  var overlay = document.createElement('div');
+  overlay.id = 'fpdm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:18px 20px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+    + '<div style="font-weight:700;font-size:.95rem;margin-bottom:4px">Delete ponds in ' + flavorEsc(g.name) + '</div>'
+    + '<div style="font-size:.78rem;color:#64748b;margin-bottom:14px">' + pondCount + ' pond' + (pondCount===1?'':'s') + ' in this group</div>'
+    + '<button style="'+FB_SUB+';width:100%;padding:10px 12px;margin-bottom:6px;text-align:left" onclick="flavorStartPondManageMode(\''+groupId+'\')">✎ Delete one pond at a time <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(shows ✎ / × on each pill)</span></button>'
+    + '<button style="'+FB_SUB+';width:100%;padding:10px 12px;margin-bottom:6px;text-align:left;color:#991b1b" onclick="flavorDeleteAllPondsInGroup(\''+groupId+'\')">🗑️ Delete all ' + pondCount + ' pond' + (pondCount===1?'':'s') + ' <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(keeps the group, clears its ponds)</span></button>'
+    + '<button style="'+FB_SUB+';width:100%;padding:8px 12px;margin-top:6px" onclick="flavorCloseDeleteMenu()">Cancel</button>'
+    + '</div>';
+  overlay.onclick = function(e){ if(e.target===overlay) flavorCloseDeleteMenu(); };
+  document.body.appendChild(overlay);
+}
+function flavorCloseDeleteMenu(){
+  var o = document.getElementById('fpdm-overlay');
+  if(o) o.remove();
+}
+function flavorStartPondManageMode(groupId){
+  flavorCloseDeleteMenu();
+  _flavorPondManageGroupId = groupId;
+  flavorRenderManage();
+}
+function flavorExitPondManageMode(){
+  _flavorPondManageGroupId = null;
+  flavorRenderManage();
+}
+function flavorDeleteAllPondsInGroup(groupId){
+  flavorCloseDeleteMenu();
+  var g = _flavorState.pond_groups.find(function(x){return x.id===groupId;});
+  var count = _flavorState.ponds.filter(function(p){return p.pond_group_id===groupId;}).length;
+  if(count === 0){ alert('No ponds to delete.'); return; }
+  if(!confirm('Delete all ' + count + ' pond' + (count===1?'':'s') + ' from "' + (g?g.name:'this group') + '"?\n\nThe group itself stays. Sample history on each pond is preserved but the pond is archived.')) return;
+  apiCall('POST','/api/flavor?action=delete_all_ponds_in_group', { pond_group_id:groupId })
+    .then(function(r){
+      alert('Deleted ' + (r.deleted||0) + ' pond' + (r.deleted===1?'':'s') + '.');
+      _flavorPondManageGroupId = null;
+      flavorRefresh();
+    })
+    .catch(function(e){ alert('Error: '+(e&&e.message?e.message:'unknown')); });
+}
+window.flavorPondDeleteMenu = flavorPondDeleteMenu;
+window.flavorCloseDeleteMenu = flavorCloseDeleteMenu;
+window.flavorStartPondManageMode = flavorStartPondManageMode;
+window.flavorExitPondManageMode = flavorExitPondManageMode;
+window.flavorDeleteAllPondsInGroup = flavorDeleteAllPondsInGroup;
 
 // ═══ Tab: History ═══════════════════════════════════════════════════════════
 function flavorRenderHistory(){
