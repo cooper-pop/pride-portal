@@ -42,6 +42,7 @@ const WIDGET_PERMS = {
   injection:     { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   flavor:        { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   fishschedule:  { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
+  production:    { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
   // ── Maintenance (supervisors can view + create; managers+ can edit/delete) ─
   parts:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
@@ -60,6 +61,7 @@ const WIDGET_CATEGORIES = {
   injection: 'production',
   flavor:       'production',
   fishschedule: 'production',
+  production:   'production',
   parts:        'maintenance',
   todo:      'maintenance',
   ai:        'tools',

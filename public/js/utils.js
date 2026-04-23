@@ -52,6 +52,7 @@ var WIDGET_PERMS = {
   injection: { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   flavor:        { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   fishschedule:  { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
+  production:    { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
   parts:         { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   ai:        { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
