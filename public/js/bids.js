@@ -795,6 +795,7 @@ function bidsRenderCompare(){
     + '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
     + '<div style="font-weight:700;font-size:.95rem;margin-right:auto">Side-by-side Comparison</div>'
     + '<select style="'+BINP+';max-width:340px;margin:0" onchange="_bidsAIRecommendations[_bidsCompareCategoryId]=undefined;_bidsCompareCategoryId=this.value;bidsRenderCompare()">'+catOpts+'</select>'
+    + (_bidsCompareCategoryId ? '<button style="'+BB_SUB+';padding:8px 14px;font-size:.78rem" onclick="bidsPrintCompare()">🖨️ Print</button>' : '')
     + '</div>';
 
   if(!_bidsCompareCategoryId){
@@ -1071,6 +1072,246 @@ function bidsRunAIRecommendation(force){
 }
 
 window.bidsRunAIRecommendation = bidsRunAIRecommendation;
+
+// ═══ PRINT COMPARISON ════════════════════════════════════════════════════
+// Build a print-optimized HTML version of the current Compare tab and open
+// it in a new window via the shared printReport() helper. Landscape by
+// default so the side-by-side table fits even with 4+ vendors.
+//
+// Output sections (each optional depending on available data):
+//   1. AI recommendation: winner + confidence + key reasons
+//   2. Vendor scorecards (from the AI result)
+//   3. "Where They Differ" — AI side-by-side highlights
+//   4. Risks to discuss + recommended next steps
+//   5. Full side-by-side comparison table of every extracted field
+function bidsPrintCompare(){
+  if(!_bidsCompareCategoryId){ toast('Pick a category first'); return; }
+  var cat = bidsCategoryById(_bidsCompareCategoryId);
+  if(!cat){ toast('Category not found'); return; }
+  var docs = bidsDocsInCategory(_bidsCompareCategoryId).filter(function(d){
+    return d.extraction_status === 'done' && d.extracted_data;
+  });
+  if(docs.length === 0){ toast('No extracted documents to print.'); return; }
+
+  // Dedupe to one doc per vendor (match the AI backend's DISTINCT ON behavior
+  // so the printed table agrees with the AI scorecards if present).
+  var seenVendor = {};
+  var uniqDocs = [];
+  docs.forEach(function(d){
+    if(seenVendor[d.vendor_id]) return;
+    seenVendor[d.vendor_id] = true;
+    uniqDocs.push(d);
+  });
+
+  var ai = _bidsAIRecommendations[_bidsCompareCategoryId];
+  var rec = ai && ai.comparison && ai.comparison.recommendation;
+  var scorecards = ai && ai.comparison && ai.comparison.scorecards;
+  var highlights = ai && ai.comparison && ai.comparison.side_by_side_highlights;
+  var risks = ai && ai.comparison && ai.comparison.risks_to_discuss;
+  var nextSteps = ai && ai.comparison && ai.comparison.recommended_next_steps;
+
+  // Page-level CSS: force landscape, scale font for readability, preserve
+  // background colors (for winner highlighting), allow tables to span pages.
+  var pageStyle = '<style>'
+    + '@page { size: letter landscape; margin: 0.4in; }'
+    + '@media print { body { padding: 8px !important; } .print-break { page-break-before: always; } }'
+    + '*{print-color-adjust:exact;-webkit-print-color-adjust:exact}'
+    + '.pcmp-section{margin:14px 0 8px}'
+    + '.pcmp-section h2{font-size:1rem;color:#1a3a6b;border-bottom:2px solid #1a3a6b;padding-bottom:4px;margin:0 0 8px}'
+    + '.pcmp-box{background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:10px 12px;margin-bottom:10px}'
+    + '.pcmp-winner{background:#ecfdf5;border-color:#10b981}'
+    + '.pcmp-conf{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700;text-transform:uppercase;margin-left:8px}'
+    + '.pcmp-conf-high{background:#d1fae5;color:#065f46}'
+    + '.pcmp-conf-medium{background:#fef3c7;color:#92400e}'
+    + '.pcmp-conf-low{background:#fee2e2;color:#991b1b}'
+    + '.pcmp-reasons{margin:6px 0 0;padding-left:20px;line-height:1.5}'
+    + '.pcmp-reasons li{font-size:.82rem;margin-bottom:2px}'
+    + '.pcmp-score{background:#1a3a6b;color:#fff;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700;display:inline-block}'
+    + '.pcmp-score-high{background:#065f46}'
+    + '.pcmp-score-mid{background:#1e40af}'
+    + '.pcmp-score-low{background:#92400e}'
+    + '.pcmp-table{width:100%;border-collapse:collapse;font-size:.78rem;margin:6px 0}'
+    + '.pcmp-table th{background:#1a3a6b;color:#fff;padding:6px 8px;text-align:left;font-weight:600;vertical-align:top}'
+    + '.pcmp-table td{padding:5px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;color:#0f172a}'
+    + '.pcmp-table tr:nth-child(even) td{background:#fafbfc}'
+    + '.pcmp-label{background:#f1f5f9;color:#334155;font-weight:600;width:180px}'
+    + '.pcmp-note{font-size:.74rem;color:#64748b;font-style:italic;margin-top:4px}'
+    + '.pcmp-chip{display:inline-block;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px;font-size:.66rem;font-weight:600;margin-left:4px}'
+    + '.pcmp-pros{color:#065f46}'
+    + '.pcmp-cons{color:#991b1b}'
+    + '.pcmp-risks{background:#fef2f2;border-color:#fecaca}'
+    + '.pcmp-steps{background:#eff6ff;border-color:#bfdbfe}'
+    + '.pcmp-list{margin:0;padding-left:18px;line-height:1.5}'
+    + '.pcmp-list li{font-size:.78rem;margin-bottom:3px}'
+    + '</style>';
+
+  var content = pageStyle;
+
+  // ── 1. AI Recommendation
+  if(rec){
+    var confClass = rec.confidence === 'high' ? 'pcmp-conf-high'
+                  : rec.confidence === 'medium' ? 'pcmp-conf-medium'
+                  : 'pcmp-conf-low';
+    content += '<div class="pcmp-section"><h2>🤖 AI Recommendation</h2>'
+      + '<div class="pcmp-box pcmp-winner">'
+      + '<div style="font-weight:700;font-size:1.05rem">🏆 ' + bidsEsc(rec.winner_vendor_name || 'Winner')
+      + (rec.confidence ? '<span class="pcmp-conf '+confClass+'">' + bidsEsc(rec.confidence) + ' confidence</span>' : '')
+      + '</div>';
+    if(rec.headline){
+      content += '<div style="margin-top:6px;font-size:.86rem;color:#0f172a"><strong>Why:</strong> ' + bidsEsc(rec.headline) + '</div>';
+    }
+    if(Array.isArray(rec.key_reasons) && rec.key_reasons.length){
+      content += '<ol class="pcmp-reasons">';
+      rec.key_reasons.forEach(function(r){ content += '<li>' + bidsEsc(String(r)) + '</li>'; });
+      content += '</ol>';
+    }
+    content += '</div></div>';
+  }
+
+  // ── 2. Vendor Scorecards (AI)
+  if(Array.isArray(scorecards) && scorecards.length){
+    content += '<div class="pcmp-section"><h2>Vendor Scorecards</h2><table class="pcmp-table">'
+      + '<thead><tr><th style="width:22%">Vendor</th><th style="width:8%">Score</th><th style="width:30%">Summary</th><th style="width:20%">Pros</th><th style="width:20%">Cons</th></tr></thead><tbody>';
+    scorecards.forEach(function(sc){
+      var isWinner = rec && sc.vendor_id === rec.winner_vendor_id;
+      var score = Math.max(0, Math.min(10, Number(sc.score) || 0));
+      var scoreClass = score >= 8 ? 'pcmp-score-high'
+                     : score >= 6 ? 'pcmp-score-mid'
+                     : 'pcmp-score-low';
+      content += '<tr>'
+        + '<td style="font-weight:600">' + bidsEsc(sc.vendor_name || '') + (isWinner ? ' <span class="pcmp-chip">🏆 WINNER</span>' : '') + '</td>'
+        + '<td><span class="pcmp-score ' + scoreClass + '">' + score + '/10</span></td>'
+        + '<td>' + bidsEsc(sc.one_line_summary || '') + '</td>'
+        + '<td class="pcmp-pros">' + (Array.isArray(sc.pros) ? sc.pros.map(bidsEsc).join(' · ') : '') + '</td>'
+        + '<td class="pcmp-cons">' + (Array.isArray(sc.cons) ? sc.cons.map(bidsEsc).join(' · ') : '') + '</td>'
+        + '</tr>';
+    });
+    content += '</tbody></table></div>';
+  }
+
+  // ── 3. Where They Differ
+  if(Array.isArray(highlights) && highlights.length){
+    content += '<div class="pcmp-section"><h2>Where They Differ</h2>';
+    highlights.forEach(function(h){
+      content += '<div class="pcmp-box">'
+        + '<div style="font-weight:700;color:#1a3a6b;font-size:.86rem;margin-bottom:4px">' + bidsEsc(h.dimension || '') + '</div>';
+      if(Array.isArray(h.values) && h.values.length){
+        content += '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:.8rem">';
+        h.values.forEach(function(v){
+          content += '<div><strong>' + bidsEsc(v.vendor_name || '') + ':</strong> ' + bidsEsc(String(v.value || '—')) + '</div>';
+        });
+        content += '</div>';
+      }
+      if(h.note){ content += '<div class="pcmp-note">' + bidsEsc(h.note) + '</div>'; }
+      content += '</div>';
+    });
+    content += '</div>';
+  }
+
+  // ── 4. Risks + Next Steps
+  if((Array.isArray(risks) && risks.length) || (Array.isArray(nextSteps) && nextSteps.length)){
+    content += '<div class="pcmp-section"><h2>Action Items</h2>';
+    if(Array.isArray(risks) && risks.length){
+      content += '<div class="pcmp-box pcmp-risks">'
+        + '<div style="font-weight:700;color:#991b1b;margin-bottom:4px">⚠ Risks to Discuss</div>'
+        + '<ul class="pcmp-list">';
+      risks.forEach(function(r){ content += '<li>' + bidsEsc(String(r)) + '</li>'; });
+      content += '</ul></div>';
+    }
+    if(Array.isArray(nextSteps) && nextSteps.length){
+      content += '<div class="pcmp-box pcmp-steps">'
+        + '<div style="font-weight:700;color:#1e40af;margin-bottom:4px">→ Recommended Next Steps</div>'
+        + '<ul class="pcmp-list">';
+      nextSteps.forEach(function(s){ content += '<li>' + bidsEsc(String(s)) + '</li>'; });
+      content += '</ul></div>';
+    }
+    content += '</div>';
+  }
+
+  // ── 5. Full Side-by-side Comparison Table
+  // Force page break before this section if AI content exists — keeps the
+  // wide table on its own page for legibility.
+  content += '<div class="pcmp-section' + (ai ? ' print-break' : '') + '"><h2>Side-by-side Comparison — ' + bidsEsc(cat.name) + '</h2>';
+
+  // Build the same field/list structure as bidsRenderCompare so the printed
+  // table mirrors what's on screen.
+  var rowLabels = [
+    { key:'vendor_name', label:'Vendor' },
+    { key:'price_summary', label:'Pricing' },
+    { key:'contract_term', label:'Term' },
+    { key:'effective_date', label:'Effective' },
+    { key:'expiration_date', label:'Expiration' },
+    { key:'auto_renewal', label:'Auto-renewal' },
+    { key:'notice_required', label:'Notice Req.' },
+    { key:'payment_terms', label:'Payment' },
+    { key:'price_escalation', label:'Price Escalator' },
+    { key:'deductibles', label:'Deductibles' },
+    { key:'liability_limits', label:'Liability Limits' },
+    { key:'delivery_lead_time', label:'Lead Time' },
+    { key:'minimum_order', label:'MOQ' },
+    { key:'freight_terms', label:'Freight' },
+    { key:'warranty', label:'Warranty' }
+  ];
+  var listRowLabels = [
+    { key:'strengths', label:'✅ Strengths' },
+    { key:'key_benefits', label:'💡 Benefits' },
+    { key:'key_concerns', label:'⚠ Concerns' },
+    { key:'red_flags', label:'🚩 Red Flags' },
+    { key:'key_exclusions', label:'🚫 Exclusions' }
+  ];
+
+  content += '<table class="pcmp-table">'
+    + '<thead><tr><th class="pcmp-label">Field</th>';
+  uniqDocs.forEach(function(d){
+    var ven = bidsVendorById(d.vendor_id);
+    content += '<th>' + bidsEsc(ven ? ven.name : 'Unknown')
+      + (d.is_current_agreement ? ' <span class="pcmp-chip">CURRENT</span>' : '')
+      + '<div style="font-size:.72rem;opacity:.85;font-weight:400;margin-top:2px">' + bidsEsc(d.title || '') + '</div>'
+      + '</th>';
+  });
+  content += '</tr></thead><tbody>';
+
+  rowLabels.forEach(function(rl){
+    content += '<tr><td class="pcmp-label">' + bidsEsc(rl.label) + '</td>';
+    uniqDocs.forEach(function(d){
+      var v = (d.extracted_data || {})[rl.key];
+      var display = (v === null || v === undefined || v === '') ? '—' : bidsEsc(String(v));
+      content += '<td>' + display + '</td>';
+    });
+    content += '</tr>';
+  });
+  listRowLabels.forEach(function(rl){
+    content += '<tr><td class="pcmp-label">' + bidsEsc(rl.label) + '</td>';
+    uniqDocs.forEach(function(d){
+      var list = (d.extracted_data || {})[rl.key];
+      if(!Array.isArray(list) || list.length === 0){
+        content += '<td>—</td>';
+      } else {
+        content += '<td><ul style="margin:0;padding-left:16px;line-height:1.4">'
+          + list.slice(0, 8).map(function(i){ return '<li>' + bidsEsc(String(i)) + '</li>'; }).join('')
+          + (list.length > 8 ? '<li style="color:#94a3b8">+' + (list.length - 8) + ' more</li>' : '')
+          + '</ul></td>';
+      }
+    });
+    content += '</tr>';
+  });
+
+  content += '</tbody></table></div>';
+
+  // Hand off to the shared print helper. Title becomes the window title and
+  // shows in the print header bar.
+  var title = 'Contract Bids — ' + cat.name + ' Comparison';
+  if(typeof printReport === 'function'){
+    printReport(title, content);
+  } else {
+    // Fallback if print.js didn't load for some reason.
+    var w = window.open('', '_blank', 'width=1100,height=800');
+    w.document.write('<!DOCTYPE html><html><head><title>' + title + '</title></head><body>' + content + '</body></html>');
+    w.document.close();
+  }
+}
+
+window.bidsPrintCompare = bidsPrintCompare;
 
 // Negotiation email drafting
 function bidsDraftNegotiationEmail(vendorId, categoryId, targetDocId){
