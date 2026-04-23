@@ -107,6 +107,7 @@ function openWidget(id, label) {
   document.getElementById('widget-title').textContent = label;
   document.getElementById('widget-overlay').classList.add('open');
   document.getElementById('ai-input-area').style.display = 'none';
+  applyWidgetWidePreference();
   if (id === 'yield') buildYieldWidget();
   else if (id === 'injection') buildInjectionWidget();
   else if (id === 'trimmer') buildTrimmerWidget();
@@ -119,6 +120,42 @@ function openWidget(id, label) {
   else if (id === 'fishschedule') buildFishScheduleWidget();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
+
+// ── Wide-mode toggle ───────────────────────────────────────────────────────
+// Expands the widget sheet to fill the viewport so wide tables (Compare,
+// Records, Parts list) stop forcing horizontal scrolling. Preference is
+// remembered across widget opens + browser sessions via localStorage.
+// Firing a window resize event nudges Chart.js / any canvas-based chart to
+// reflow into the new width.
+function toggleWidgetWide() {
+  var sheet = document.querySelector('.widget-sheet');
+  var content = document.getElementById('widget-content');
+  var btn = document.getElementById('widget-expand');
+  if (!sheet) return;
+  var wide = sheet.classList.toggle('wide');
+  if (content) content.classList.toggle('wide', wide);
+  if (btn) btn.textContent = wide ? '↙ Default' : '⛶ Wide';
+  try { localStorage.setItem('potp-widget-wide', wide ? '1' : '0'); } catch(e){}
+  // Kick charts/tables to re-measure their container
+  setTimeout(function(){
+    try { window.dispatchEvent(new Event('resize')); } catch(e){}
+  }, 220); // after the CSS transition
+}
+
+function applyWidgetWidePreference() {
+  var pref = '0';
+  try { pref = localStorage.getItem('potp-widget-wide') || '0'; } catch(e){}
+  var wide = pref === '1';
+  var sheet = document.querySelector('.widget-sheet');
+  var content = document.getElementById('widget-content');
+  var btn = document.getElementById('widget-expand');
+  if (sheet) sheet.classList.toggle('wide', wide);
+  if (content) content.classList.toggle('wide', wide);
+  if (btn) btn.textContent = wide ? '↙ Default' : '⛶ Wide';
+}
+
+window.toggleWidgetWide = toggleWidgetWide;
+window.applyWidgetWidePreference = applyWidgetWidePreference;
 
 window.showScreen = showScreen;
 window.buildDash = buildDash;
