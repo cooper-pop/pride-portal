@@ -35,6 +35,10 @@
     },
     "api/flavor.js": {
       "maxDuration": 30
+    },
+    "api/bids.js": {
+      "maxDuration": 300,
+      "memory": 1024
     }
   },
   "headers": [
