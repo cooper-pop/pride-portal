@@ -366,9 +366,12 @@
     var canDelete = (typeof userCan === 'function') && userCan('fishschedule', 'delete');
 
     var html = '<div style="padding:14px;max-width:720px;margin:0 auto">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
       + '<div style="font-weight:700;color:#1a3a6b;font-size:1rem">🚜 Farmers / Live Haulers</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+      + (canCreate ? '<button style="' + BTN_SUB + '" onclick="fsImportFlvFarmers()" title="Copy farmers from the Flavor Sample widget">📥 Import from Flavor</button>' : '')
       + (canCreate ? '<button style="' + BTN_P + '" onclick="fsEditFarmer(null)">+ Add Farmer</button>' : '')
+      + '</div>'
       + '</div>';
 
     if (_fsState.farmers.length === 0) {
@@ -451,6 +454,28 @@
       });
   }
 
+  // One-click copy of non-archived flavor farmers into the schedule's farmer
+  // list. Dedupe by case-insensitive name. Confirms first so Cooper sees the
+  // count before it runs.
+  function fsImportFlvFarmers() {
+    if (!confirm('Copy all farmers from the Flavor Sample widget into the Live Fish scheduler?\n\nExisting farmers with the same name will be skipped. You can edit colors and notes after import.')) return;
+    apiCall('POST', '/api/fish-schedule?action=import_flv_farmers', {})
+      .then(function (r) {
+        var msg = '';
+        if (r.imported === 0 && r.total_flv === 0) {
+          msg = 'No farmers found on the Flavor Sample widget.';
+        } else if (r.imported === 0) {
+          msg = 'All ' + r.total_flv + ' farmer' + (r.total_flv === 1 ? '' : 's') + ' already exist — nothing to import.';
+        } else {
+          msg = 'Imported ' + r.imported + ' farmer' + (r.imported === 1 ? '' : 's')
+            + (r.skipped ? ' (' + r.skipped + ' skipped as duplicates)' : '') + '.';
+        }
+        toast(msg);
+        fsLoadAndRenderFarmers();
+      })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
   function fsDeleteFarmer(id, name) {
     if (!confirm('Remove ' + (name || 'this farmer') + '? Historical deliveries stay intact, but they won\'t appear in the farmer dropdown for new deliveries.')) return;
     apiCall('POST', '/api/fish-schedule?action=delete_farmer', { id: id })
@@ -472,4 +497,5 @@
   window.fsEditFarmer = fsEditFarmer;
   window.fsSaveFarmer = fsSaveFarmer;
   window.fsDeleteFarmer = fsDeleteFarmer;
+  window.fsImportFlvFarmers = fsImportFlvFarmers;
 })();

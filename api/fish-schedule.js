@@ -307,6 +307,76 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
 
+    // ── POST import_flv_farmers ─────────────────────────────────────────
+    // One-click import of the non-archived farmer list from the Flavor Sample
+    // widget (flv_farmers table). Deduped by case-insensitive name against
+    // live_haul_farmers. Notes field is carried over; color defaults to the
+    // portal blue (can be changed after import via save_farmer).
+    //
+    // flv_farmers.company_id is INT, so we cast user.company_id for the
+    // lookup. Skips any flv farmers whose name already exists here.
+    if (req.method === 'POST' && action === 'import_flv_farmers') {
+      if (!perms.canPerform(user, 'fishschedule', 'create')) {
+        return perms.deny(res, user, 'fishschedule', 'create');
+      }
+      const companyIdInt = parseInt(companyId, 10);
+      let source;
+      try {
+        source = await sql`
+          SELECT name, notes FROM flv_farmers
+          WHERE company_id = ${companyIdInt} AND archived = false
+          ORDER BY name
+        `;
+      } catch (e) {
+        // If the flavor table doesn't exist yet (shouldn't happen in prod
+        // but can happen on a fresh DB), return a clean error instead of
+        // letting it bubble up.
+        return res.status(400).json({ error: 'Flavor Sample farmers not available on this company yet.' });
+      }
+      if (!source.length) {
+        return res.json({ ok: true, imported: 0, skipped: 0, total_flv: 0, created_names: [] });
+      }
+
+      // Existing names in the schedule table, for dedupe
+      const existing = await sql`
+        SELECT LOWER(TRIM(name)) AS key FROM live_haul_farmers WHERE company_id = ${companyId}
+      `;
+      const existingSet = new Set(existing.map(r => r.key));
+
+      const createdNames = [];
+      let skipped = 0;
+      for (const f of source) {
+        const key = String(f.name || '').trim().toLowerCase();
+        if (!key) { skipped++; continue; }
+        if (existingSet.has(key)) { skipped++; continue; }
+        await sql`
+          INSERT INTO live_haul_farmers (company_id, name, color, notes)
+          VALUES (${companyId}, ${f.name.trim()}, '#1a3a6b', ${f.notes || null})
+        `;
+        existingSet.add(key);
+        createdNames.push(f.name.trim());
+      }
+
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.import_flv_farmers',
+        resource_type: 'farmer',
+        details: {
+          total_flv: source.length,
+          imported: createdNames.length,
+          skipped,
+          imported_names: createdNames
+        }
+      });
+
+      return res.json({
+        ok: true,
+        imported: createdNames.length,
+        skipped,
+        total_flv: source.length,
+        created_names: createdNames
+      });
+    }
+
     // ── POST save_day ───────────────────────────────────────────────────
     // Upsert day-level data (No Kill flag + daily notes).
     if (req.method === 'POST' && action === 'save_day') {
