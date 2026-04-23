@@ -16,10 +16,15 @@ let tableEnsured = false;
 
 async function ensureAuditTable(sql) {
   if (tableEnsured) return;
+  // company_id + user_id are TEXT rather than UUID because this portal's
+  // companies table uses integer ids (SERIAL) while its users table uses
+  // UUIDs. Using TEXT accepts both formats transparently — Neon's HTTP
+  // serverless driver then doesn't need to infer a specific type for the
+  // NULL case either.
   await sql`CREATE TABLE IF NOT EXISTS audit_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID,
-    user_id UUID,
+    company_id TEXT,
+    user_id TEXT,
     username TEXT,
     action TEXT NOT NULL,
     resource_type TEXT,
@@ -30,6 +35,16 @@ async function ensureAuditTable(sql) {
     user_agent TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
   )`;
+  // Migration for existing deploys where company_id/user_id were created
+  // as UUID before we discovered the schema mismatch. ALTER succeeds as a
+  // no-op when the columns are already TEXT. USING cast preserves whatever
+  // rows did get written.
+  try {
+    await sql`ALTER TABLE audit_log ALTER COLUMN company_id TYPE TEXT USING company_id::text`;
+  } catch (e) { /* already TEXT or other benign */ }
+  try {
+    await sql`ALTER TABLE audit_log ALTER COLUMN user_id TYPE TEXT USING user_id::text`;
+  } catch (e) { /* already TEXT or other benign */ }
   await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_company_time ON audit_log(company_id, created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_user_time ON audit_log(user_id, created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action, created_at DESC)`;
@@ -75,9 +90,15 @@ async function logAudit(sql, req, user, opts) {
     const ip = getClientIp(req);
     const ua = getUserAgent(req);
     const detailsJson = details ? JSON.stringify(details) : null;
-    const companyId = (user && (user.company_id || user.companyId)) || null;
-    const userId = (user && (user.user_id || user.id)) || null;
+    // Coerce to string so Neon passes a TEXT parameter, matching the TEXT
+    // column. This lets the same code work whether companies.id is an
+    // integer or a UUID.
+    const companyIdRaw = user && (user.company_id !== undefined ? user.company_id : user.companyId);
+    const userIdRaw = user && (user.user_id !== undefined ? user.user_id : user.id);
+    const companyId = (companyIdRaw !== undefined && companyIdRaw !== null) ? String(companyIdRaw) : null;
+    const userId = (userIdRaw !== undefined && userIdRaw !== null) ? String(userIdRaw) : null;
     const username = (user && user.username) || null;
+    const resourceIdStr = (resource_id !== undefined && resource_id !== null) ? String(resource_id) : null;
     await sql`INSERT INTO audit_log (
       company_id, user_id, username, action, resource_type, resource_id,
       success, details, ip_address, user_agent
@@ -87,7 +108,7 @@ async function logAudit(sql, req, user, opts) {
       ${username},
       ${action},
       ${resource_type},
-      ${resource_id},
+      ${resourceIdStr},
       ${success},
       ${detailsJson}::jsonb,
       ${ip},

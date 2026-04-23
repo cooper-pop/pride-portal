@@ -38,13 +38,16 @@ module.exports = async function handler(req, res) {
 
   const sql = neon(process.env.DATABASE_URL);
 
-  // Ensure table exists. First-time call on a fresh deploy may hit this before
-  // any logAudit has fired and created the table.
+  // Ensure table exists AND has the correct column types. company_id/user_id
+  // are TEXT (not UUID) because companies.id is integer in this schema.
+  // Running both CREATE TABLE IF NOT EXISTS and ALTER TABLE ... TYPE TEXT
+  // handles both fresh deploys and deploys where the table was initially
+  // created with UUID columns (before we caught the mismatch).
   try {
     await sql`CREATE TABLE IF NOT EXISTS audit_log (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      company_id UUID,
-      user_id UUID,
+      company_id TEXT,
+      user_id TEXT,
       username TEXT,
       action TEXT NOT NULL,
       resource_type TEXT,
@@ -55,7 +58,9 @@ module.exports = async function handler(req, res) {
       user_agent TEXT,
       created_at TIMESTAMPTZ DEFAULT now()
     )`;
-  } catch (e) { /* already exists */ }
+    await sql`ALTER TABLE audit_log ALTER COLUMN company_id TYPE TEXT USING company_id::text`;
+    await sql`ALTER TABLE audit_log ALTER COLUMN user_id TYPE TEXT USING user_id::text`;
+  } catch (e) { /* already in correct shape */ }
 
   const url = new URL(req.url, 'http://x');
   const qs = url.searchParams;
@@ -78,12 +83,16 @@ module.exports = async function handler(req, res) {
   const sinceRaw = (qs.get('since') || '').trim();
   const sinceFilter = sinceRaw || '1970-01-01T00:00:00Z';
 
+  // Coerce company_id to string so the query param type matches the TEXT column.
+  const companyIdStr = user.company_id !== undefined && user.company_id !== null
+    ? String(user.company_id) : '';
+
   try {
     const events = await sql`
       SELECT id, company_id, user_id, username, action, resource_type, resource_id,
              success, details, ip_address, user_agent, created_at
       FROM audit_log
-      WHERE (company_id = ${user.company_id} OR company_id IS NULL)
+      WHERE (company_id = ${companyIdStr} OR company_id IS NULL)
         AND (${actionFilter} = '' OR action = ${actionFilter})
         AND (${usernameFilter} = '' OR username = ${usernameFilter})
         AND (${successFilter} = '' OR (CASE WHEN success THEN 't' ELSE 'f' END) = ${successFilter})
@@ -95,7 +104,7 @@ module.exports = async function handler(req, res) {
     // Total count for pagination UI, with the same filters applied.
     const [{ total }] = await sql`
       SELECT COUNT(*)::int AS total FROM audit_log
-      WHERE (company_id = ${user.company_id} OR company_id IS NULL)
+      WHERE (company_id = ${companyIdStr} OR company_id IS NULL)
         AND (${actionFilter} = '' OR action = ${actionFilter})
         AND (${usernameFilter} = '' OR username = ${usernameFilter})
         AND (${successFilter} = '' OR (CASE WHEN success THEN 't' ELSE 'f' END) = ${successFilter})
@@ -107,12 +116,12 @@ module.exports = async function handler(req, res) {
     // themselves after the user applies a filter.
     const actionsResult = await sql`
       SELECT DISTINCT action FROM audit_log
-      WHERE (company_id = ${user.company_id} OR company_id IS NULL)
+      WHERE (company_id = ${companyIdStr} OR company_id IS NULL)
       ORDER BY action
     `;
     const usernamesResult = await sql`
       SELECT DISTINCT username FROM audit_log
-      WHERE company_id = ${user.company_id} AND username IS NOT NULL
+      WHERE company_id = ${companyIdStr} AND username IS NOT NULL
       ORDER BY username
     `;
 
