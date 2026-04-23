@@ -1,32 +1,16 @@
 // admin.js - Admin panel and user management
+// NOTE: `buildAdminWidget` is legacy. The current Settings flow uses
+// `loadSettingsUsers` (in dashboard.js) which populates #um-user-list, and
+// `renderGradeConfigInSettings` for grades. This file historically relied on
+// a `_adminTarget` global that was removed — keeping this function as a no-op
+// so showScreen() can still call it without throwing ReferenceError.
+
+// Safe-default in case any legacy caller touches this variable
+var _adminTarget = null;
 
 function buildAdminWidget() {
-  apiCall('GET','/api/records?action=get_grade_config')
-    .then(function(d){window._gradeConfig=d||{};})
-    .catch(function(){window._gradeConfig={};});
-  setTimeout(function(){
-    var wc=_adminTarget;
-    if(wc){
-      if(!document.getElementById('grade-config-section')){
-        var gs=document.createElement('div');gs.id='grade-config-section';
-        wc.insertBefore(gs,wc.firstChild);
-      }
-      setTimeout(renderGradeConfig,200);
-    }
-  },1500);
-
-  document.getElementById('widget-tabs').innerHTML = ['👥 Users','➕ Add User'].map(function(t,i){
-    return '<div class="widget-tab'+(i===0?' active':'')+'" onclick="adminShowTab('+i+')">'+t+'</div>';
-  }).join('');
-  adminShowTab(0);
-
-  // Render grade settings panel
-  setTimeout(function(){
-    var adminContent=_adminTarget;
-    if(adminContent)renderGradeSettings(adminContent);
-  },100);
-
-  var _ac=_adminTarget;if(_ac&&typeof renderGradeSettings==='function')renderGradeSettings(_ac);
+  // Legacy path disabled. Settings screen handles user + grade management.
+  return;
 }
 
 function adminShowTab(idx) {
