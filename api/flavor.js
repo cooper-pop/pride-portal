@@ -9,10 +9,14 @@ const { logAudit } = require('./_audit');
 //
 // Grades (stored as strings):
 //   off_5, off_4, off_3, off_2, off_1  — bad → barely off; cannot harvest
-//   good_resample_1     — first Good sample; 14-day window OPENS here
+//   good_resample_1     — first Good sample
 //   good_resample_2     — second Good sample
 //   good_ready          — Good - Ready to Harvest
 //   truck_sample        — last check on delivery (effectively harvested)
+//
+// 14-day harvest window: computed on the frontend (public/js/flavor.js) and
+// anchored to the MOST RECENT Good sample. Each new Good check rolls the
+// clock forward. An Off sample bumps the pond to 'off' and clears the window.
 //
 // Tables (named flv_* so they never collide with any abandoned flavor_* tables
 // from earlier experiments):

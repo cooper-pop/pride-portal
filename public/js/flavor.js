@@ -28,7 +28,8 @@ var FLAVOR_GRADES = [
 ];
 function flavorGradeMeta(key){ return FLAVOR_GRADES.find(function(g){return g.key===key;}) || null; }
 
-var WINDOW_DAYS = 14;           // Good window is 14 days from the first Good sample.
+var WINDOW_DAYS = 14;           // Good window is 14 days from the MOST RECENT Good sample.
+                                // Every new Good check rolls the clock forward — an Off sample breaks it.
 var ALERT_THRESHOLD_DAYS = 3;   // Show "expires soon" alert if window ends within this many days.
 
 // ═══ Entry point ════════════════════════════════════════════════════════════
@@ -142,18 +143,12 @@ function derivePondStatus(pondId){
   if(meta.bucket === 'delivered') {
     return { state:'delivered', grade:latest.grade, meta:meta, latest:latest };
   }
-  // Good family — walk oldest-to-newest to find the start of the current Good streak
-  var goodSince = null;
-  for(var i = pondSamples.length - 1; i >= 0; i--){
-    var s = pondSamples[i];
-    var m = flavorGradeMeta(s.grade);
-    if(!m) continue;
-    if(m.bucket === 'off'){ goodSince = null; continue; }
-    if(m.bucket === 'good' || m.bucket === 'ready'){
-      if(goodSince === null) goodSince = s.sample_date;
-    }
-  }
-  var windowStart = goodSince || latest.sample_date;
+  // Good family — anchor the 14-day window on the MOST RECENT Good/Ready sample
+  // (latest.sample_date, since latest is already guaranteed Good here by the
+  // earlier early-returns for 'off' and 'delivered'). Every new Good check
+  // rolls the clock forward, so a pond that's checked weekly never expires.
+  // An Off sample bumps state to 'off' and the window isn't computed.
+  var windowStart = latest.sample_date;
   var windowEnd = addDays(windowStart, WINDOW_DAYS);
   var daysLeft = daysBetween(todayStr(), windowEnd); // positive if windowEnd > today
   return {
