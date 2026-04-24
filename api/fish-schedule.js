@@ -138,6 +138,15 @@ async function ensureTables(sql) {
     await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_6_8_per_lb NUMERIC`;
     await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_8_plus_per_lb NUMERIC`;
     await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_0_4_per_lb NUMERIC`;
+    // Deduction breakdown columns (Cooper's 5 categories). The old single
+    // deduction_lbs field is kept as the TOTAL (auto-summed on save); old
+    // deduction_reason is kept for back-compat but new entry replaces it
+    // with category-specific columns.
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_doa_lbs NUMERIC DEFAULT 0`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_shad_lbs NUMERIC DEFAULT 0`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_turtles_lbs NUMERIC DEFAULT 0`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_other_species_lbs NUMERIC DEFAULT 0`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_fingerlings_lbs NUMERIC DEFAULT 0`;
   } catch (e) { /* already present */ }
   await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_invoice_idx
     ON live_haul_loads(invoice_number)`;
@@ -603,6 +612,8 @@ module.exports = async function handler(req, res) {
                gross_lbs, tare_lbs, net_lbs,
                size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
                deduction_lbs, deduction_reason,
+               deduction_doa_lbs, deduction_shad_lbs, deduction_turtles_lbs,
+               deduction_other_species_lbs, deduction_fingerlings_lbs,
                dock_price_per_lb,
                price_4_6_per_lb, price_6_8_per_lb, price_8_plus_per_lb, price_0_4_per_lb,
                payable_lbs, payable_total, invoice_number,
@@ -737,7 +748,20 @@ module.exports = async function handler(req, res) {
       const sz46 = num(body.size_4_6_lbs) || 0;
       const sz68 = num(body.size_6_8_lbs) || 0;
       const sz8p = num(body.size_8_plus_lbs) || 0;
-      const deduction = num(body.deduction_lbs) || 0;
+      // Categorized deductions. If the client sends individual categories
+      // we sum them for the total; if it only sends deduction_lbs (old
+      // clients / programmatic callers), we honor that as a back-compat
+      // "other" bucket so the payable math still works.
+      const dedDoa = num(body.deduction_doa_lbs) || 0;
+      const dedShad = num(body.deduction_shad_lbs) || 0;
+      const dedTurtles = num(body.deduction_turtles_lbs) || 0;
+      const dedOtherSpecies = num(body.deduction_other_species_lbs) || 0;
+      const dedFingerlings = num(body.deduction_fingerlings_lbs) || 0;
+      const categorizedSum = dedDoa + dedShad + dedTurtles + dedOtherSpecies + dedFingerlings;
+      const deductionLegacy = num(body.deduction_lbs);
+      // Prefer the sum of categories when any category is provided; fall
+      // back to the legacy field otherwise (zero is fine).
+      const deduction = categorizedSum > 0 ? categorizedSum : (deductionLegacy || 0);
       const deductionReason = (body.deduction_reason || '').trim() || null;
       const dockPrice = num(body.dock_price_per_lb);
       // Per-band prices. Match Excel FISH PAYABLE TOTAL exactly — each band
@@ -803,6 +827,11 @@ module.exports = async function handler(req, res) {
               size_6_8_lbs = ${sz68},
               size_8_plus_lbs = ${sz8p},
               deduction_lbs = ${deduction}, deduction_reason = ${deductionReason},
+              deduction_doa_lbs = ${dedDoa},
+              deduction_shad_lbs = ${dedShad},
+              deduction_turtles_lbs = ${dedTurtles},
+              deduction_other_species_lbs = ${dedOtherSpecies},
+              deduction_fingerlings_lbs = ${dedFingerlings},
               dock_price_per_lb = ${dockPrice},
               price_4_6_per_lb = ${price46},
               price_6_8_per_lb = ${price68},
@@ -827,6 +856,8 @@ module.exports = async function handler(req, res) {
                  gross_lbs, tare_lbs, net_lbs,
                  size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
                  deduction_lbs, deduction_reason,
+                 deduction_doa_lbs, deduction_shad_lbs, deduction_turtles_lbs,
+                 deduction_other_species_lbs, deduction_fingerlings_lbs,
                  dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
                  price_8_plus_per_lb, price_0_4_per_lb,
                  payable_lbs, payable_total, invoice_number, notes
@@ -846,6 +877,8 @@ module.exports = async function handler(req, res) {
            gross_lbs, tare_lbs, net_lbs,
            size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
            deduction_lbs, deduction_reason,
+           deduction_doa_lbs, deduction_shad_lbs, deduction_turtles_lbs,
+           deduction_other_species_lbs, deduction_fingerlings_lbs,
            dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
            price_8_plus_per_lb, price_0_4_per_lb,
            payable_lbs, payable_total, notes)
@@ -854,12 +887,15 @@ module.exports = async function handler(req, res) {
            ${gross}, ${tare}, ${net},
            ${sz04 == null ? 0 : sz04}, ${sz46}, ${sz68}, ${sz8p},
            ${deduction}, ${deductionReason},
+           ${dedDoa}, ${dedShad}, ${dedTurtles}, ${dedOtherSpecies}, ${dedFingerlings},
            ${dockPrice}, ${price46}, ${price68}, ${price8p}, ${price04},
            ${payableLbs}, ${payableTotal}, ${notes})
         RETURNING id, day_date::text AS day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
                   gross_lbs, tare_lbs, net_lbs,
                   size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
                   deduction_lbs, deduction_reason,
+                  deduction_doa_lbs, deduction_shad_lbs, deduction_turtles_lbs,
+                  deduction_other_species_lbs, deduction_fingerlings_lbs,
                   dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
                   price_8_plus_per_lb, price_0_4_per_lb,
                   payable_lbs, payable_total, notes

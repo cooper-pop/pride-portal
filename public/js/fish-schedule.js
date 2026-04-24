@@ -583,18 +583,29 @@
       + (l.delivery_id ? '<div style="font-size:.68rem;color:#0369a1;margin-top:2px">🔗 scheduled</div>' : '')
       + '</div>';
 
-    // Middle column: weights
+    // Middle column: weights (Truck / Plant / Difference, matching the modal)
     html += '<div style="min-width:130px">'
       + '<div style="font-size:.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Weight</div>';
     if (l.gross_lbs != null || l.tare_lbs != null) {
       html += '<div style="font-size:.74rem;color:#475569">'
-        + 'Gross ' + fmtLbsLoose(l.gross_lbs) + ' − Tare ' + fmtLbsLoose(l.tare_lbs)
+        + 'Truck ' + fmtLbsLoose(l.gross_lbs) + ' − Plant ' + fmtLbsLoose(l.tare_lbs)
         + '</div>';
     }
-    html += '<div style="font-size:.92rem;color:#1a3a6b;font-weight:700">Net ' + fmtLbsLoose(l.net_lbs) + ' lbs</div>';
+    html += '<div style="font-size:.92rem;color:#1a3a6b;font-weight:700">Diff ' + fmtLbsLoose(l.net_lbs) + ' lbs</div>';
     if (Number(l.deduction_lbs) > 0) {
-      html += '<div style="font-size:.74rem;color:#991b1b">− ' + fmtLbsLoose(l.deduction_lbs) + ' ded'
-        + (l.deduction_reason ? ' (' + esc(l.deduction_reason) + ')' : '')
+      // Show per-category breakdown in tooltip + inline for the live ones
+      var dedParts = [];
+      if (Number(l.deduction_doa_lbs) > 0) dedParts.push('DOA ' + fmtLbsLoose(l.deduction_doa_lbs));
+      if (Number(l.deduction_shad_lbs) > 0) dedParts.push('Shad ' + fmtLbsLoose(l.deduction_shad_lbs));
+      if (Number(l.deduction_turtles_lbs) > 0) dedParts.push('Turtles ' + fmtLbsLoose(l.deduction_turtles_lbs));
+      if (Number(l.deduction_other_species_lbs) > 0) dedParts.push('Other ' + fmtLbsLoose(l.deduction_other_species_lbs));
+      if (Number(l.deduction_fingerlings_lbs) > 0) dedParts.push('Finger ' + fmtLbsLoose(l.deduction_fingerlings_lbs));
+      var breakdown = dedParts.length > 0
+        ? dedParts.join(' · ')
+        : (l.deduction_reason || ''); // fallback for pre-category loads
+      html += '<div style="font-size:.74rem;color:#991b1b" title="' + esc(breakdown) + '">'
+        + '− ' + fmtLbsLoose(l.deduction_lbs) + ' ded'
+        + (breakdown ? ' <span style="color:#64748b;font-size:.68rem">(' + esc(breakdown) + ')</span>' : '')
         + '</div>';
     }
     html += '</div>';
@@ -707,15 +718,18 @@
       + '<input id="fs-l-pond" type="text" placeholder="e.g., Pond 4" value="' + esc(initial.pond_ref || '') + '" style="' + INP + '"></div>'
       + '</div>'
 
-      // Weight section
+      // Weight section — renamed per Cooper: Truck Weight / Plant Weight /
+      // Difference (auto). Stored in gross_lbs / tare_lbs / net_lbs columns
+      // under the hood (Difference = Truck − Plant = the fish weight used
+      // for payable + invoice math).
       + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
       + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">⚖️ Weight</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Gross (lbs)</label>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Truck Weight (lbs)</label>'
       + '<input id="fs-l-gross" type="number" min="0" step="1" placeholder="e.g., 42000" value="' + (initial.gross_lbs == null ? '' : initial.gross_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Tare (lbs)</label>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Plant Weight (lbs)</label>'
       + '<input id="fs-l-tare" type="number" min="0" step="1" placeholder="e.g., 18000" value="' + (initial.tare_lbs == null ? '' : initial.tare_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Net (lbs) <span style="color:#94a3b8;font-weight:400">auto</span></label>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Difference (lbs) <span style="color:#94a3b8;font-weight:400">auto</span></label>'
       + '<input id="fs-l-net" type="number" min="0" step="1" placeholder="auto" value="' + (initial.net_lbs == null ? '' : initial.net_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + ';background:#fff"></div>'
       + '</div></div>'
 
@@ -734,14 +748,24 @@
       + '<div id="fs-l-size-warn" style="font-size:.7rem;color:#92400e;margin-top:6px;display:none"></div>'
       + '</div>'
 
-      // Deductions
+      // Deductions — 5 categorized buckets (Cooper's classification):
+      //   1. Dead on Arrival (fish that died in transit)
+      //   2. Shad (bycatch — we don't want em)
+      //   3. Turtles
+      //   4. Other Species (non-catfish — bass, carp, etc.)
+      //   5. Fingerlings (undersize)
+      // Each category has its own lbs input. Total = sum, auto-computed.
       + '<div style="background:#fef2f2;border-radius:8px;padding:12px;margin-bottom:10px">'
-      + '<div style="font-size:.78rem;font-weight:700;color:#991b1b;margin-bottom:8px">✂️ Deductions <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(in pounds)</span></div>'
-      + '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">'
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Lbs Deducted</label>'
-      + '<input id="fs-l-deduct" type="number" min="0" step="1" placeholder="0" value="' + (initial.deduction_lbs == null ? '' : initial.deduction_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Reason</label>'
-      + '<input id="fs-l-dedreason" type="text" placeholder="e.g., DOAs, undersized" value="' + esc(initial.deduction_reason || '') + '" style="' + INP + '"></div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">'
+      + '<div style="font-size:.78rem;font-weight:700;color:#991b1b">✂️ Deductions <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(lbs by category)</span></div>'
+      + '<div style="font-size:.72rem;color:#475569">Total: <span id="fs-l-deduct-total" style="font-weight:700;color:#991b1b">0</span> lbs</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">'
+      + dedInput('fs-l-dedDoa',         'Dead on Arrival', initial.deduction_doa_lbs)
+      + dedInput('fs-l-dedShad',        'Shad',            initial.deduction_shad_lbs)
+      + dedInput('fs-l-dedTurtles',     'Turtles',         initial.deduction_turtles_lbs)
+      + dedInput('fs-l-dedOtherSpecies','Other Species',   initial.deduction_other_species_lbs)
+      + dedInput('fs-l-dedFingerlings', 'Fingerlings',     initial.deduction_fingerlings_lbs)
       + '</div></div>'
 
       // Pricing — four bands each with their own $/lb, matching FISH PAYABLE TOTAL.
@@ -787,6 +811,13 @@
   function sizeInput(id, label, v) {
     return '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">' + label + '</label>'
       + '<input id="' + id + '" type="number" min="0" step="1" placeholder="0" value="' + (v == null ? '' : v) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>';
+  }
+
+  // Compact deduction-category input. Label above, tight number input below.
+  function dedInput(id, label, v) {
+    var val = (v == null || Number(v) === 0) ? '' : v;
+    return '<div><label style="display:block;font-size:.66rem;color:#475569;font-weight:600;margin-bottom:3px;min-height:28px;line-height:1.1">' + label + '</label>'
+      + '<input id="' + id + '" type="number" min="0" step="1" placeholder="0" value="' + val + '" oninput="fsLoadModalRecalc()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:.82rem;width:100%;box-sizing:border-box"></div>';
   }
 
   // Per-band price input. If the load already has a per-band price, use it;
@@ -839,7 +870,20 @@
       if (netField) netField.value = net;
     }
 
-    var deduct = getNum('fs-l-deduct') || 0;
+    // Sum the 5 deduction categories. The legacy single-field input
+    // (fs-l-deduct) is still fallback-supported for anything that might
+    // prefill it, but in the new UI we read the 5 category inputs directly.
+    var dedDoa = getNum('fs-l-dedDoa') || 0;
+    var dedShad = getNum('fs-l-dedShad') || 0;
+    var dedTurtles = getNum('fs-l-dedTurtles') || 0;
+    var dedOther = getNum('fs-l-dedOtherSpecies') || 0;
+    var dedFinger = getNum('fs-l-dedFingerlings') || 0;
+    var deduct = dedDoa + dedShad + dedTurtles + dedOther + dedFinger;
+    // Echo the running total to the little "Total: N lbs" display in the
+    // deductions header.
+    var dedTotalEl = document.getElementById('fs-l-deduct-total');
+    if (dedTotalEl) dedTotalEl.textContent = Number(deduct).toLocaleString();
+
     var sz46 = getNum('fs-l-sz46') || 0;
     var sz68 = getNum('fs-l-sz68') || 0;
     var sz8p = getNum('fs-l-sz8p') || 0;
@@ -957,8 +1001,16 @@
       size_4_6_lbs: val('fs-l-sz46') || null,
       size_6_8_lbs: val('fs-l-sz68') || null,
       size_8_plus_lbs: val('fs-l-sz8p') || null,
-      deduction_lbs: val('fs-l-deduct') || null,
-      deduction_reason: val('fs-l-dedreason') || null,
+      // Individual deduction categories — backend sums them into
+      // deduction_lbs. We also send deduction_lbs=null so the backend
+      // prefers the sum-of-categories path over any legacy total.
+      deduction_lbs: null,
+      deduction_reason: null,
+      deduction_doa_lbs: val('fs-l-dedDoa') || null,
+      deduction_shad_lbs: val('fs-l-dedShad') || null,
+      deduction_turtles_lbs: val('fs-l-dedTurtles') || null,
+      deduction_other_species_lbs: val('fs-l-dedOtherSpecies') || null,
+      deduction_fingerlings_lbs: val('fs-l-dedFingerlings') || null,
       dock_price_per_lb: val('fs-l-price') || null,
       price_4_6_per_lb: val('fs-l-p46') || null,
       price_6_8_per_lb: val('fs-l-p68') || null,
