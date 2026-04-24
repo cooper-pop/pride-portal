@@ -681,34 +681,10 @@
           return '<option value="' + f.id + '"' + (f.id === initial.farmer_id ? ' selected' : '') + '>' + esc(f.name) + '</option>';
         }).join('');
 
-    // Scheduled deliveries dropdown — only show ones for this day's farmer
-    // once the user picks a farmer. For now show all this-week deliveries.
-    var delOpts = '<option value="">— None —</option>'
-      + _fsState.deliveries.map(function (d) {
-          var farmer = _fsState.farmers.find(function (f) { return f.id === d.farmer_id; });
-          var farmerName = farmer ? farmer.name : '(unknown)';
-          var label = d.day_date + ' ' + d.time_slot + ' · ' + farmerName
-            + (d.expected_lbs ? ' · ' + Number(d.expected_lbs).toLocaleString() + ' lbs exp.' : '');
-          return '<option value="' + d.id + '"' + (d.id === initial.delivery_id ? ' selected' : '') + '>' + esc(label) + '</option>';
-        }).join('');
-
-    // Pre-fill arrived_at with "now" for new loads, locked to the chosen day
-    var arrivedInitial = initial.arrived_at || '';
-    if (!isEdit && !arrivedInitial) {
-      var now = new Date();
-      // datetime-local wants YYYY-MM-DDTHH:MM in local time
-      var pad = function (n) { return n < 10 ? '0' + n : String(n); };
-      var localIso = (initial.day_date || isoDate(now)) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
-      arrivedInitial = localIso;
-    } else if (isEdit && arrivedInitial) {
-      // Convert ISO back to datetime-local format (strip seconds/ms/TZ)
-      var d2 = new Date(arrivedInitial);
-      if (!isNaN(d2.getTime())) {
-        var pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
-        arrivedInitial = d2.getFullYear() + '-' + pad2(d2.getMonth() + 1) + '-' + pad2(d2.getDate())
-          + 'T' + pad2(d2.getHours()) + ':' + pad2(d2.getMinutes());
-      }
-    }
+    // Arrived-at / scheduled-delivery dropdowns were removed from the form
+    // per Cooper's request. For new loads fsSaveLoad stamps arrived_at =
+    // now() on create so the invoice-number sequence still has a stable
+    // per-day ordering. Historical loads keep their values untouched.
 
     overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 40px);overflow-y:auto">'
       + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">'
@@ -718,26 +694,17 @@
           : (!isEdit ? '<div style="font-size:.72rem;color:#94a3b8;font-style:italic">Invoice # auto-generated on save</div>' : ''))
       + '</div>'
 
-      // Row 1: date + arrived + farmer
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+      // Row 1: date only (arrived time, truck/driver, scheduled delivery link
+      // removed per Cooper's request — the invoice only needs day + farmer +
+      // pond + weights/bands/prices. Underlying schema columns still exist so
+      // historical loads don't lose data; they're just not prompted for.)
+      + '<div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-bottom:10px">'
       + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Day</label>'
       + '<input id="fs-l-date" type="date" value="' + esc(initial.day_date || '') + '" style="' + INP + '"></div>'
-      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Arrived</label>'
-      + '<input id="fs-l-arrived" type="datetime-local" value="' + esc(arrivedInitial) + '" style="' + INP + '"></div>'
-      + '</div>'
-
-      + '<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">'
       + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Farmer *</label>'
-      + '<select id="fs-l-farmer" style="' + INP + '" onchange="fsLoadModalRefreshDeliveries()">' + farmerOpts + '</select></div>'
+      + '<select id="fs-l-farmer" style="' + INP + '">' + farmerOpts + '</select></div>'
       + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Pond</label>'
       + '<input id="fs-l-pond" type="text" placeholder="e.g., Pond 4" value="' + esc(initial.pond_ref || '') + '" style="' + INP + '"></div>'
-      + '</div>'
-
-      + '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">'
-      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Truck / Driver</label>'
-      + '<input id="fs-l-truck" type="text" placeholder="e.g., Truck #3 / James" value="' + esc(initial.truck_ref || '') + '" style="' + INP + '"></div>'
-      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Fulfilled scheduled delivery (optional)</label>'
-      + '<select id="fs-l-delivery" style="' + INP + '">' + delOpts + '</select></div>'
       + '</div>'
 
       // Weight section
@@ -955,14 +922,32 @@
     if (!dayDate) { err.textContent = 'Day is required.'; err.style.display = 'block'; return; }
     if (!farmerId) { err.textContent = 'Farmer is required.'; err.style.display = 'block'; return; }
 
-    var arrived = val('fs-l-arrived');
+    // arrived_at / truck_ref / delivery_id were removed from the form per
+    // Cooper's request. For NEW loads, stamp arrived_at = now() so the
+    // invoice-number sequence has a stable per-day order (01, 02, 03...
+    // in save order). For EDITS, preserve whatever the load already had
+    // so the backend UPDATE doesn't null out existing values — pull from
+    // _fsState.loads by id.
+    var preserved = {};
+    if (id) {
+      var existing = _fsState.loads.find(function (x) { return x.id === id; });
+      if (existing) {
+        preserved.arrived_at = existing.arrived_at || null;
+        preserved.truck_ref = existing.truck_ref || null;
+        preserved.delivery_id = existing.delivery_id || null;
+      }
+    } else {
+      preserved.arrived_at = new Date().toISOString();
+      preserved.truck_ref = null;
+      preserved.delivery_id = null;
+    }
     var body = {
       day_date: dayDate,
-      arrived_at: arrived ? new Date(arrived).toISOString() : null,
+      arrived_at: preserved.arrived_at,
       farmer_id: parseInt(farmerId, 10),
       pond_ref: val('fs-l-pond') || null,
-      truck_ref: val('fs-l-truck') || null,
-      delivery_id: val('fs-l-delivery') ? parseInt(val('fs-l-delivery'), 10) : null,
+      truck_ref: preserved.truck_ref,
+      delivery_id: preserved.delivery_id,
       gross_lbs: val('fs-l-gross') || null,
       tare_lbs: val('fs-l-tare') || null,
       net_lbs: val('fs-l-net') || null,
