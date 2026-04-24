@@ -172,13 +172,13 @@
 
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
 
-    // Table header. NEW Lbs/Case column between SKU and Begin so operators
-    // have case-size context when reading produced/shipped pounds.
+    // Table header. Lbs/Case sits right after Item so operators see case
+    // context as they scan the row.
     html += '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
       + '<thead style="position:sticky;top:0;background:#1a3a6b;color:#fff;z-index:1"><tr>'
       + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:140px">Item</th>'
-      + '<th style="padding:8px 6px;text-align:left;font-weight:600;width:80px;font-size:.68rem;opacity:.85">SKU</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:60px;font-size:.68rem;opacity:.85">Lbs/Case</th>'
+      + '<th style="padding:8px 6px;text-align:left;font-weight:600;width:80px;font-size:.68rem;opacity:.85">SKU</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">Begin</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">LW</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:90px;background:#1e40af">Freezer</th>'
@@ -233,8 +233,8 @@
       : esc(String(r.lbs_per_case));
     return '<tr>'
       + '<td style="padding:5px 10px;color:#0f172a;font-weight:500">' + esc(r.item_name) + '</td>'
-      + '<td style="padding:5px 6px;color:#64748b;font-family:ui-monospace,monospace;font-size:.68rem">' + esc(r.sku || '') + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>'
+      + '<td style="padding:5px 6px;color:#64748b;font-family:ui-monospace,monospace;font-size:.68rem">' + esc(r.sku || '') + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#64748b">' + (r.begin_lbs === 0 ? '—' : fmtLbs(r.begin_lbs)) + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#94a3b8;font-size:.72rem">' + (r.lw_lbs === 0 ? '—' : fmtLbs(r.lw_lbs)) + '</td>'
       + '<td style="padding:3px 4px">' + producedInput + '</td>'
@@ -555,16 +555,16 @@
         + '<div style="background:#1a3a6b;color:#fff;padding:8px 14px;font-weight:700;font-size:.86rem">' + p + ' <span style="opacity:.8;font-weight:400">(' + poolSkus.length + ')</span></div>'
         + '<table style="width:100%;border-collapse:collapse;font-size:.78rem"><thead><tr style="background:#f1f5f9">'
         + '<th style="padding:6px 10px;text-align:left;color:#475569">Item</th>'
+        + '<th style="padding:6px 10px;text-align:right;color:#475569;width:80px">Lbs/Case</th>'
         + '<th style="padding:6px 10px;text-align:left;color:#475569;width:100px">SKU</th>'
         + '<th style="padding:6px 10px;text-align:left;color:#475569;width:100px">Category</th>'
-        + '<th style="padding:6px 10px;text-align:right;color:#475569;width:80px">Lbs/Case</th>'
         + '<th style="padding:6px 10px;text-align:right;color:#475569;width:140px"></th>'
         + '</tr></thead><tbody>';
       poolSkus.forEach(function (s) {
         html += '<tr><td style="padding:5px 10px;color:#0f172a;font-weight:500">' + esc(s.item_name) + '</td>'
+          + '<td style="padding:5px 10px;text-align:right;color:#64748b">' + (s.lbs_per_case || '—') + '</td>'
           + '<td style="padding:5px 10px;color:#64748b;font-family:ui-monospace,monospace;font-size:.72rem">' + esc(s.sku || '—') + '</td>'
           + '<td style="padding:5px 10px;color:#64748b">' + esc(s.category || '—') + '</td>'
-          + '<td style="padding:5px 10px;text-align:right;color:#64748b">' + (s.lbs_per_case || '—') + '</td>'
           + '<td style="padding:5px 10px;text-align:right">'
           + (canEdit ? '<button style="' + BTN_SUB + ';padding:3px 9px;font-size:.72rem" onclick="prEditSku(' + s.id + ')">Edit</button> ' : '')
           + (canDelete ? '<button style="' + BTN_D + '" onclick="prArchiveSku(' + s.id + ',\'' + esc(s.item_name).replace(/'/g, '') + '\')">Remove</button>' : '')
