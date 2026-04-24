@@ -172,11 +172,13 @@
 
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
 
-    // Table header
+    // Table header. NEW Lbs/Case column between SKU and Begin so operators
+    // have case-size context when reading produced/shipped pounds.
     html += '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
       + '<thead style="position:sticky;top:0;background:#1a3a6b;color:#fff;z-index:1"><tr>'
       + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:140px">Item</th>'
       + '<th style="padding:8px 6px;text-align:left;font-weight:600;width:80px;font-size:.68rem;opacity:.85">SKU</th>'
+      + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:60px;font-size:.68rem;opacity:.85">Lbs/Case</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">Begin</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">LW</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:90px;background:#1e40af">Freezer</th>'
@@ -186,8 +188,8 @@
       + '</tr></thead><tbody>';
 
     Object.keys(byCat).sort().forEach(function (cat) {
-      // Category header row
-      html += '<tr style="background:#f8fafc"><td colspan="8" style="padding:6px 10px;font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">'
+      // Category header row. Spans the full 9-column table now.
+      html += '<tr style="background:#f8fafc"><td colspan="9" style="padding:6px 10px;font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">'
         + esc(cat) + '</td></tr>';
       byCat[cat].forEach(function (r) {
         html += renderDailyRow(r, canEdit || canCreate);
@@ -196,7 +198,7 @@
 
     // Totals footer
     html += '<tr style="background:#f1f5f9;font-weight:700">'
-      + '<td style="padding:10px 10px" colspan="4">TOTAL ' + _ps.activePool + '</td>'
+      + '<td style="padding:10px 10px" colspan="5">TOTAL ' + _ps.activePool + '</td>'
       + '<td style="padding:10px 6px;text-align:right;color:#1e40af">' + fmtLbs(poolTotals.produced) + '</td>'
       + '<td></td>'
       + '<td style="padding:10px 6px;text-align:right">' + fmtLbs(poolTotals.shipped) + '</td>'
@@ -225,9 +227,14 @@
     } else {
       adjCell = '<span style="font-size:.72rem;color:#64748b">' + (r.adjust_lbs === 0 ? '—' : fmtLbs(r.adjust_lbs)) + '</span>';
     }
+    // Lbs/Case cell — COOLER items have null (tubs not cases) → em-dash.
+    var casesCell = (r.lbs_per_case == null || r.lbs_per_case === '')
+      ? '<span style="color:#cbd5e1">—</span>'
+      : esc(String(r.lbs_per_case));
     return '<tr>'
       + '<td style="padding:5px 10px;color:#0f172a;font-weight:500">' + esc(r.item_name) + '</td>'
       + '<td style="padding:5px 6px;color:#64748b;font-family:ui-monospace,monospace;font-size:.68rem">' + esc(r.sku || '') + '</td>'
+      + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#64748b">' + (r.begin_lbs === 0 ? '—' : fmtLbs(r.begin_lbs)) + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#94a3b8;font-size:.72rem">' + (r.lw_lbs === 0 ? '—' : fmtLbs(r.lw_lbs)) + '</td>'
       + '<td style="padding:3px 4px">' + producedInput + '</td>'
@@ -258,11 +265,13 @@
       sku_id: skuId, entry_date: _ps.entryDate,
       produced_lbs: produced, shipped_lbs: shipped
     }).then(function () {
-      // Re-render just the row's balance cell rather than full reload
+      // Re-render just the row's balance cell rather than full reload.
+      // Row shape now: Item | SKU | Lbs/Case | Begin | LW | Freezer | Adjust | Shipped | Balance
+      // (9 cells; Balance is index 8).
       var cells = input.closest('tr').querySelectorAll('td');
-      if (cells && cells.length >= 8) {
-        cells[7].textContent = fmtLbs(row.balance_lbs);
-        cells[7].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
+      if (cells && cells.length >= 9) {
+        cells[8].textContent = fmtLbs(row.balance_lbs);
+        cells[8].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
       }
     }).catch(function (err) {
       toast('⚠️ Save failed: ' + err.message);
@@ -448,15 +457,17 @@
     });
     html += '</div>';
 
-    // Table
+    // Table. Column order: Item | Lbs/Case | MON..SAT + MON2 + TUE2 | CASES | LBS
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:auto">';
     html += '<table style="width:100%;border-collapse:collapse;font-size:.76rem"><thead><tr style="background:#1a3a6b;color:#fff">'
-      + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:160px;position:sticky;left:0;background:#1a3a6b;z-index:2">Item</th>';
+      + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:160px;position:sticky;left:0;background:#1a3a6b;z-index:2">Item</th>'
+      + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:66px;font-size:.68rem;opacity:.85">Lbs/Case</th>';
     days.forEach(function (d, i) {
       var label = (i === 7) ? 'TUE2' : (i === 6 ? 'MON2' : dayAbbr(d));
       html += '<th style="padding:8px 6px;text-align:right;font-weight:600;min-width:70px">' + label + '<br><span style="font-size:.62rem;opacity:.75;font-weight:400">' + d.slice(5) + '</span></th>';
     });
-    html += '<th style="padding:8px 10px;text-align:right;font-weight:600;background:#0f766e">LBS</th>';
+    html += '<th style="padding:8px 10px;text-align:right;font-weight:600">Cases</th>'
+      + '<th style="padding:8px 10px;text-align:right;font-weight:600;background:#0f766e">LBS</th>';
     html += '</tr></thead><tbody>';
 
     // Category grouping
@@ -464,26 +475,34 @@
     rows.forEach(function (r) { var c = r.category || 'OTHER'; if (!byCat[c]) byCat[c] = []; byCat[c].push(r); });
     var poolTotalDays = new Array(days.length).fill(0);
     var poolTotalLbs = 0;
+    var poolTotalCases = 0;
+    var colSpan = days.length + 4; // Item + Lbs/Case + days + Cases + LBS
 
     Object.keys(byCat).sort().forEach(function (cat) {
-      html += '<tr style="background:#f8fafc"><td colspan="' + (days.length + 2) + '" style="padding:6px 10px;font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;position:sticky;left:0;background:#f8fafc">' + esc(cat) + '</td></tr>';
+      html += '<tr style="background:#f8fafc"><td colspan="' + colSpan + '" style="padding:6px 10px;font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;position:sticky;left:0;background:#f8fafc">' + esc(cat) + '</td></tr>';
       byCat[cat].forEach(function (r) {
+        var casesCell = (r.lbs_per_case == null) ? '—' : esc(String(r.lbs_per_case));
         html += '<tr>'
-          + '<td style="padding:5px 10px;color:#0f172a;position:sticky;left:0;background:#fff">' + esc(r.item_name) + '</td>';
+          + '<td style="padding:5px 10px;color:#0f172a;position:sticky;left:0;background:#fff">' + esc(r.item_name) + '</td>'
+          + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>';
         (r.daily || []).forEach(function (v, i) {
           poolTotalDays[i] += Number(v || 0);
           html += '<td style="padding:5px 6px;text-align:right;color:' + (v > 0 ? '#0f172a' : '#cbd5e1') + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
         });
         poolTotalLbs += Number(r.total_lbs || 0);
+        if (r.total_cases != null) poolTotalCases += Number(r.total_cases);
+        html += '<td style="padding:5px 10px;text-align:right;color:#334155">' + (r.total_cases != null && r.total_cases > 0 ? Number(r.total_cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
         html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (r.total_lbs > 0 ? fmtLbs(r.total_lbs) : '—') + '</td></tr>';
       });
     });
 
     html += '<tr style="background:#f1f5f9;font-weight:700">'
-      + '<td style="padding:10px;position:sticky;left:0;background:#f1f5f9">TOTAL ' + _ps.activePool + '</td>';
+      + '<td style="padding:10px;position:sticky;left:0;background:#f1f5f9">TOTAL ' + _ps.activePool + '</td>'
+      + '<td></td>';
     poolTotalDays.forEach(function (v) {
       html += '<td style="padding:10px 6px;text-align:right">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
     });
+    html += '<td style="padding:10px;text-align:right">' + (poolTotalCases > 0 ? Number(poolTotalCases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
     html += '<td style="padding:10px;text-align:right;color:#0f766e">' + (poolTotalLbs > 0 ? fmtLbs(poolTotalLbs) : '—') + '</td></tr>';
 
     html += '</tbody></table></div></div>';
@@ -615,12 +634,16 @@
   }
 
   function prSeedSkus() {
-    if (!confirm('Seed ~100 SKUs from yield master-2026.xlsx into the catalog?\n\nExisting SKUs with the same pool+name will be skipped. Safe to run multiple times.')) return;
+    if (!confirm('Seed / refresh SKUs from yield master-2026.xlsx?\n\nThis will also clean up existing SKU names (strip "15#" / "24# CARTON" suffixes) and fill in Lbs/Case values where missing. Safe to run multiple times — your daily entries and adjustments are never touched.')) return;
     apiCall('POST', '/api/production?action=seed_skus', {})
       .then(function (r) {
-        var msg = 'Seed complete. ' + r.created + ' created, ' + r.skipped + ' skipped of ' + r.total_seed + ' total.';
+        var parts = [];
+        if (r.created) parts.push(r.created + ' new SKU' + (r.created === 1 ? '' : 's'));
+        if (r.renamed) parts.push(r.renamed + ' renamed');
+        if (r.case_filled) parts.push(r.case_filled + ' Lbs/Case filled');
+        if (r.skipped) parts.push(r.skipped + ' already up-to-date');
+        var msg = parts.length ? 'Seed complete: ' + parts.join(' · ') + '.' : 'Everything already up-to-date.';
         toast(msg);
-        // Return to daily tab (most common next action)
         if (_ps.tab === 'skus') loadSkus(); else prShowTab('daily');
       })
       .catch(function (err) { toast('⚠️ Seed failed: ' + err.message); });
