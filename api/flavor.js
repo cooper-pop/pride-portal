@@ -224,23 +224,47 @@ module.exports = async function handler(req, res) {
     // Any authenticated user with flavor view perms can poll; dismiss is
     // manager+ only.
     if (action === 'get_active_alerts') {
-      const alerts = await sql`
-        SELECT s.id, s.pond_id, s.sample_date, s.grade, s.sampled_by,
-               s.notes, s.created_at,
-               p.number AS pond_number,
-               g.name   AS pond_group_name,
-               f.id     AS farmer_id,
-               f.name   AS farmer_name
-        FROM flv_samples s
-        JOIN flv_ponds p       ON p.id = s.pond_id
-        JOIN flv_pond_groups g ON g.id = p.pond_group_id
-        JOIN flv_farmers f     ON f.id = g.farmer_id
-        WHERE s.company_id = ${effectiveCompanyId}
-          AND s.grade = 'truck_sample_fail'
-          AND s.resolved_at IS NULL
-          ${farmerFilter ? sql`AND f.id = ${farmerFilter}` : sql``}
-        ORDER BY s.sample_date DESC, s.created_at DESC
-      `;
+      // Two explicit query variants instead of conditional tagged-template
+      // composition — neon-serverless doesn't support nesting `sql`` fragments
+      // inside another `sql`` call. Earlier attempt silently 500'd the
+      // endpoint, which is why the banner / emergency modal weren't firing.
+      let alerts;
+      if (farmerFilter) {
+        alerts = await sql`
+          SELECT s.id, s.pond_id, s.sample_date, s.grade, s.sampled_by,
+                 s.notes, s.created_at,
+                 p.number AS pond_number,
+                 g.name   AS pond_group_name,
+                 f.id     AS farmer_id,
+                 f.name   AS farmer_name
+          FROM flv_samples s
+          JOIN flv_ponds p       ON p.id = s.pond_id
+          JOIN flv_pond_groups g ON g.id = p.pond_group_id
+          JOIN flv_farmers f     ON f.id = g.farmer_id
+          WHERE s.company_id = ${effectiveCompanyId}
+            AND s.grade = 'truck_sample_fail'
+            AND s.resolved_at IS NULL
+            AND f.id = ${farmerFilter}
+          ORDER BY s.sample_date DESC, s.created_at DESC
+        `;
+      } else {
+        alerts = await sql`
+          SELECT s.id, s.pond_id, s.sample_date, s.grade, s.sampled_by,
+                 s.notes, s.created_at,
+                 p.number AS pond_number,
+                 g.name   AS pond_group_name,
+                 f.id     AS farmer_id,
+                 f.name   AS farmer_name
+          FROM flv_samples s
+          JOIN flv_ponds p       ON p.id = s.pond_id
+          JOIN flv_pond_groups g ON g.id = p.pond_group_id
+          JOIN flv_farmers f     ON f.id = g.farmer_id
+          WHERE s.company_id = ${effectiveCompanyId}
+            AND s.grade = 'truck_sample_fail'
+            AND s.resolved_at IS NULL
+          ORDER BY s.sample_date DESC, s.created_at DESC
+        `;
+      }
       return res.json({ ok: true, alerts });
     }
 

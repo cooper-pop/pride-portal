@@ -168,11 +168,11 @@
         render(_lastAlerts);
       })
       .catch(function (err) {
-        // Silent. A blip shouldn't keep flashing an error. Banner stays
-        // as whatever we had last; next tick will try again.
-        if (err && err.message && !/401|403/.test(err.message)) {
-          console.warn('[alerts] poll failed:', err.message);
-        }
+        // Don't spam if it's an auth blip — next tick will try again.
+        if (err && err.message && /401|403/.test(err.message)) return;
+        // Anything else (500, network, parse) logs loudly so we notice
+        // in the console when the banner/modal isn't firing.
+        console.error('[alerts] poll failed:', err && err.message, err);
       });
   }
 
