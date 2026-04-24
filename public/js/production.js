@@ -25,7 +25,8 @@
     weekStart: '',         // Monday of selected week (weekly tab)
     day: null,             // cached daily response
     week: null,            // cached weekly response
-    skus: []
+    skus: [],
+    showArchived: false    // SKUs tab + Daily Entry: hide archived by default
   };
 
   var BTN = 'padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600';
@@ -99,7 +100,9 @@
   function loadDaily() {
     var panel = document.getElementById('widget-content');
     panel.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading…</div>';
-    apiCall('GET', '/api/production?action=get_day&entry_date=' + _ps.entryDate)
+    var url = '/api/production?action=get_day&entry_date=' + _ps.entryDate
+      + (_ps.showArchived ? '&showArchived=1' : '');
+    apiCall('GET', url)
       .then(function (r) {
         _ps.day = r;
         renderDaily();
@@ -127,6 +130,8 @@
       + '<button style="' + BTN_SUB + '" onclick="prToday()">Today</button>'
       + '<button style="' + BTN_SUB + '" onclick="prDateStep(1)">Next Day →</button>'
       + '<div style="flex:1"></div>'
+      + '<label style="font-size:.74rem;color:#64748b;display:flex;align-items:center;gap:5px;cursor:pointer" title="Toggle inactive/archived items">'
+      + '<input type="checkbox"' + (_ps.showArchived ? ' checked' : '') + ' onchange="prToggleArchived(this.checked)"> Show inactive</label>'
       + '<div style="font-size:.72rem;color:#64748b">LW = balance at end of ' + esc(_ps.day.lw_date) + '</div>'
       + '</div>';
 
@@ -222,19 +227,10 @@
       + 'data-sku="' + r.sku_id + '" data-field="shipped_lbs" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#fef2f2' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     var adjCell;
-    // Adjust column displays in CASES (cases = lbs / lbs_per_case). Fallback
-    // to lbs if lbs_per_case isn't set, though with COOLER retired every
-    // active SKU should have one.
-    var adjCases = (r.lbs_per_case && r.lbs_per_case > 0)
-      ? (Number(r.adjust_lbs) / Number(r.lbs_per_case))
-      : null;
+    // Adjust column: values are already in cases end-to-end. Just format.
     function fmtAdjLabel() {
-      if (r.adjust_lbs === 0) return '+ Adj';
-      if (adjCases != null) {
-        var cs = Number(adjCases.toFixed(2));
-        return (cs > 0 ? '+' : '') + cs + ' cs';
-      }
-      return (r.adjust_lbs > 0 ? '+' : '') + fmtLbs(r.adjust_lbs) + ' lbs';
+      if (!r.adjust_lbs) return '+ Adj';
+      return (r.adjust_lbs > 0 ? '+' : '') + Number(r.adjust_lbs).toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' cs';
     }
     if (writable) {
       var hasAdj = r.adjust_count > 0;
@@ -312,8 +308,8 @@
 
     var rowLbsPerCase = row.lbs_per_case && row.lbs_per_case > 0 ? Number(row.lbs_per_case) : null;
 
-    // Existing adjustments list — shown in CASES (cases = delta / lbs_per_case)
-    // with the computed lbs alongside for sanity-checking.
+    // Existing adjustments — already in cases end-to-end. Show the lbs
+    // equivalent in muted text for sanity-checking.
     var existingHtml = '';
     if (row.adjustments && row.adjustments.length) {
       existingHtml = '<div style="margin-top:10px;border-top:1px solid #e2e8f0;padding-top:10px"><div style="font-size:.72rem;color:#475569;font-weight:700;margin-bottom:6px">EXISTING ADJUSTMENTS TODAY</div>';
@@ -322,13 +318,13 @@
         var sign = a.delta > 0 ? '+' : '';
         var display;
         if (rowLbsPerCase) {
-          var cs = Number((Number(a.delta) / rowLbsPerCase).toFixed(2));
-          display = sign + cs + ' cs <span style="font-weight:400;color:#64748b;font-size:.7rem">(' + sign + fmtLbs(a.delta) + ' lbs)</span>';
+          var lbs = Number(a.delta) * rowLbsPerCase;
+          display = sign + Number(a.delta).toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' cs <span style="font-weight:400;color:#64748b;font-size:.7rem">(' + sign + fmtLbs(lbs) + ' lbs)</span>';
         } else {
-          display = sign + fmtLbs(a.delta) + ' lbs';
+          display = sign + Number(a.delta) + ' cs';
         }
         existingHtml += '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9">'
-          + '<span style="font-weight:700;color:' + color + ';min-width:130px">' + display + '</span>'
+          + '<span style="font-weight:700;color:' + color + ';min-width:160px">' + display + '</span>'
           + '<span style="flex:1;font-size:.76rem;color:#334155">' + esc(a.note || '') + (a.transfer_pair_id ? ' <span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:4px;font-size:.62rem;font-weight:600;margin-left:4px">SWAP</span>' : '') + '</span>'
           + '<button onclick="prDeleteAdjustment(' + a.id + ')" style="' + BTN_D + '">Del</button>'
           + '</div>';
@@ -491,9 +487,10 @@
     var fromLpc = overlay && overlay.dataset.lbsPerCase ? Number(overlay.dataset.lbsPerCase) : null;
 
     if (which === 'simple') {
-      // Correction: cases × lbs_per_case → delta_lbs on the backend.
-      // Fallback: if the SKU has no case size (shouldn't happen post-
-      // migration), treat the input as raw lbs.
+      // Correction: the widget operates in CASES end-to-end, so the number
+      // the user types goes straight through — no lbs_per_case multiplication
+      // (the misnamed "delta_lbs" column stores cases; see api/production.js
+      // ensureTables comment).
       var cases = document.getElementById('pr-adj-cases').value;
       var note = document.getElementById('pr-adj-note').value.trim();
       var err = document.getElementById('pr-adj-err');
@@ -502,9 +499,8 @@
         err.textContent = 'Enter a non-zero number of cases (use negative for subtract).';
         err.style.display = 'block'; return;
       }
-      var deltaLbs = fromLpc ? Number(cases) * fromLpc : Number(cases);
       apiCall('POST', '/api/production?action=save_adjustment', {
-        sku_id: skuId, entry_date: _ps.entryDate, delta_lbs: deltaLbs, note: note || null
+        sku_id: skuId, entry_date: _ps.entryDate, delta_lbs: Number(cases), note: note || null
       }).then(function () {
         document.getElementById('pr-adj-modal').remove();
         toast('Adjustment saved');
@@ -529,15 +525,13 @@
       err.textContent = 'Enter positive case counts on both sides.';
       err.style.display = 'block'; return;
     }
-    if (!fromLpc || !toLpc) {
-      err.textContent = 'Both SKUs need a Lbs/Case value — set one on the SKUs tab.';
-      err.style.display = 'block'; return;
-    }
-    var fromLbs = fromCases * fromLpc;
-    var toLbs = toCases * toLpc;
+    // Swap: cases passed through as-is. Backend stores them in the
+    // (misnamed) delta_lbs columns without multiplication; see the
+    // comment on ensureTables in api/production.js. lbs_per_case is
+    // still used on the modal's balance-check hint for yield context.
     apiCall('POST', '/api/production?action=save_transfer', {
       from_sku_id: skuId, to_sku_id: parseInt(toSku, 10), entry_date: _ps.entryDate,
-      from_lbs: fromLbs, to_lbs: toLbs, note: note || null
+      from_lbs: fromCases, to_lbs: toCases, note: note || null
     }).then(function () {
       document.getElementById('pr-adj-modal').remove();
       toast('Swap saved');
@@ -653,7 +647,8 @@
   function loadSkus() {
     var panel = document.getElementById('widget-content');
     panel.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading SKUs…</div>';
-    apiCall('GET', '/api/production?action=get_skus')
+    var url = '/api/production?action=get_skus' + (_ps.showArchived ? '&showArchived=1' : '');
+    apiCall('GET', url)
       .then(function (r) { _ps.skus = r.skus || []; renderSkus(); })
       .catch(function (err) {
         panel.innerHTML = '<div style="padding:20px;color:#ef4444">Failed: ' + esc(err.message) + '</div>';
@@ -667,11 +662,16 @@
     var canEdit = (typeof userCan === 'function') && userCan('production', 'edit');
     var canDelete = (typeof userCan === 'function') && userCan('production', 'delete');
 
+    var activeCount = _ps.skus.filter(function (s) { return s.active !== false; }).length;
+    var archivedCount = _ps.skus.length - activeCount;
     var html = '<div style="padding:14px;max-width:980px;margin:0 auto">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">'
-      + '<div style="font-weight:700;color:#1a3a6b;font-size:1rem">🗂️ SKU Catalog <span style="font-weight:400;color:#64748b;font-size:.82rem">(' + _ps.skus.length + ' active)</span></div>'
-      + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
-      + (isAdmin ? '<button style="' + BTN_SUB + '" onclick="prSeedSkus()">📥 Seed from Excel</button>' : '')
+      + '<div style="font-weight:700;color:#1a3a6b;font-size:1rem">🗂️ SKU Catalog <span style="font-weight:400;color:#64748b;font-size:.82rem">(' + activeCount + ' active'
+      + (archivedCount ? ' · ' + archivedCount + ' inactive' : '') + ')</span></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+      + '<label style="font-size:.74rem;color:#64748b;display:flex;align-items:center;gap:5px;cursor:pointer">'
+      + '<input type="checkbox"' + (_ps.showArchived ? ' checked' : '') + ' onchange="prToggleArchived(this.checked)"> Show inactive</label>'
+      + (isAdmin ? '<button style="' + BTN_SUB + '" onclick="prResetCatalog()" title="Wipe catalog and reinstall from the 4/23/2026 inventory PDF">📥 Reset from PDF</button>' : '')
       + (canCreate ? '<button style="' + BTN_P + '" onclick="prEditSku(null)">+ Add SKU</button>' : '')
       + '</div></div>';
 
@@ -697,13 +697,19 @@
         + '<th style="padding:6px 10px;text-align:right;color:#475569;width:140px"></th>'
         + '</tr></thead><tbody>';
       poolSkus.forEach(function (s) {
-        html += '<tr><td style="padding:5px 10px;color:#0f172a;font-weight:500">' + esc(s.item_name) + '</td>'
+        var isArchived = s.active === false;
+        var rowStyle = isArchived ? 'opacity:0.55;background:#fafbfc' : '';
+        html += '<tr style="' + rowStyle + '"><td style="padding:5px 10px;color:' + (isArchived ? '#94a3b8' : '#0f172a') + ';font-weight:500">'
+          + esc(s.item_name)
+          + (isArchived ? ' <span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;font-size:.64rem;font-weight:700;margin-left:4px">INACTIVE</span>' : '')
+          + '</td>'
           + '<td style="padding:5px 10px;text-align:right;color:#64748b">' + (s.lbs_per_case || '—') + '</td>'
           + '<td style="padding:5px 10px;color:#64748b;font-family:ui-monospace,monospace;font-size:.72rem">' + esc(s.sku || '—') + '</td>'
           + '<td style="padding:5px 10px;color:#64748b">' + esc(s.category || '—') + '</td>'
           + '<td style="padding:5px 10px;text-align:right">'
           + (canEdit ? '<button style="' + BTN_SUB + ';padding:3px 9px;font-size:.72rem" onclick="prEditSku(' + s.id + ')">Edit</button> ' : '')
-          + (canDelete ? '<button style="' + BTN_D + '" onclick="prArchiveSku(' + s.id + ',\'' + esc(s.item_name).replace(/'/g, '') + '\')">Remove</button>' : '')
+          + (canDelete && !isArchived ? '<button style="' + BTN_D + '" onclick="prArchiveSku(' + s.id + ',\'' + esc(s.item_name).replace(/'/g, '') + '\')">Deactivate</button>' : '')
+          + (canDelete && isArchived ? '<button style="background:#dbeafe;color:#1e40af;padding:3px 9px;border:none;border-radius:5px;font-size:.72rem;font-weight:600;cursor:pointer" onclick="prRestoreSku(' + s.id + ')">Restore</button>' : '')
           + '</td></tr>';
       });
       html += '</tbody></table></div>';
@@ -769,6 +775,32 @@
       .catch(function (err) { toast('⚠️ ' + err.message); });
   }
 
+  // Toggle "Show inactive" — reloads whatever tab is active with the flag.
+  function prToggleArchived(show) {
+    _ps.showArchived = !!show;
+    if (_ps.tab === 'daily') loadDaily();
+    else if (_ps.tab === 'skus') loadSkus();
+  }
+
+  // Admin-only: wipes the catalog + reinstalls SEED_SKUS from the 4/23/2026
+  // PDF with initial balances. Confirm twice because it archives everything.
+  function prResetCatalog() {
+    if (!confirm('Reset the SKU catalog from your 4/23/2026 inventory PDF?\n\nThis will DEACTIVATE every current SKU and install the PDF list with its starting balances (total 14,019 cases). Daily entries you\'ve already recorded stay intact.\n\nSafe to run; existing data is not deleted.')) return;
+    apiCall('POST', '/api/production?action=reset_catalog', {})
+      .then(function (r) {
+        toast('Catalog reset: ' + r.created + ' SKUs installed · ' + r.archived + ' archived.');
+        if (_ps.tab === 'daily') loadDaily();
+        else if (_ps.tab === 'skus') loadSkus();
+      })
+      .catch(function (err) { toast('⚠️ Reset failed: ' + err.message); });
+  }
+
+  function prRestoreSku(id) {
+    apiCall('POST', '/api/production?action=restore_sku', { id: id })
+      .then(function () { toast('Restored'); loadSkus(); })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
   function prSeedSkus() {
     if (!confirm('Seed / refresh SKUs from yield master-2026.xlsx?\n\nThis will also clean up existing SKU names (strip "15#" / "24# CARTON" suffixes) and fill in Lbs/Case values where missing. Safe to run multiple times — your daily entries and adjustments are never touched.')) return;
     apiCall('POST', '/api/production?action=seed_skus', {})
@@ -806,4 +838,7 @@
   window.prSaveSku = prSaveSku;
   window.prArchiveSku = prArchiveSku;
   window.prSeedSkus = prSeedSkus;
+  window.prToggleArchived = prToggleArchived;
+  window.prResetCatalog = prResetCatalog;
+  window.prRestoreSku = prRestoreSku;
 })();

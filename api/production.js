@@ -77,67 +77,89 @@ function standardizeNaming(name) {
   return s;
 }
 
-// Seed data — extracted from yield master-2026.xlsx, filtered to real SKUs.
-// Item names are pre-cleaned (no "15#" / "CARTON" suffixes); case weight is
-// carried on lbs_per_case. Freezer/Ice Pack default to 15# cases per the
-// spreadsheet's stated defaults; explicit values shown for specialty packs.
+// Seed data — matches Cooper's 4/23/2026 "FROZEN PRODUCTION" inventory
+// sheet exactly. Order preserved from the PDF so Daily Entry reads like
+// his working paper. initial_balance_lbs stores CASE counts from the
+// April 23 snapshot (column names say "lbs" but the widget operates in
+// cases throughout — see the comment on ensureTables for why).
+//
+// Column conventions in item names:
+//   - Default (15# case): no prefix/suffix — e.g. "3-5 FILET", "NUGGETS"
+//   - Bulk 24# / small 4# carton: prefix the # — e.g. "24# FILETS", "4# WHOLE"
+//   - Poly bag / specialty packs: size shown at end — e.g. "POLY BAG NUGGETS 10#"
+//   - Special formats like "40# 4OZ PORTION" preserved verbatim from paperwork.
 const SEED_SKUS = [
-  // FREEZER-IQF ────────────────────────────────────────────────────────
-  { pool: 'FREEZER-IQF', sku: '1031011',        item: '3-5 WHOLE',                category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1051011',        item: '5-7 WHOLE',                category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1071011',        item: '7-9 WHOLE',                category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1091011',        item: '9-11 WHOLE',               category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1131011',        item: '13-15 WHOLE',              category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1151011',        item: '15-17 WHOLE',              category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1005041W',       item: 'WHOLE (small pack)',       category: 'WHOLE',     lbs_per_case: 4 },
-  { pool: 'FREEZER-IQF', sku: '',               item: 'WHOLE (bulk carton)',      category: 'WHOLE',     lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '1022011',        item: '2-3 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1022011C',       item: '2-3C FILET',               category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032011',        item: '3-5 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032011S',       item: '3-5 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1019011',        item: 'IQF 4.5-5.5 SPLIT',        category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1024011',        item: 'IQF 4 OZ CATFISH PORTION', category: 'PORTIONS',  lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '',               item: '5-6 / 6-7 DEEP SKIN',      category: 'DEEP SKIN', lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1044011',        item: 'DEEP SKIN',                category: 'DEEP SKIN', lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '',               item: '4 OZ POLYBAG',             category: 'PORTIONS',  lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '',               item: '4OZ PORTION (bulk)',       category: 'PORTIONS',  lbs_per_case: 40 },
-  { pool: 'FREEZER-IQF', sku: '1046011',        item: '4-6 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032031PB2',     item: 'FILETS POLY BAG',          category: 'FILET',     lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '',               item: 'FILETS POLY BAG BC',       category: 'FILET',     lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '1042011',        item: '4-5 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1042011S',       item: '4-5 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1052011',        item: '5-7 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1052011S',       item: '5-6 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1057211S',       item: '5-7 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1062011',        item: '6-7 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1062011S',       item: '6-7 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1072011',        item: '7-9 FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1072011S',       item: '7-9 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1092011',        item: '9-11 FILET',               category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1112011',        item: '11+ FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '',               item: '13+ FILET',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032041/6CTN',   item: 'FILET (bulk carton)',      category: 'FILET',     lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '1032041',        item: 'IQF 3-5 FILET (small)',    category: 'FILET',     lbs_per_case: 4 },
-  { pool: 'FREEZER-IQF', sku: '1005111',        item: 'CATFISH BITES',            category: 'BITES',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1005011',        item: 'GOR STEAKS',               category: 'STEAKS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1005041',        item: 'STEAKS (small)',           category: 'STEAKS',    lbs_per_case: 4 },
-  { pool: 'FREEZER-IQF', sku: '1005011S/6CTN',  item: 'GOR STEAKS (bulk carton)', category: 'STEAKS',    lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '1003031PB2',     item: 'NUGGETS POLY BAG',         category: 'NUGGETS',   lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '1003011',        item: 'NUGGETS',                  category: 'NUGGETS',   lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1003041/6CTN',   item: 'NUGGETS (bulk carton)',    category: 'NUGGETS',   lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '',               item: 'NUGGETS (small)',          category: 'NUGGETS',   lbs_per_case: 4 },
-  { pool: 'FREEZER-IQF', sku: '1005211',        item: 'MISCUTS',                  category: 'MISCUTS',   lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1005041/6CTN',   item: 'MISCUT FILET (bulk)',      category: 'MISCUTS',   lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '1005241',        item: 'MISCUTS (small)',          category: 'MISCUTS',   lbs_per_case: 4 },
-  { pool: 'FREEZER-IQF', sku: '1005231PBT',     item: 'POLY NUGGETS AS',          category: 'NUGGETS',   lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '1005241T/6CTN',  item: 'TENDERS (bulk carton)',    category: 'TENDERS',   lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '1005211T',       item: 'BUFFETS / TENDERS',        category: 'TENDERS',   lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1005241T',       item: 'TENDERS (small)',          category: 'TENDERS',   lbs_per_case: 4 },
-  { pool: 'FREEZER-IQF', sku: '1072011DS',      item: '7-9 DEEP SKINNED',         category: 'DEEP SKIN', lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1005251',        item: 'IRREGULAR FILET',          category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1112011DSS',     item: '11+ DS PREMIUM SPLITS',    category: 'DEEP SKIN', lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1112031CC',      item: 'CATFISH CHIPS',            category: 'CHIPS',     lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '1112031MDS',     item: 'THIN SLICED',              category: 'CHIPS',     lbs_per_case: 10 },
+  // ── WHOLE (15# cases) ────────────────────────────────────────────────
+  { pool: 'FREEZER-IQF', sku: '1031011', item: '3-5 WHOLE',   category: 'WHOLE', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1051011', item: '5-7 WHOLE',   category: 'WHOLE', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1071011', item: '7-9 WHOLE',   category: 'WHOLE', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1091011', item: '9-11 WHOLE',  category: 'WHOLE', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1131011', item: '13-15 WHOLE', category: 'WHOLE', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1151011', item: '15-17 WHOLE', category: 'WHOLE', lbs_per_case: 15, initial_balance: 1 },
+
+  // ── FILET (15# cases) ────────────────────────────────────────────────
+  { pool: 'FREEZER-IQF', sku: '1022011',  item: '2-3 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 134 },
+  { pool: 'FREEZER-IQF', sku: '1022011C', item: '2-3C FILET',  category: 'FILET', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',         item: '3-4 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1032011',  item: '3-5 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 3243 },
+  { pool: 'FREEZER-IQF', sku: '1042011',  item: '4-5 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 89 },
+  { pool: 'FREEZER-IQF', sku: '',         item: '5-6 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1052011',  item: '5-7 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 456 },
+  { pool: 'FREEZER-IQF', sku: '1062011',  item: '6-7 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1072011',  item: '7-9 FILET',   category: 'FILET', lbs_per_case: 15, initial_balance: 470 },
+  { pool: 'FREEZER-IQF', sku: '1092011',  item: '9-11 FILET',  category: 'FILET', lbs_per_case: 15, initial_balance: 22 },
+  { pool: 'FREEZER-IQF', sku: '1112011',  item: '11 + FILET',  category: 'FILET', lbs_per_case: 15, initial_balance: 177 },
+  { pool: 'FREEZER-IQF', sku: '',         item: '13 + FILET',  category: 'FILET', lbs_per_case: 15, initial_balance: 0 },
+
+  // ── IRREGULAR + DEEP SKIN specialty ──────────────────────────────────
+  { pool: 'FREEZER-IQF', sku: '1005251',   item: 'IRREGULAR FILET',      category: 'FILET',     lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1072011DS', item: '7-9 DEEP SKIN',        category: 'DEEP SKIN', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1112011DSS',item: 'DEEP SKIN PREM SPILT', category: 'DEEP SKIN', lbs_per_case: 15, initial_balance: 0 },
+
+  // ── SPLITS + SKIN + MISC ─────────────────────────────────────────────
+  { pool: 'FREEZER-IQF', sku: '1019011',  item: '4.5-5.5 SPLITS', category: 'SPLITS',    lbs_per_case: 15, initial_balance: 473 },
+  { pool: 'FREEZER-IQF', sku: '',         item: '3-4 SPLITS',     category: 'SPLITS',    lbs_per_case: 15, initial_balance: 364 },
+  { pool: 'FREEZER-IQF', sku: '1042011S', item: '4-5 SPLITS',     category: 'SPLITS',    lbs_per_case: 15, initial_balance: 265 },
+  { pool: 'FREEZER-IQF', sku: '1052011S', item: '5-6 SPLITS',     category: 'SPLITS',    lbs_per_case: 15, initial_balance: 83 },
+  { pool: 'FREEZER-IQF', sku: '1062011S', item: '6-7 SPLITS',     category: 'SPLITS',    lbs_per_case: 15, initial_balance: 168 },
+  { pool: 'FREEZER-IQF', sku: '1072011S', item: '7-9 SPLITS',     category: 'SPLITS',    lbs_per_case: 15, initial_balance: 1728 },
+  { pool: 'FREEZER-IQF', sku: '1044011',  item: '6-7 DEEP SKIN',  category: 'DEEP SKIN', lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',         item: 'BUFFET SPLITS',  category: 'SPLITS',    lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1024011',  item: '4 OZ PORTION',   category: 'PORTIONS',  lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',         item: 'DEEP SKINNED',   category: 'DEEP SKIN', lbs_per_case: 15, initial_balance: 5 },
+  { pool: 'FREEZER-IQF', sku: '1005211',  item: 'MISCUTS',        category: 'MISCUTS',   lbs_per_case: 15, initial_balance: 39 },
+  { pool: 'FREEZER-IQF', sku: '1005011',  item: 'GOR STEAKS',     category: 'STEAKS',    lbs_per_case: 15, initial_balance: 86 },
+  { pool: 'FREEZER-IQF', sku: '1005111',  item: 'BITES',          category: 'BITES',     lbs_per_case: 15, initial_balance: 5 },
+  { pool: 'FREEZER-IQF', sku: '1003011',  item: 'NUGGETS',        category: 'NUGGETS',   lbs_per_case: 15, initial_balance: 2086 },
+
+  // ── Bulk 24# / small 4# carton variants ─────────────────────────────
+  { pool: 'FREEZER-IQF', sku: '1005041/6CTN',  item: '24# MISCUTS', category: 'MISCUTS', lbs_per_case: 24, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1005241',       item: '4# MISCUTS',  category: 'MISCUTS', lbs_per_case: 4,  initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1032041/6CTN',  item: '24# FILETS',  category: 'FILET',   lbs_per_case: 24, initial_balance: 19 },
+  { pool: 'FREEZER-IQF', sku: '1032041',       item: '4# FILETS',   category: 'FILET',   lbs_per_case: 4,  initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1003041/6CTN',  item: '24# NUGGETS', category: 'NUGGETS', lbs_per_case: 24, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',              item: '4# NUGGETS',  category: 'NUGGETS', lbs_per_case: 4,  initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1005241T/6CTN', item: '24# TENDERS', category: 'TENDERS', lbs_per_case: 24, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1005241T',      item: '4# TENDERS',  category: 'TENDERS', lbs_per_case: 4,  initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1005011S/6CTN', item: '24# STEAKS',  category: 'STEAKS',  lbs_per_case: 24, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1005041',       item: '4# STEAKS',   category: 'STEAKS',  lbs_per_case: 4,  initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',              item: '24# WHOLE',   category: 'WHOLE',   lbs_per_case: 24, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1005041W',      item: '4# WHOLE',    category: 'WHOLE',   lbs_per_case: 4,  initial_balance: 0 },
+
+  // ── Poly bag / specialty packs (10# / 15# / 40#) ────────────────────
+  { pool: 'FREEZER-IQF', sku: '1046011',    item: '4-6 FILLET 15#',        category: 'FILET',    lbs_per_case: 15, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '1032031PB2', item: 'POLY BAG FILETS 10#',   category: 'FILET',    lbs_per_case: 10, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',           item: 'POLY BAG FILETS BC 10#',category: 'FILET',    lbs_per_case: 10, initial_balance: 150 },
+  { pool: 'FREEZER-IQF', sku: '',           item: 'POLY BAG NUGGETS 10#',  category: 'NUGGETS',  lbs_per_case: 10, initial_balance: 5 },
+  { pool: 'FREEZER-IQF', sku: '1005231PBT', item: 'POLY NUGGETS AS 10#',   category: 'NUGGETS',  lbs_per_case: 10, initial_balance: 282 },
+  { pool: 'FREEZER-IQF', sku: '',           item: 'POLY BAG 4OZ 10#',      category: 'PORTIONS', lbs_per_case: 10, initial_balance: 0 },
+  { pool: 'FREEZER-IQF', sku: '',           item: '40# 4OZ PORTION',       category: 'PORTIONS', lbs_per_case: 40, initial_balance: 68 },
+
+  // ── Flavored products (1# individual / 10# packs) ───────────────────
+  { pool: 'FREEZER-IQF', sku: '', item: 'JALAPENO 1#',  category: 'FLAVORED', lbs_per_case: 1,  initial_balance: 2412 },
+  { pool: 'FREEZER-IQF', sku: '', item: 'REGULAR 1#',   category: 'FLAVORED', lbs_per_case: 1,  initial_balance: 931 },
+  { pool: 'FREEZER-IQF', sku: '', item: 'JALAPENO 10#', category: 'FLAVORED', lbs_per_case: 10, initial_balance: 146 },
+  { pool: 'FREEZER-IQF', sku: '', item: 'REGULAR 10#',  category: 'FLAVORED', lbs_per_case: 10, initial_balance: 112 },
 
   // ICE PACK (all 15-lb cases per the "ALL 15LB." sheet header) ───────
   { pool: 'ICE PACK', sku: '2051011',     item: '5-7 WHOLE',            category: 'WHOLE',    lbs_per_case: 15 },
@@ -227,6 +249,11 @@ async function migrateNamesOnce(sql, companyId) {
 
 async function ensureTables(sql) {
   // SKU catalog. Soft-deleted via active=false so history survives.
+  // NOTE on units: the Production widget stores CASE COUNTS in every
+  // *_lbs column (produced_lbs, shipped_lbs, delta_lbs, initial_balance_lbs).
+  // The column names are kept for back-compat; conceptually everything is
+  // cases. lbs_per_case exists on each SKU so frontend hints can convert
+  // to lbs where it's useful (e.g. yield balance check in swap modal).
   await sql`CREATE TABLE IF NOT EXISTS prod_skus (
     id SERIAL PRIMARY KEY,
     company_id TEXT NOT NULL,
@@ -235,12 +262,17 @@ async function ensureTables(sql) {
     category TEXT,
     pool TEXT NOT NULL,
     lbs_per_case NUMERIC,
+    initial_balance_lbs NUMERIC DEFAULT 0,
     display_order INTEGER DEFAULT 0,
     active BOOLEAN DEFAULT true,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
   )`;
+  // Backfill column for deployments that predate this change.
+  try {
+    await sql`ALTER TABLE prod_skus ADD COLUMN IF NOT EXISTS initial_balance_lbs NUMERIC DEFAULT 0`;
+  } catch (e) { /* already present */ }
   await sql`CREATE INDEX IF NOT EXISTS prod_skus_company_idx
     ON prod_skus(company_id, pool, active)`;
 
@@ -281,22 +313,38 @@ async function ensureTables(sql) {
 
 // Compute opening balance for each SKU as of the START of a given date.
 // Returns Map<sku_id, balance>. Used for BEGIN column.
+//
+// Balance sources, summed:
+//   1. initial_balance_lbs on the SKU itself — starting inventory from when
+//      the SKU was seeded (e.g. the 4/23/2026 snapshot from Cooper's PDF)
+//   2. sum of (produced - shipped) on every prior day
+//   3. sum of adjustments on every prior day
 async function computeBalancesAt(sql, companyId, asOfDate) {
-  // Sum produced - shipped for every prior day, plus sum of prior adjustments.
+  const bal = new Map();
+  // Initial balances per SKU (seeded starting inventory)
+  const initRows = await sql`
+    SELECT id, COALESCE(initial_balance_lbs, 0)::float AS bal
+    FROM prod_skus
+    WHERE company_id = ${companyId}
+  `;
+  initRows.forEach(r => bal.set(r.id, Number(r.bal)));
+
+  // Daily entries before the as-of date
   const entrySum = await sql`
     SELECT sku_id, COALESCE(SUM(produced_lbs - shipped_lbs), 0)::float AS bal
     FROM prod_daily_entries
     WHERE company_id = ${companyId} AND entry_date < ${asOfDate}::date
     GROUP BY sku_id
   `;
+  entrySum.forEach(r => bal.set(r.sku_id, (bal.get(r.sku_id) || 0) + Number(r.bal)));
+
+  // Adjustments before the as-of date
   const adjSum = await sql`
     SELECT sku_id, COALESCE(SUM(delta_lbs), 0)::float AS bal
     FROM prod_adjustments
     WHERE company_id = ${companyId} AND entry_date < ${asOfDate}::date
     GROUP BY sku_id
   `;
-  const bal = new Map();
-  entrySum.forEach(r => bal.set(r.sku_id, (bal.get(r.sku_id) || 0) + Number(r.bal)));
   adjSum.forEach(r => bal.set(r.sku_id, (bal.get(r.sku_id) || 0) + Number(r.bal)));
   return bal;
 }
@@ -345,14 +393,23 @@ module.exports = async function handler(req, res) {
     // ── GET get_skus ───────────────────────────────────────────────────
     if (req.method === 'GET' && action === 'get_skus') {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
-      // Auto-migrate dirty names / missing case sizes on first hit per container
-      await migrateNamesOnce(sql, companyId);
-      const rows = await sql`
-        SELECT id, sku, item_name, category, pool, lbs_per_case, display_order, notes
-        FROM prod_skus
-        WHERE company_id = ${companyId} AND active = true
-        ORDER BY pool, display_order, item_name
-      `;
+      // Filter: "showArchived=1" returns archived items too (SKUs tab toggle).
+      const showArchived = url.searchParams.get('showArchived') === '1';
+      const rows = showArchived
+        ? await sql`
+            SELECT id, sku, item_name, category, pool, lbs_per_case, initial_balance_lbs,
+                   display_order, notes, active
+            FROM prod_skus
+            WHERE company_id = ${companyId}
+            ORDER BY active DESC, pool, display_order, item_name
+          `
+        : await sql`
+            SELECT id, sku, item_name, category, pool, lbs_per_case, initial_balance_lbs,
+                   display_order, notes, active
+            FROM prod_skus
+            WHERE company_id = ${companyId} AND active = true
+            ORDER BY pool, display_order, item_name
+          `;
       return res.json({ ok: true, skus: rows });
     }
 
@@ -363,15 +420,23 @@ module.exports = async function handler(req, res) {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const entryDate = (url.searchParams.get('entry_date') || '').trim();
       if (!entryDate) return res.status(400).json({ error: 'entry_date required (YYYY-MM-DD)' });
-      // Auto-migrate dirty names / missing case sizes on first hit per container
-      await migrateNamesOnce(sql, companyId);
+      const showArchived = url.searchParams.get('showArchived') === '1';
 
-      const skus = await sql`
-        SELECT id, sku, item_name, category, pool, lbs_per_case, display_order
-        FROM prod_skus
-        WHERE company_id = ${companyId} AND active = true
-        ORDER BY pool, display_order, item_name
-      `;
+      const skus = showArchived
+        ? await sql`
+          SELECT id, sku, item_name, category, pool, lbs_per_case, initial_balance_lbs,
+                 display_order, active
+          FROM prod_skus
+          WHERE company_id = ${companyId}
+          ORDER BY active DESC, pool, display_order, item_name
+        `
+        : await sql`
+          SELECT id, sku, item_name, category, pool, lbs_per_case, initial_balance_lbs,
+                 display_order, active
+          FROM prod_skus
+          WHERE company_id = ${companyId} AND active = true
+          ORDER BY pool, display_order, item_name
+        `;
 
       const entries = await sql`
         SELECT sku_id, produced_lbs::float, shipped_lbs::float, notes
@@ -414,6 +479,8 @@ module.exports = async function handler(req, res) {
           category: s.category,
           pool: s.pool,
           lbs_per_case: s.lbs_per_case != null ? Number(s.lbs_per_case) : null,
+          initial_balance_lbs: s.initial_balance_lbs != null ? Number(s.initial_balance_lbs) : 0,
+          active: s.active !== false,
           display_order: s.display_order,
           begin_lbs: Number(begin.toFixed(2)),
           lw_lbs: Number(lw.toFixed(2)),
@@ -437,7 +504,8 @@ module.exports = async function handler(req, res) {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const weekStart = (url.searchParams.get('week_start') || '').trim();
       if (!weekStart) return res.status(400).json({ error: 'week_start required (Monday YYYY-MM-DD)' });
-      await migrateNamesOnce(sql, companyId);
+      // Auto-migration removed: it conflicted with the "24# MISCUTS" /
+      // "4# FILETS" naming convention seeded from Cooper's 4/23/2026 PDF.
 
       // 8-day range: Mon of this week through Tue of next week (Mon2 + Tue2)
       const days = [];
@@ -675,6 +743,74 @@ module.exports = async function handler(req, res) {
         resource_type: 'sku', resource_id: id
       });
       return res.json({ ok: true });
+    }
+
+    // ── POST restore_sku ───────────────────────────────────────────────
+    // Undo an archive — the SKU shows up in Daily Entry again.
+    if (req.method === 'POST' && action === 'restore_sku') {
+      if (!perms.canPerform(user, 'production', 'edit')) return perms.deny(res, user, 'production', 'edit');
+      const id = (req.body && req.body.id) || null;
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sql`UPDATE prod_skus SET active = true, updated_at = NOW() WHERE id = ${id} AND company_id = ${companyId}`;
+      await logAudit(sql, req, user, {
+        action: 'production.restore_sku',
+        resource_type: 'sku', resource_id: id
+      });
+      return res.json({ ok: true });
+    }
+
+    // ── POST reset_catalog ─────────────────────────────────────────────
+    // Admin-only. Wipes the SKU catalog and reinstalls the SEED_SKUS list
+    // with initial balances from Cooper's 4/23/2026 PDF.
+    //
+    // Safe behavior: soft-archives every existing SKU (active=false,
+    // display_order=9999 so they sink if unarchived later). Historical
+    // daily entries stay linked to their original SKU IDs and are never
+    // touched. Then inserts the fresh catalog.
+    //
+    // Use this after deploying a new SEED_SKUS layout/order. Running it
+    // twice is safe but rebuilds the catalog each time.
+    if (req.method === 'POST' && action === 'reset_catalog') {
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+      // 1. Archive everything currently active
+      const archResult = await sql`
+        UPDATE prod_skus
+        SET active = false, display_order = 9999, updated_at = NOW()
+        WHERE company_id = ${companyId} AND active = true
+        RETURNING id
+      `;
+      const archivedCount = archResult.length;
+
+      // 2. Insert the full seed in declared order
+      let created = 0;
+      let order = 0;
+      for (const s of SEED_SKUS) {
+        order++;
+        await sql`
+          INSERT INTO prod_skus (
+            company_id, sku, item_name, category, pool, lbs_per_case,
+            initial_balance_lbs, display_order, active
+          ) VALUES (
+            ${companyId}, ${s.sku || ''}, ${s.item}, ${s.category}, ${s.pool},
+            ${s.lbs_per_case}, ${s.initial_balance || 0}, ${order}, true
+          )
+        `;
+        created++;
+      }
+
+      await logAudit(sql, req, user, {
+        action: 'production.reset_catalog',
+        resource_type: 'sku',
+        details: { archived_count: archivedCount, created_count: created, total_seed: SEED_SKUS.length }
+      });
+
+      return res.json({
+        ok: true,
+        archived: archivedCount,
+        created,
+        total_seed: SEED_SKUS.length
+      });
     }
 
     // ── POST seed_skus ─────────────────────────────────────────────────
