@@ -17,6 +17,9 @@ function saveSession() {
 function clearSession() {
   localStorage.removeItem('potp_v2_session');
   authToken = null; currentUser = null; currentCompany = null;
+  // Stop the global alert poller so a signed-out browser doesn't keep
+  // hitting the API and flashing the banner.
+  if (typeof globalAlertsStop === 'function') globalAlertsStop();
 }
 
 function selectCompany(co) {
@@ -53,6 +56,9 @@ async function doLogin() {
     } else {
       buildDash(); showScreen('screen-dash');
     }
+    // Start plant-wide alert polling after any successful auth so the
+    // banner surfaces active contamination events immediately.
+    if (typeof globalAlertsStart === 'function') globalAlertsStart();
   } catch(e) {
     errEl.textContent = 'Incorrect username or password.';
     errEl.style.display = 'block';

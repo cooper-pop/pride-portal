@@ -28,7 +28,14 @@ const { logAudit } = require('./_audit');
 
 const VALID_GRADES = new Set([
   'off_5','off_4','off_3','off_2','off_1',
-  'good_resample_1','good_resample_2','good_ready','truck_sample'
+  'good_resample_1','good_resample_2','good_ready',
+  // Truck sample (taken at delivery, after the fish leave the farm):
+  //   truck_sample_pass — all clear, blue pill shows 14 days then auto-clears
+  //   truck_sample_fail — CONTAMINATION EVENT: raises the plant-wide alert
+  //                       banner. Stays active until a manager dismisses.
+  //   truck_sample      — legacy label from before pass/fail split; treated
+  //                       as pass for historical data.
+  'truck_sample_pass','truck_sample_fail','truck_sample'
 ]);
 
 // Resolves whose flavor data a given company reads.
@@ -121,6 +128,17 @@ async function ensureTables(sql) {
   )`;
   await sql`CREATE INDEX IF NOT EXISTS idx_flv_samples_pond ON flv_samples(pond_id, sample_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_flv_samples_co_date ON flv_samples(company_id, sample_date DESC)`;
+
+  // Alert resolution columns — only used for truck_sample_fail events. When
+  // a fail is dismissed (acknowledged by a manager), we stamp who/when/why.
+  // An "active alert" = a truck_sample_fail sample with resolved_at IS NULL.
+  try {
+    await sql`ALTER TABLE flv_samples ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ`;
+    await sql`ALTER TABLE flv_samples ADD COLUMN IF NOT EXISTS resolved_by TEXT`;
+    await sql`ALTER TABLE flv_samples ADD COLUMN IF NOT EXISTS resolved_reason TEXT`;
+  } catch (e) { /* already present */ }
+  await sql`CREATE INDEX IF NOT EXISTS idx_flv_samples_active_alerts
+    ON flv_samples(company_id, grade) WHERE grade = 'truck_sample_fail' AND resolved_at IS NULL`;
 }
 
 module.exports = async function handler(req, res) {
@@ -198,6 +216,75 @@ module.exports = async function handler(req, res) {
     }
 
     // ─── READ ────────────────────────────────────────────────────────────────
+    // ── GET get_active_alerts ────────────────────────────────────────────
+    // Returns unresolved truck_sample_fail events (denormalized with farmer /
+    // pond group / pond names so the banner can render without extra lookups).
+    // Company-scoped via resolveFlavorScope — linked viewers see their parent's
+    // alerts, which is what we want (BFN should see when their own loads fail).
+    // Any authenticated user with flavor view perms can poll; dismiss is
+    // manager+ only.
+    if (action === 'get_active_alerts') {
+      const alerts = await sql`
+        SELECT s.id, s.pond_id, s.sample_date, s.grade, s.sampled_by,
+               s.notes, s.created_at,
+               p.number AS pond_number,
+               g.name   AS pond_group_name,
+               f.id     AS farmer_id,
+               f.name   AS farmer_name
+        FROM flv_samples s
+        JOIN flv_ponds p       ON p.id = s.pond_id
+        JOIN flv_pond_groups g ON g.id = p.pond_group_id
+        JOIN flv_farmers f     ON f.id = g.farmer_id
+        WHERE s.company_id = ${effectiveCompanyId}
+          AND s.grade = 'truck_sample_fail'
+          AND s.resolved_at IS NULL
+          ${farmerFilter ? sql`AND f.id = ${farmerFilter}` : sql``}
+        ORDER BY s.sample_date DESC, s.created_at DESC
+      `;
+      return res.json({ ok: true, alerts });
+    }
+
+    // ── POST dismiss_alert ───────────────────────────────────────────────
+    // Manager+ acknowledges a truck_sample_fail. Requires a reason (free
+    // text — future: dropdown with Contained / Destroyed / Other). Audited.
+    // Idempotent: dismissing an already-dismissed alert returns ok without
+    // clobbering the prior resolution record.
+    if (action === 'dismiss_alert') {
+      if (scope.readonly) {
+        return res.status(403).json({ error: 'Read-only viewers cannot dismiss alerts' });
+      }
+      if (!perms.canPerform(user, 'flavor', 'edit')) {
+        return perms.deny(res, user, 'flavor', 'edit');
+      }
+      const sampleId = body.sample_id;
+      const reason = String(body.reason || '').trim();
+      if (!sampleId) return res.status(400).json({ error: 'sample_id required' });
+      if (!reason) return res.status(400).json({ error: 'reason required (what action was taken?)' });
+      const who = user.full_name || user.username || ('user#' + user.user_id);
+
+      const [updated] = await sql`
+        UPDATE flv_samples
+        SET resolved_at = NOW(), resolved_by = ${who}, resolved_reason = ${reason},
+            updated_at = NOW()
+        WHERE id = ${sampleId}
+          AND company_id = ${effectiveCompanyId}
+          AND grade = 'truck_sample_fail'
+          AND resolved_at IS NULL
+        RETURNING id, resolved_at, resolved_by, resolved_reason
+      `;
+      if (!updated) {
+        // Already dismissed (or doesn't exist). Don't error — the banner
+        // just refreshes and the alert disappears from its list.
+        return res.json({ ok: true, already_resolved: true });
+      }
+      await logAudit(sql, req, user, {
+        action: 'flavor.dismiss_alert',
+        resource_type: 'flv_sample', resource_id: sampleId,
+        details: { reason: reason, resolved_by: who }
+      });
+      return res.json({ ok: true, sample: updated });
+    }
+
     if (action === 'get_state') {
       // Everything the dashboard needs in one shot. Samples capped at 120 days
       // back — plenty to derive current status + window for any active pond.

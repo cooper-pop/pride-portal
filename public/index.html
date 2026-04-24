@@ -155,7 +155,7 @@
 <div id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="/js/utils.js?v=1777569000000"></script>
-<script src="/js/auth.js?v=1777569000000"></script>
+<script src="/js/auth.js?v=1777870000000"></script>
 <script src="/js/dashboard.js?v=1777569000000"></script>
 <script src="/js/yield.js?v=1777569000000"></script>
 <script src="/js/injector.js?v=1777569000000"></script>
@@ -165,6 +165,7 @@
 <script src="/js/audit.js?v=1777569000000"></script>
 <script src="/js/todo.js?v=1777569000000"></script>
   <script src="/js/print.js?v=1777569000000"></script>
+<script src="/js/alerts.js?v=1777870000"></script>
 <script>
 (function() {
   // Show company selection immediately as default
@@ -177,11 +178,14 @@
     } else {
       buildDash(); showScreen('screen-dash');
     }
+    // Kick off plant-wide alert polling immediately on session restore —
+    // a browser reload shouldn't miss an active truck_sample_fail.
+    if (typeof globalAlertsStart === 'function') globalAlertsStart();
   }
 })();
 </script>
 <script src="/js/parts.js?v=1777569000"></script>
-<script src="/js/flavor.js?v=1777860000"></script>
+<script src="/js/flavor.js?v=1777870000"></script>
 <script src="/js/bids.js?v=1777569000"></script>
 <script src="/js/fish-schedule.js?v=1777850000"></script>
 <script src="/js/production.js?v=1777569000"></script>

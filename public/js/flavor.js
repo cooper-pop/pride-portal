@@ -24,6 +24,12 @@ var FLAVOR_GRADES = [
   { key:'good_resample_1',  label:'Good — Resample 1st Check',  short:'Good R1',       bucket:'good', color:'#065f46', bg:'#d1fae5' },
   { key:'good_resample_2',  label:'Good — Resample 2nd Check',  short:'Good R2',       bucket:'good', color:'#065f46', bg:'#d1fae5' },
   { key:'good_ready',       label:'Good — Ready to Harvest',    short:'READY',         bucket:'ready',color:'#166534', bg:'#dcfce7' },
+  // Truck sample split into pass / fail. Legacy 'truck_sample' rows are
+  // treated as pass (existing data was only logged when delivery went fine).
+  //   pass  — blue pill, clears after 14 days so the pond resets
+  //   fail  — RED pill + plant-wide banner alert until a manager dismisses
+  { key:'truck_sample_pass',label:'Truck Sample ✓ Pass',        short:'Truck ✓',       bucket:'delivered', color:'#1e40af', bg:'#dbeafe' },
+  { key:'truck_sample_fail',label:'Truck Sample ✗ FAIL',        short:'TRUCK FAIL',    bucket:'truck_fail',color:'#fff',    bg:'#991b1b' },
   { key:'truck_sample',     label:'Truck Sample (delivery)',    short:'Truck',         bucket:'delivered', color:'#1e40af', bg:'#dbeafe' }
 ];
 function flavorGradeMeta(key){ return FLAVOR_GRADES.find(function(g){return g.key===key;}) || null; }
@@ -140,8 +146,35 @@ function derivePondStatus(pondId){
       days_since_sample:daysBetween(latest.sample_date, todayStr())
     };
   }
+  if(meta.bucket === 'truck_fail') {
+    // Contamination event — stays in this state until a manager dismisses it
+    // (resolved_at is set server-side) or a new sample is logged for the pond
+    // (which would supersede this as `latest`). We don't expire truck_fail
+    // the way we expire pass — the problem has to be explicitly resolved.
+    return {
+      state:'truck_fail',
+      grade:latest.grade,
+      meta:meta,
+      latest:latest,
+      resolved:!!latest.resolved_at,
+      days_since_sample:daysBetween(latest.sample_date, todayStr())
+    };
+  }
   if(meta.bucket === 'delivered') {
-    return { state:'delivered', grade:latest.grade, meta:meta, latest:latest };
+    // Truck sample (pass). Blue pill shows for 14 days then clears so the
+    // pond pill returns to blank and a fresh sampling cycle can start.
+    var ageDays = daysBetween(latest.sample_date, todayStr());
+    if (ageDays > WINDOW_DAYS) {
+      return { state:'no_sample' };
+    }
+    return {
+      state:'delivered',
+      grade:latest.grade,
+      meta:meta,
+      latest:latest,
+      days_since_sample:ageDays,
+      days_left:WINDOW_DAYS - ageDays
+    };
   }
   // Good family — anchor the 14-day window on the MOST RECENT Good/Ready sample
   // (latest.sample_date, since latest is already guaranteed Good here by the
@@ -225,6 +258,7 @@ function flavorRenderDashboard(){
     return (r.st.state==='ready' || r.st.state==='in_resample') && r.st.expired;
   });
   var off = statuses.filter(function(r){ return r.st.state==='off'; });
+  var truckFail = statuses.filter(function(r){ return r.st.state==='truck_fail'; });
 
   ready.sort(function(a,b){ return (a.st.days_left||0) - (b.st.days_left||0); });
   inResample.sort(function(a,b){ return (a.st.days_left||0) - (b.st.days_left||0); });
@@ -262,6 +296,11 @@ function flavorRenderDashboard(){
     return;
   }
 
+  // Truck-fail ponds first — they're a contamination event that needs
+  // immediate action. Section stays hidden when the list is empty.
+  if (truckFail.length > 0) {
+    html += flavorRenderSectionWithPills('🚨 TRUCK SAMPLE FAIL — CONTAIN FISH IMMEDIATELY', '#991b1b', truckFail, 'truck_fail', '');
+  }
   html += flavorRenderSectionWithPills('✅ READY TO HARVEST', '#166534', ready, 'ready', 'No ponds are currently ready to harvest.');
   html += flavorRenderSectionWithPills('🟡 GOOD — IN RESAMPLE PROCESS', '#92400e', inResample, 'resample', 'No ponds in resample.');
   html += flavorRenderSectionWithPills('🔴 OFF PONDS (closest-to-good first)', '#991b1b', off, 'off', 'No ponds are currently off.');
@@ -353,6 +392,15 @@ function flavorDashPill(row, kind){
     else { cellBg = '#fecaca'; cellColor = '#7f1d1d'; }
     extra = '<span style="font-size:.72rem;font-weight:700;opacity:.85">'+(st.meta?st.meta.short:st.grade)+'</span>';
     tooltip = (st.meta ? st.meta.label : '') + ' · sampled ' + (st.latest ? st.latest.sample_date : '') + ' (' + (st.days_since_sample||0) + ' day' + (st.days_since_sample===1?'':'s') + ' ago)';
+  } else if(kind === 'truck_fail'){
+    // High-contrast red with the CSS pulse animation class so the pill
+    // itself draws attention while the global banner handles the broader
+    // alert. Click takes the user into the pond history to see details /
+    // schedule the follow-up response.
+    cellBg = '#991b1b'; cellColor = '#fff';
+    accent = '⚠ ';
+    extra = '<span style="font-size:.72rem;font-weight:700;opacity:.95">FAIL</span>';
+    tooltip = 'Truck sample FAILED · ' + (st.latest ? st.latest.sample_date : '') + ' — contain immediately';
   }
   return '<span style="background:'+cellBg+';color:'+cellColor+';padding:10px 16px;border-radius:10px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:10px;min-width:120px;min-height:44px;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer;transition:transform .08s ease,box-shadow .08s ease"'
     + ' title="'+flavorEsc(tooltip)+' — click for full history"'
@@ -390,9 +438,14 @@ function flavorRenderLogForm(){
     return '<option value="'+flavorEsc(f.id)+'"'+(f.id===prefillFarmerId?' selected':'')+'>'+flavorEsc(f.name)+'</option>';
   }).join('');
 
-  var gradeOpts = '<option value="">— Select Grade —</option>' + FLAVOR_GRADES.map(function(g){
-    return '<option value="'+flavorEsc(g.key)+'">'+flavorEsc(g.label)+'</option>';
-  }).join('');
+  // Hide the legacy 'truck_sample' entry from the dropdown (it's kept in
+  // FLAVOR_GRADES so historical data renders correctly, but new samples
+  // should pick pass or fail explicitly).
+  var gradeOpts = '<option value="">— Select Grade —</option>' + FLAVOR_GRADES
+    .filter(function(g){ return g.key !== 'truck_sample'; })
+    .map(function(g){
+      return '<option value="'+flavorEsc(g.key)+'">'+flavorEsc(g.label)+'</option>';
+    }).join('');
 
   var html = '<div style="padding:14px;max-width:560px;margin:0 auto">'
     + '<div style="font-weight:700;font-size:.95rem;margin-bottom:10px">Log a flavor sample</div>'
@@ -550,7 +603,15 @@ function flavorRenderManage(){
             tooltip = (st.meta ? st.meta.label : 'Off') + ' · ' + (st.days_since_sample||0) + 'd ago';
           } else if(st.state === 'delivered'){
             cellBg = '#dbeafe'; cellColor = '#1e40af';
-            tooltip = 'Truck Sample · ' + (st.latest ? st.latest.sample_date : '');
+            tooltip = 'Truck Sample ✓ Pass · ' + (st.latest ? st.latest.sample_date : '')
+              + (st.days_left != null ? ' · auto-clears in ' + st.days_left + 'd' : '');
+          } else if(st.state === 'truck_fail'){
+            // High-contrast red pill with warning. Visible at a glance from
+            // across the floor. Actual plant-wide banner lives on the global
+            // alert bar (see public/js/alerts.js).
+            cellBg = '#991b1b'; cellColor = '#fff';
+            accent = '⚠ ';
+            tooltip = 'TRUCK SAMPLE FAIL · ' + (st.latest ? st.latest.sample_date : '') + ' · contain immediately';
           }
           // Pill: rounded, status-colored. Click the pill itself to quick-log a sample.
           // In manage mode the ✎ / × buttons appear; otherwise they're hidden.
