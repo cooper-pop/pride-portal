@@ -1,23 +1,57 @@
-// alerts.js — Plant-wide alert banner
+// alerts.js — Plant-wide emergency alert system
 //
 // Currently surfaces one class of alert: truck_sample_fail events on any
 // flavor pond. These are contamination events ("the worst problem that
-// could happen to us") so the banner is red, pulsing, and sits above every
-// widget with z-index 10000 so you can't miss it on any screen.
+// could happen to us") so we go heavy:
+//
+//   1. PERSISTENT BANNER at the top of every screen (z-index 10000)
+//   2. FULL-SCREEN EMERGENCY MODAL the first time each user's session
+//      sees a new alert — forces a "Seen" click before continuing
+//   3. AUDIO PING so people notice even if their eyes are on the scale,
+//      not the monitor
+//
+// Two separate dismissal concepts:
+//   - "Seen" (per-user, per-session) — you've acknowledged the modal;
+//     won't pop again unless a NEW alert appears. Stored in localStorage.
+//   - "Dismissed" (plant-wide, manager-only) — the underlying fail is
+//     resolved; banner clears for everyone. Stored server-side via
+//     /api/flavor?action=dismiss_alert.
 //
 // Flow:
 //   - Polls /api/flavor?action=get_active_alerts every ALERT_POLL_MS
-//   - Renders the banner only when there's at least one unresolved fail
-//   - View button → opens the Flavor widget (dashboard tab)
-//   - Acknowledge button (manager+) → modal → POST dismiss_alert
-//
-// The backend enforces who can dismiss; the frontend only hides the button
-// for supervisors to keep the UX clean.
+//   - New alert ID detected → emergency modal + audio ping
+//   - Banner stays up until manager dismisses
+//   - "View" jumps into the Flavor widget
 
 (function () {
-  var ALERT_POLL_MS = 60000; // 1 minute — fast enough for "contain asap" flow
+  var ALERT_POLL_MS = 15000; // 15s — contamination events need to reach
+                             // other users' screens fast. Payload is tiny.
+  var SEEN_STORAGE_KEY = 'potp_seen_alert_ids';
   var _timer = null;
   var _lastAlerts = [];      // cache so re-render doesn't flicker
+  var _inModal = false;      // suppress duplicate modals when polling overlaps
+
+  // Per-user "I've seen it" state. We only fire the emergency modal for
+  // alert IDs not in this set. Stored in localStorage so a refresh doesn't
+  // re-fire the modal for alerts the user already saw.
+  function getSeenIds() {
+    try {
+      var raw = localStorage.getItem(SEEN_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function markSeen(ids) {
+    try {
+      var seen = getSeenIds();
+      var set = {};
+      seen.forEach(function (id) { set[id] = true; });
+      ids.forEach(function (id) { set[id] = true; });
+      // Cap size so localStorage doesn't grow unbounded — 500 is plenty,
+      // alerts roll over on resolution anyway
+      var merged = Object.keys(set).slice(-500);
+      localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(merged));
+    } catch (e) {}
+  }
 
   // Initialize banner DOM lazily the first time we render. Keeps index.html
   // thin and decoupled from this module.
@@ -109,6 +143,18 @@
       var h = bar.offsetHeight;
       document.body.style.paddingTop = h + 'px';
     });
+
+    // Fire the emergency modal for any alerts this user's session hasn't
+    // seen yet. We collect them all into one modal so a user landing on a
+    // screen with 3 unseen fails gets one big "3 emergencies" card, not 3
+    // stacked modals.
+    var seen = getSeenIds();
+    var seenSet = {};
+    seen.forEach(function (id) { seenSet[id] = true; });
+    var unseen = alerts.filter(function (a) { return !seenSet[a.id]; });
+    if (unseen.length > 0 && !_inModal) {
+      openEmergencyModal(unseen);
+    }
   }
 
   function check() {
@@ -141,6 +187,107 @@
     var bar = document.getElementById('global-alert-banner');
     if (bar) bar.style.display = 'none';
     document.body.style.paddingTop = '';
+  }
+
+  // Emergency modal — pops once per user-session per alert ID. Blocks the
+  // whole UI with a red card until the user clicks "I've seen it". That's
+  // distinct from the manager dismissal — this only closes the modal and
+  // records the ID in localStorage so we don't nag. The banner stays up
+  // until a manager actually resolves the underlying fail.
+  //
+  // Plays a 3-beep audio ping. Browsers may block autoplay if the user
+  // hasn't interacted with the page yet; if so, the visual modal still
+  // fires. After any click anywhere, subsequent pings will work.
+  function openEmergencyModal(unseenAlerts) {
+    if (_inModal) return;
+    _inModal = true;
+    // Kick off the audio first — best-effort; catches autoplay blocks silently
+    playAlertBeeps();
+
+    var existing = document.getElementById('gab-emergency-modal');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'gab-emergency-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:10100;display:flex;align-items:center;justify-content:center;padding:20px;animation:alertFadeIn .2s ease-out';
+
+    var listHtml = unseenAlerts.map(function (a) {
+      var dateStr = a.sample_date ? String(a.sample_date).split('T')[0] : '';
+      return '<div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:12px 14px;margin-bottom:10px;text-align:left">'
+        + '<div style="font-weight:700;font-size:1rem">' + escHtml(a.farmer_name) + ' › ' + escHtml(a.pond_group_name) + ' › pond ' + escHtml(a.pond_number) + '</div>'
+        + '<div style="font-size:.82rem;opacity:.9;margin-top:4px">Sampled <strong>' + escHtml(dateStr) + '</strong>'
+        + (a.sampled_by ? ' by <strong>' + escHtml(a.sampled_by) + '</strong>' : '') + '</div>'
+        + (a.notes ? '<div style="font-size:.8rem;font-style:italic;margin-top:6px;opacity:.85">"' + escHtml(a.notes) + '"</div>' : '')
+        + '</div>';
+    }).join('');
+
+    var headline = unseenAlerts.length === 1
+      ? '🚨 EMERGENCY ALERT'
+      : '🚨 ' + unseenAlerts.length + ' EMERGENCY ALERTS';
+    var subline = unseenAlerts.length === 1
+      ? 'A truck sample has FAILED. Contain the fish immediately.'
+      : unseenAlerts.length + ' truck samples have FAILED. Contain the fish immediately.';
+
+    overlay.innerHTML = ''
+      + '<div style="background:linear-gradient(135deg,#991b1b 0%,#7f1d1d 100%);color:#fff;border-radius:14px;padding:28px 28px 22px;max-width:540px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 2px #fff inset,0 0 0 6px #991b1b inset;text-align:center;animation:alertShake .6s ease-in-out">'
+      + '  <div style="font-size:2.4rem;margin-bottom:6px;animation:alertPulse 1s ease-in-out infinite">🚨</div>'
+      + '  <div style="font-size:1.4rem;font-weight:800;letter-spacing:.06em;margin-bottom:8px">' + headline + '</div>'
+      + '  <div style="font-size:.95rem;opacity:.95;margin-bottom:18px">' + escHtml(subline) + '</div>'
+      + '  <div style="max-height:260px;overflow-y:auto;margin-bottom:16px">' + listHtml + '</div>'
+      + '  <button id="gab-em-seen" style="background:#fff;color:#991b1b;border:none;border-radius:10px;padding:14px 28px;font-size:1rem;font-weight:800;cursor:pointer;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.3);width:100%">✓ I\'ve Seen It</button>'
+      + '  <div style="font-size:.72rem;opacity:.75;margin-top:10px">Banner at the top stays until a manager acknowledges. This confirms you\'re aware.</div>'
+      + '</div>';
+
+    document.body.appendChild(overlay);
+
+    // Inject the emergency modal animations if not already present
+    if (!document.getElementById('alert-emergency-style')) {
+      var st = document.createElement('style');
+      st.id = 'alert-emergency-style';
+      st.textContent = ''
+        + '@keyframes alertFadeIn { from { opacity:0 } to { opacity:1 } }'
+        + '@keyframes alertShake {'
+        + '  0%,100% { transform: translateX(0) }'
+        + '  10%,30%,50%,70%,90% { transform: translateX(-6px) }'
+        + '  20%,40%,60%,80% { transform: translateX(6px) }'
+        + '}';
+      document.head.appendChild(st);
+    }
+
+    document.getElementById('gab-em-seen').onclick = function () {
+      markSeen(unseenAlerts.map(function (a) { return a.id; }));
+      overlay.remove();
+      _inModal = false;
+    };
+  }
+
+  // Web Audio API beep — 3 short pulses at alternating pitches. No audio
+  // file needed; the browser synthesizes it. Silently no-ops when autoplay
+  // is blocked or AudioContext isn't available.
+  function playAlertBeeps() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ctx = new AC();
+      // iOS Safari requires resume() after a user gesture — this returns a
+      // promise we don't await; if it rejects, the beeps silently skip.
+      if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) {} }
+      var now = ctx.currentTime;
+      var beep = function (startAt, freq, duration) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, startAt);
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(startAt); osc.stop(startAt + duration + 0.05);
+      };
+      beep(now,       1000, 0.22);
+      beep(now + 0.3,  800, 0.22);
+      beep(now + 0.6, 1200, 0.35);
+    } catch (e) { /* no audio, oh well — visual still fires */ }
   }
 
   // Ack modal — dismisses a single alert with a required reason. If there
