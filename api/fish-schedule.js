@@ -122,6 +122,89 @@ async function ensureTables(sql) {
     ON live_haul_loads(farmer_id)`;
   await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_delivery_idx
     ON live_haul_loads(delivery_id)`;
+
+  // ── Fish Payable (invoice) — per-band prices + invoice number ─────────
+  // Matches the yield-master FISH PAYABLE TOTAL sheet exactly:
+  //   4–5.99 / 6–7.99 / 8+ are directly entered in pounds.
+  //   "Net" band on the invoice = 0–4 remainder = net - (4-5.99 + 6-7.99 + 8+).
+  //   Each band has its own $/lb price; Amount = Σ(band_lbs × band_price).
+  //
+  // Invoice numbers follow Cooper's convention: M(no leading zero) + DD +
+  // YY + NN (seq per day, counts across all farmers in arrival order).
+  // Example: first load on 4/24/2026 → "4242601".
+  try {
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS invoice_number TEXT`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_4_6_per_lb NUMERIC`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_6_8_per_lb NUMERIC`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_8_plus_per_lb NUMERIC`;
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS price_0_4_per_lb NUMERIC`;
+  } catch (e) { /* already present */ }
+  await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_invoice_idx
+    ON live_haul_loads(invoice_number)`;
+}
+
+// Generate invoice number from an ISO date string (YYYY-MM-DD) + sequence.
+// Month has no leading zero; day + year are 2 digits; NN is zero-padded 2
+// digits (supports 3+ for the unlikely 100+ loads in a day).
+//   2026-04-24 seq=1  → "4242601"
+//   2026-11-24 seq=1  → "11242601"
+function formatInvoiceNumber(isoDate, seq) {
+  const [y, m, d] = isoDate.split('-');
+  const month = String(parseInt(m, 10));
+  const dd = d;
+  const yy = y.slice(-2);
+  const nn = String(seq).padStart(2, '0');
+  return month + dd + yy + nn;
+}
+
+// Given a list of existing invoice numbers for a day, return the next seq
+// to use. Stable across deletes: if invoice 04 is deleted, 05/06 keep their
+// numbers and the next new load gets max+1 (not the gap).
+function nextSeqFromInvoices(invoiceNumbers) {
+  let maxSeq = 0;
+  invoiceNumbers.forEach(inv => {
+    if (!inv) return;
+    // Last 2+ digits = seq. Everything before is MDDYY.
+    // Since MDDYY is fixed 5-7 chars, we parse seq as whatever trails them.
+    // Simplest: look for trailing digits (at least 2).
+    const m = String(inv).match(/(\d{2,})$/);
+    if (!m) return;
+    // But "42426" is MDDYY and we'd match "26" — use length-based split:
+    // Month 1-digit: MDDYY = 5 chars, seq starts at char 5.
+    // Month 2-digit: MDDYY = 6 chars, seq starts at char 6.
+    // We can't tell month length from the string alone, so walk: try last
+    // 2 digits, then 3, 4... and see which produces a plausible date prefix.
+    // Simpler heuristic: take all trailing digits, assume seq is the last 2
+    // (or 3+ if total is >8 chars). Since max length for seq=99 is 8 chars
+    // (MM + DD + YY + NN), if the string is 7 or 8 chars, last 2 = seq.
+    const total = String(inv).length;
+    let seqStr;
+    if (total >= 9) seqStr = String(inv).slice(-3);   // allows 100+ seq
+    else seqStr = String(inv).slice(-2);
+    const seq = parseInt(seqStr, 10);
+    if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+  });
+  return maxSeq + 1;
+}
+
+// Assign invoice_number to any loads in the given day that don't have one.
+// Walks arrival order so the oldest load gets the lowest seq. Idempotent —
+// loads with an existing invoice_number are left alone.
+async function ensureInvoiceNumbersForDay(sql, companyId, isoDate) {
+  const loads = await sql`
+    SELECT id, invoice_number
+    FROM live_haul_loads
+    WHERE company_id = ${companyId} AND day_date = ${isoDate}::date
+    ORDER BY arrived_at NULLS LAST, id
+  `;
+  const existing = loads.filter(l => l.invoice_number).map(l => l.invoice_number);
+  let nextSeq = nextSeqFromInvoices(existing);
+  for (const l of loads) {
+    if (l.invoice_number) continue;
+    const num = formatInvoiceNumber(isoDate, nextSeq);
+    await sql`UPDATE live_haul_loads SET invoice_number = ${num} WHERE id = ${l.id}`;
+    nextSeq++;
+  }
 }
 
 const VALID_TIME_SLOTS = new Set(['startup', 'morning', 'noon', 'afternoon']);
@@ -520,7 +603,9 @@ module.exports = async function handler(req, res) {
                gross_lbs, tare_lbs, net_lbs,
                size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
                deduction_lbs, deduction_reason,
-               dock_price_per_lb, payable_lbs, payable_total,
+               dock_price_per_lb,
+               price_4_6_per_lb, price_6_8_per_lb, price_8_plus_per_lb, price_0_4_per_lb,
+               payable_lbs, payable_total, invoice_number,
                notes, updated_at
         FROM live_haul_loads
         WHERE company_id = ${companyId}
@@ -541,6 +626,78 @@ module.exports = async function handler(req, res) {
         farmers,
         deliveries: deliveries.map(norm),
         loads: loads.map(norm)
+      });
+    }
+
+    // ── GET get_payable ─────────────────────────────────────────────────
+    // Returns invoice-ready rows for a date range (Fish Payable report).
+    // Mirrors the yield master FISH PAYABLE TOTAL sheet column-for-column:
+    //   Farmer · Invoice # · Date · Gross Lbs · Deduct ·
+    //   4–5.99 Lbs + Price · 6–7.99 Lbs + Price · 8+ Lbs + Price ·
+    //   Net (0–4 remainder) Lbs + Price · Amount
+    //
+    // Default range: most recent invoice week (Sun–Sat) unless start/end
+    // passed. Any loads in the range that don't yet have an invoice_number
+    // are backfilled on the way out (idempotent).
+    if (req.method === 'GET' && action === 'get_payable') {
+      if (!perms.canPerform(user, 'fishschedule', 'view')) {
+        return perms.deny(res, user, 'fishschedule', 'view');
+      }
+      const weekStart = (url.searchParams.get('week_start') || '').trim();
+      const customStart = (url.searchParams.get('start') || '').trim();
+      const customEnd = (url.searchParams.get('end') || '').trim();
+
+      let startDate, endDate;
+      if (customStart && customEnd) {
+        startDate = customStart;
+        endDate = customEnd;
+      } else if (weekStart) {
+        startDate = weekStart;
+        const e = new Date(weekStart + 'T00:00:00');
+        e.setDate(e.getDate() + 6);
+        endDate = e.toISOString().split('T')[0];
+      } else {
+        return res.status(400).json({ error: 'week_start or start+end required (YYYY-MM-DD)' });
+      }
+
+      // Backfill invoice numbers for any days in range that have un-numbered
+      // loads. Cheap — one pass per day, skips days with nothing to assign.
+      const daysInRange = [];
+      {
+        const s = new Date(startDate + 'T00:00:00');
+        const e = new Date(endDate + 'T00:00:00');
+        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+          daysInRange.push(d.toISOString().split('T')[0]);
+        }
+      }
+      for (const d of daysInRange) {
+        try { await ensureInvoiceNumbersForDay(sql, companyId, d); }
+        catch (e) { console.error('[fish-schedule] backfill failed for', d, e.message); }
+      }
+
+      const rows = await sql`
+        SELECT l.id, l.invoice_number,
+               l.day_date::text AS day_date, l.arrived_at,
+               l.farmer_id, f.name AS farmer_name, f.color AS farmer_color,
+               l.pond_ref, l.truck_ref,
+               l.gross_lbs, l.deduction_lbs, l.net_lbs,
+               l.size_0_4_lbs, l.size_4_6_lbs, l.size_6_8_lbs, l.size_8_plus_lbs,
+               l.price_0_4_per_lb, l.price_4_6_per_lb,
+               l.price_6_8_per_lb, l.price_8_plus_per_lb,
+               l.dock_price_per_lb,
+               l.payable_lbs, l.payable_total, l.notes
+        FROM live_haul_loads l
+        LEFT JOIN live_haul_farmers f ON f.id = l.farmer_id
+        WHERE l.company_id = ${companyId}
+          AND l.day_date >= ${startDate}::date
+          AND l.day_date <= ${endDate}::date
+        ORDER BY l.day_date, l.arrived_at NULLS LAST, l.id
+      `;
+
+      return res.json({
+        ok: true,
+        period: { start: startDate, end: endDate },
+        rows
       });
     }
 
@@ -577,52 +734,110 @@ module.exports = async function handler(req, res) {
 
       const gross = num(body.gross_lbs);
       const tare = num(body.tare_lbs);
-      const sz04 = num(body.size_0_4_lbs) || 0;
       const sz46 = num(body.size_4_6_lbs) || 0;
       const sz68 = num(body.size_6_8_lbs) || 0;
       const sz8p = num(body.size_8_plus_lbs) || 0;
       const deduction = num(body.deduction_lbs) || 0;
       const deductionReason = (body.deduction_reason || '').trim() || null;
       const dockPrice = num(body.dock_price_per_lb);
+      // Per-band prices. Match Excel FISH PAYABLE TOTAL exactly — each band
+      // has its own $/lb. When only dockPrice is provided, every band inherits
+      // it (simple one-price-for-the-load case).
+      const price46 = num(body.price_4_6_per_lb) ?? dockPrice;
+      const price68 = num(body.price_6_8_per_lb) ?? dockPrice;
+      const price8p = num(body.price_8_plus_per_lb) ?? dockPrice;
+      const price04 = num(body.price_0_4_per_lb) ?? dockPrice;
       const notes = (body.notes || '').trim() || null;
 
       // Derived. If gross & tare provided, net = gross - tare; otherwise
       // net can be entered directly (body.net_lbs override).
       let net = num(body.net_lbs);
       if (net == null && gross != null && tare != null) net = gross - tare;
+
+      // "0–4 / Net" band is the remainder after subtracting graded bands
+      // from net (matches Excel LIVE FISH LOG-MON!C22 = D20 - C23 - C24 - C25).
+      // Floor at 0 — operators sometimes slightly over-enter band lbs vs
+      // net, which would produce a negative remainder.
+      let sz04 = null;
+      if (net != null) {
+        sz04 = Math.max(0, net - sz46 - sz68 - sz8p);
+      }
+
       const payableLbs = (net == null) ? null : (net - deduction);
-      const payableTotal = (payableLbs != null && dockPrice != null)
-        ? Math.round(payableLbs * dockPrice * 100) / 100
-        : null;
+
+      // Amount = Σ(band_lbs × band_price). Each band contributes only if
+      // both lbs > 0 and a price is set. Matches FISH PAYABLE TOTAL D27 = E26.
+      let payableTotal = null;
+      const parts = [];
+      if (price46 != null && sz46 > 0) parts.push(sz46 * price46);
+      if (price68 != null && sz68 > 0) parts.push(sz68 * price68);
+      if (price8p != null && sz8p > 0) parts.push(sz8p * price8p);
+      if (price04 != null && sz04 != null && sz04 > 0) parts.push(sz04 * price04);
+      if (parts.length > 0) {
+        payableTotal = Math.round(parts.reduce((a, b) => a + b, 0) * 100) / 100;
+      }
 
       if (farmerId === null) return res.status(400).json({ error: 'farmer_id required' });
 
       if (body.id) {
+        // Preserve existing invoice_number unless the day changes. If the
+        // load moves to a different day, clear invoice_number so it gets a
+        // fresh one for the new day's sequence.
+        const [prior] = await sql`
+          SELECT invoice_number, day_date::text AS day_date
+          FROM live_haul_loads
+          WHERE id = ${body.id} AND company_id = ${companyId}
+        `;
+        let invoiceNumber = prior && prior.invoice_number;
+        const dayChanged = prior && prior.day_date && prior.day_date !== dayDate;
+        if (dayChanged) invoiceNumber = null;
+
         const [updated] = await sql`
           UPDATE live_haul_loads
           SET day_date = ${dayDate}::date, arrived_at = ${arrivedAt},
               farmer_id = ${farmerId}, pond_ref = ${pondRef}, truck_ref = ${truckRef},
               delivery_id = ${deliveryId},
               gross_lbs = ${gross}, tare_lbs = ${tare}, net_lbs = ${net},
-              size_0_4_lbs = ${sz04}, size_4_6_lbs = ${sz46},
-              size_6_8_lbs = ${sz68}, size_8_plus_lbs = ${sz8p},
+              size_0_4_lbs = ${sz04 == null ? 0 : sz04},
+              size_4_6_lbs = ${sz46},
+              size_6_8_lbs = ${sz68},
+              size_8_plus_lbs = ${sz8p},
               deduction_lbs = ${deduction}, deduction_reason = ${deductionReason},
-              dock_price_per_lb = ${dockPrice}, payable_lbs = ${payableLbs},
+              dock_price_per_lb = ${dockPrice},
+              price_4_6_per_lb = ${price46},
+              price_6_8_per_lb = ${price68},
+              price_8_plus_per_lb = ${price8p},
+              price_0_4_per_lb = ${price04},
+              payable_lbs = ${payableLbs},
               payable_total = ${payableTotal},
+              invoice_number = ${invoiceNumber},
               notes = ${notes}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${companyId}
-          RETURNING id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
-                    gross_lbs, tare_lbs, net_lbs,
-                    size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
-                    deduction_lbs, deduction_reason,
-                    dock_price_per_lb, payable_lbs, payable_total, notes
+          RETURNING id
+        `;
+        // If we cleared invoice_number due to date move, re-assign both days
+        if (dayChanged) {
+          if (prior && prior.day_date) {
+            await ensureInvoiceNumbersForDay(sql, companyId, prior.day_date);
+          }
+          await ensureInvoiceNumbersForDay(sql, companyId, dayDate);
+        }
+        const [full] = await sql`
+          SELECT id, day_date::text AS day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+                 gross_lbs, tare_lbs, net_lbs,
+                 size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
+                 deduction_lbs, deduction_reason,
+                 dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
+                 price_8_plus_per_lb, price_0_4_per_lb,
+                 payable_lbs, payable_total, invoice_number, notes
+          FROM live_haul_loads WHERE id = ${body.id}
         `;
         await logAudit(sql, req, user, {
           action: 'fishschedule.save_load',
           resource_type: 'load', resource_id: body.id,
           details: { day_date: dayDate, farmer_id: farmerId, net_lbs: net, updated: true }
         });
-        return res.json({ ok: true, load: updated });
+        return res.json({ ok: true, load: full });
       }
 
       const [created] = await sql`
@@ -631,19 +846,30 @@ module.exports = async function handler(req, res) {
            gross_lbs, tare_lbs, net_lbs,
            size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
            deduction_lbs, deduction_reason,
-           dock_price_per_lb, payable_lbs, payable_total, notes)
+           dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
+           price_8_plus_per_lb, price_0_4_per_lb,
+           payable_lbs, payable_total, notes)
         VALUES
           (${companyId}, ${dayDate}::date, ${arrivedAt}, ${farmerId}, ${pondRef}, ${truckRef}, ${deliveryId},
            ${gross}, ${tare}, ${net},
-           ${sz04}, ${sz46}, ${sz68}, ${sz8p},
+           ${sz04 == null ? 0 : sz04}, ${sz46}, ${sz68}, ${sz8p},
            ${deduction}, ${deductionReason},
-           ${dockPrice}, ${payableLbs}, ${payableTotal}, ${notes})
-        RETURNING id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+           ${dockPrice}, ${price46}, ${price68}, ${price8p}, ${price04},
+           ${payableLbs}, ${payableTotal}, ${notes})
+        RETURNING id, day_date::text AS day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
                   gross_lbs, tare_lbs, net_lbs,
                   size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
                   deduction_lbs, deduction_reason,
-                  dock_price_per_lb, payable_lbs, payable_total, notes
+                  dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
+                  price_8_plus_per_lb, price_0_4_per_lb,
+                  payable_lbs, payable_total, notes
       `;
+      // Assign invoice number for the new load (seq = max in day + 1).
+      await ensureInvoiceNumbersForDay(sql, companyId, dayDate);
+      const [withInvoice] = await sql`
+        SELECT invoice_number FROM live_haul_loads WHERE id = ${created.id}
+      `;
+      created.invoice_number = withInvoice && withInvoice.invoice_number;
       await logAudit(sql, req, user, {
         action: 'fishschedule.save_load',
         resource_type: 'load', resource_id: created.id,
