@@ -209,22 +209,31 @@
 
     // Totals footer. If hushpuppy items are present, break totals into
     // Catfish / Hushpuppies / Grand rows so the two product lines are
-    // reported separately.
-    function totalsRow(label, t, bg, textColor) {
-      return '<tr style="background:' + bg + ';font-weight:700;color:' + (textColor || '#0f172a') + '">'
-        + '<td style="padding:8px 10px" colspan="5">' + label + '</td>'
-        + '<td style="padding:8px 6px;text-align:right;color:#1e40af">' + fmtLbs(t.produced) + '</td>'
-        + '<td></td>'
-        + '<td style="padding:8px 6px;text-align:right">' + fmtLbs(t.shipped) + '</td>'
-        + '<td style="padding:8px 6px;text-align:right;color:#0f766e">' + fmtLbs(t.balance) + '</td>'
+    // reported separately. Grand total row gets a heavy top border + a
+    // light indigo background so the dark color-coded numbers stay
+    // readable (the old navy/white treatment washed the numbers out).
+    function totalsRow(opts) {
+      var bg = opts.bg;
+      var labelColor = opts.labelColor || '#0f172a';
+      var numColor = opts.numColor || '#0f172a';
+      var balColor = opts.balColor || '#065f46';
+      var prodColor = opts.prodColor || '#1e40af';
+      var topBorder = opts.grand ? 'border-top:3px double #1a3a6b;' : '';
+      var fontSize = opts.grand ? 'font-size:.86rem;' : '';
+      return '<tr style="background:' + bg + ';font-weight:700;color:' + labelColor + ';' + topBorder + fontSize + '">'
+        + '<td style="padding:9px 10px;' + topBorder + '" colspan="5">' + opts.label + '</td>'
+        + '<td style="padding:9px 6px;text-align:right;color:' + prodColor + ';' + topBorder + '">' + fmtLbs(opts.t.produced) + '</td>'
+        + '<td style="' + topBorder + '"></td>'
+        + '<td style="padding:9px 6px;text-align:right;color:' + numColor + ';' + topBorder + '">' + fmtLbs(opts.t.shipped) + '</td>'
+        + '<td style="padding:9px 6px;text-align:right;color:' + balColor + ';' + topBorder + '">' + fmtLbs(opts.t.balance) + '</td>'
         + '</tr>';
     }
     if (hasHush) {
-      html += totalsRow('Catfish Subtotal', catfishTotals, '#f1f5f9');
-      html += totalsRow('Hushpuppies Subtotal', hushTotals, '#fef3c7', '#9a3412');
-      html += totalsRow('TOTAL ' + _ps.activePool, poolTotals, '#1a3a6b', '#ffffff');
+      html += totalsRow({ label: 'Catfish Subtotal',     t: catfishTotals, bg: '#f1f5f9' });
+      html += totalsRow({ label: 'Hushpuppies Subtotal', t: hushTotals,    bg: '#fef3c7', labelColor: '#9a3412' });
+      html += totalsRow({ label: 'TOTAL ' + _ps.activePool, t: poolTotals, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
     } else {
-      html += totalsRow('TOTAL ' + _ps.activePool, poolTotals, '#f1f5f9');
+      html += totalsRow({ label: 'TOTAL ' + _ps.activePool, t: poolTotals, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
     }
 
     html += '</tbody></table></div>';
@@ -648,23 +657,32 @@
       html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (rowLbs > 0 ? fmtLbs(rowLbs) : '—') + '</td></tr>';
     });
 
-    // Totals footer — split catfish / hushpuppies / grand if hushpuppy
-    // items are present; single row otherwise.
-    function wkTotalsRow(label, days, cases, lbs, bg, textColor) {
-      var tr = '<tr style="background:' + bg + ';font-weight:700;color:' + (textColor || '#0f172a') + '">'
-        + '<td style="padding:10px;position:sticky;left:0;background:' + bg + ';color:' + (textColor || '#0f172a') + '">' + label + '</td>'
-        + '<td></td>';
-      days.forEach(function (v) { tr += '<td style="padding:10px 6px;text-align:right">' + (v > 0 ? fmtLbs(v) : '—') + '</td>'; });
-      tr += '<td style="padding:10px;text-align:right">' + (cases > 0 ? Number(cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
-      tr += '<td style="padding:10px;text-align:right;color:' + (textColor || '#0f766e') + '">' + (lbs > 0 ? fmtLbs(lbs) : '—') + '</td></tr>';
+    // Totals footer — Catfish / Hushpuppies / Grand if hushpuppy items are
+    // present, single row otherwise. Grand total gets the double-line top
+    // border + light-indigo background; the numbers stay in their normal
+    // dark color-coded shades.
+    function wkTotalsRow(opts) {
+      var bg = opts.bg;
+      var labelColor = opts.labelColor || '#0f172a';
+      var balColor = opts.balColor || '#0f766e';
+      var topBorder = opts.grand ? 'border-top:3px double #1a3a6b;' : '';
+      var fontSize = opts.grand ? 'font-size:.82rem;' : '';
+      var tr = '<tr style="background:' + bg + ';font-weight:700;color:' + labelColor + ';' + topBorder + fontSize + '">'
+        + '<td style="padding:10px;position:sticky;left:0;background:' + bg + ';color:' + labelColor + ';' + topBorder + '">' + opts.label + '</td>'
+        + '<td style="' + topBorder + '"></td>';
+      opts.days.forEach(function (v) {
+        tr += '<td style="padding:10px 6px;text-align:right;color:#0f172a;' + topBorder + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
+      });
+      tr += '<td style="padding:10px;text-align:right;color:#0f172a;' + topBorder + '">' + (opts.cases > 0 ? Number(opts.cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
+      tr += '<td style="padding:10px;text-align:right;color:' + balColor + ';' + topBorder + '">' + (opts.lbs > 0 ? fmtLbs(opts.lbs) : '—') + '</td></tr>';
       return tr;
     }
     if (hasHushW) {
-      html += wkTotalsRow('Catfish Subtotal', catfishDays, catfishCases, catfishLbs, '#f1f5f9');
-      html += wkTotalsRow('Hushpuppies Subtotal', hushDays, hushCases, hushLbs, '#fef3c7', '#9a3412');
-      html += wkTotalsRow('TOTAL ' + _ps.activePool, poolTotalDays, poolTotalCases, poolTotalLbs, '#1a3a6b', '#ffffff');
+      html += wkTotalsRow({ label: 'Catfish Subtotal',     days: catfishDays, cases: catfishCases, lbs: catfishLbs, bg: '#f1f5f9' });
+      html += wkTotalsRow({ label: 'Hushpuppies Subtotal', days: hushDays,    cases: hushCases,    lbs: hushLbs,    bg: '#fef3c7', labelColor: '#9a3412' });
+      html += wkTotalsRow({ label: 'TOTAL ' + _ps.activePool, days: poolTotalDays, cases: poolTotalCases, lbs: poolTotalLbs, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
     } else {
-      html += wkTotalsRow('TOTAL ' + _ps.activePool, poolTotalDays, poolTotalCases, poolTotalLbs, '#f1f5f9');
+      html += wkTotalsRow({ label: 'TOTAL ' + _ps.activePool, days: poolTotalDays, cases: poolTotalCases, lbs: poolTotalLbs, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
     }
 
     html += '</tbody></table></div></div>';
