@@ -42,45 +42,78 @@ function stripCaseWeight(name) {
   return { name: s, lbs: null };
 }
 
+// Enforces "{size} {type}" naming order across the catalog. Handles:
+//   "FILET 2-3"          → "2-3 FILET"
+//   "FILLET 4-6"         → "4-6 FILET"       (plural/extra L normalized)
+//   "WHOLE 3-5"          → "3-5 WHOLE"
+//   "FILET 3-5 SPLITS"   → "3-5 SPLIT"       (SPLITS collapses to SPLIT)
+//   "FILET 11+"          → "11+ FILET"
+//   "FILET 2-3C"         → "2-3C FILET"
+// Leaves alone: already in {size} {type} order, items with prefixes like
+// "IQF 4.5-5.5 SPLIT", "MISCUT FILET (bulk)", "DEEP SKIN", parenthetical
+// suffixes, anything without a size range.
+function standardizeNaming(name) {
+  if (!name) return name;
+  var s = String(name).trim();
+  // Size token: digits, optional decimal, optional range, optional '+' or single trailing letter.
+  // E.g., "2-3", "4.5-5.5", "11+", "2-3C".
+  var SIZE = '(\\d+(?:\\.\\d+)?(?:[-\\u2013]\\d+(?:\\.\\d+)?)?[+A-Z]?)';
+
+  // "FILET 3-5 SPLITS" → "3-5 SPLIT"
+  var m = s.match(new RegExp('^FILL?ETS?\\s+' + SIZE + '\\s+SPLITS?\\s*$', 'i'));
+  if (m) return m[1] + ' SPLIT';
+
+  // "FILET 2-3", "FILLET 4-6", "WHOLE 3-5" → "{SIZE} {TYPE}"
+  m = s.match(new RegExp('^(WHOLE|FILL?ETS?|SPLITS?)\\s+' + SIZE + '\\s*$', 'i'));
+  if (m) {
+    var type = m[1].toUpperCase();
+    if (/^FILL?ETS?$/i.test(type)) type = 'FILET';
+    if (/^SPLITS?$/i.test(type)) type = 'SPLIT';
+    return m[2] + ' ' + type;
+  }
+
+  return s;
+}
+
 // Seed data — extracted from yield master-2026.xlsx, filtered to real SKUs.
 // Item names are pre-cleaned (no "15#" / "CARTON" suffixes); case weight is
 // carried on lbs_per_case. Freezer/Ice Pack default to 15# cases per the
 // spreadsheet's stated defaults; explicit values shown for specialty packs.
 const SEED_SKUS = [
   // FREEZER-IQF ────────────────────────────────────────────────────────
-  { pool: 'FREEZER-IQF', sku: '1031011',        item: 'WHOLE 3-5',                category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1051011',        item: 'WHOLE 5-7',                category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1071011',        item: 'WHOLE 7-9',                category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1091011',        item: 'WHOLE 9-11',               category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1131011',        item: 'WHOLE 13-15',              category: 'WHOLE',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1151011',        item: 'WHOLE 15-17',              category: 'WHOLE',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1031011',        item: '3-5 WHOLE',                category: 'WHOLE',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1051011',        item: '5-7 WHOLE',                category: 'WHOLE',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1071011',        item: '7-9 WHOLE',                category: 'WHOLE',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1091011',        item: '9-11 WHOLE',               category: 'WHOLE',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1131011',        item: '13-15 WHOLE',              category: 'WHOLE',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1151011',        item: '15-17 WHOLE',              category: 'WHOLE',     lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '1005041W',       item: 'WHOLE (small pack)',       category: 'WHOLE',     lbs_per_case: 4 },
   { pool: 'FREEZER-IQF', sku: '',               item: 'WHOLE (bulk carton)',      category: 'WHOLE',     lbs_per_case: 24 },
-  { pool: 'FREEZER-IQF', sku: '1022011',        item: 'FILET 2-3',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1022011C',       item: 'FILET 2-3C',               category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032011',        item: 'FILET 3-5',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032011S',       item: 'FILET 3-5 SPLITS',         category: 'SPLITS',    lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1022011',        item: '2-3 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1022011C',       item: '2-3C FILET',               category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1032011',        item: '3-5 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1032011S',       item: '3-5 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '1019011',        item: 'IQF 4.5-5.5 SPLIT',        category: 'SPLITS',    lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '1024011',        item: 'IQF 4 OZ CATFISH PORTION', category: 'PORTIONS',  lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '',               item: '5-6 / 6-7 DEEP SKIN',      category: 'DEEP SKIN', lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '1044011',        item: 'DEEP SKIN',                category: 'DEEP SKIN', lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '',               item: '4 OZ POLYBAG',             category: 'PORTIONS',  lbs_per_case: 10 },
   { pool: 'FREEZER-IQF', sku: '',               item: '4OZ PORTION (bulk)',       category: 'PORTIONS',  lbs_per_case: 40 },
-  { pool: 'FREEZER-IQF', sku: '1046011',        item: 'FILLET 4-6',               category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1032031PB2',     item: 'FILLETS POLY BAG',         category: 'FILET',     lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '',               item: 'FILLETS POLY BAG BC',      category: 'FILET',     lbs_per_case: 10 },
-  { pool: 'FREEZER-IQF', sku: '1042011',        item: 'FILET 4-5',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1042011S',       item: 'FILET 4-5 SPLITS',         category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1052011',        item: 'FILET 5-7',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1052011S',       item: 'FILET 5-6 SPLITS',         category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1057211S',       item: 'FILET 5-7 SPLITS',         category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1062011',        item: 'FILET 6-7',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1062011S',       item: 'FILET 6-7 SPLITS',         category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1072011',        item: 'FILET 7-9',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1072011S',       item: 'FILET 7-9 SPLITS',         category: 'SPLITS',    lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1092011',        item: 'FILET 9-11',               category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '1112011',        item: 'FILET 11+',                category: 'FILET',     lbs_per_case: 15 },
-  { pool: 'FREEZER-IQF', sku: '',               item: 'FILET 13+',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1046011',        item: '4-6 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1032031PB2',     item: 'FILETS POLY BAG',          category: 'FILET',     lbs_per_case: 10 },
+  { pool: 'FREEZER-IQF', sku: '',               item: 'FILETS POLY BAG BC',       category: 'FILET',     lbs_per_case: 10 },
+  { pool: 'FREEZER-IQF', sku: '1042011',        item: '4-5 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1042011S',       item: '4-5 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1052011',        item: '5-7 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1052011S',       item: '5-6 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1057211S',       item: '5-7 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1062011',        item: '6-7 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1062011S',       item: '6-7 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1072011',        item: '7-9 FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1072011S',       item: '7-9 SPLIT',                category: 'SPLITS',    lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1092011',        item: '9-11 FILET',               category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '1112011',        item: '11+ FILET',                category: 'FILET',     lbs_per_case: 15 },
+  { pool: 'FREEZER-IQF', sku: '',               item: '13+ FILET',                category: 'FILET',     lbs_per_case: 15 },
   { pool: 'FREEZER-IQF', sku: '1032041/6CTN',   item: 'FILET (bulk carton)',      category: 'FILET',     lbs_per_case: 24 },
   { pool: 'FREEZER-IQF', sku: '1032041',        item: 'IQF 3-5 FILET (small)',    category: 'FILET',     lbs_per_case: 4 },
   { pool: 'FREEZER-IQF', sku: '1005111',        item: 'CATFISH BITES',            category: 'BITES',     lbs_per_case: 15 },
@@ -105,29 +138,29 @@ const SEED_SKUS = [
   { pool: 'FREEZER-IQF', sku: '1112031MDS',     item: 'THIN SLICED',              category: 'CHIPS',     lbs_per_case: 10 },
 
   // ICE PACK (all 15-lb cases per the "ALL 15LB." sheet header) ───────
-  { pool: 'ICE PACK', sku: '2051011',     item: 'WHOLE 5-7',            category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2071011',     item: 'WHOLE 7-9',            category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2091011',     item: 'WHOLE 9-11',           category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2111011',     item: 'WHOLE 11-13',          category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2131011',     item: 'WHOLE 13-15',          category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2151011',     item: 'WHOLE 15-17',          category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2181011',     item: 'WHOLE 18-24',          category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '',            item: 'WHOLE 30-34',          category: 'WHOLE',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2022011',     item: 'FILET 2-3',            category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2032011',     item: 'FILET 3-5',            category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2032011S',    item: 'FILET 3-5 SPLITS',     category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2042011',     item: 'FILET 4-5',            category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2042011S',    item: 'FILET 4-5 SPLITS',     category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2052011',     item: 'FILET 5-7',            category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2052011S',    item: 'FILET 5-6 SPLITS',     category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2052711S',    item: 'FILET 5-7 SPLITS',     category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2062011',     item: 'FILET 6-7',            category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2062011S',    item: 'FILET 6-7 SPLITS',     category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2072011',     item: 'FILET 7-9',            category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2072011S',    item: 'FILET 7-9 SPLITS',     category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2092011',     item: 'FILET 9-11',           category: 'FILET',    lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2092011S',    item: 'FILET 9-11 SPLITS',    category: 'SPLITS',   lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2112011',     item: 'FILET 11+',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2051011',     item: '5-7 WHOLE',            category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2071011',     item: '7-9 WHOLE',            category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2091011',     item: '9-11 WHOLE',           category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2111011',     item: '11-13 WHOLE',          category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2131011',     item: '13-15 WHOLE',          category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2151011',     item: '15-17 WHOLE',          category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2181011',     item: '18-24 WHOLE',          category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '',            item: '30-34 WHOLE',          category: 'WHOLE',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2022011',     item: '2-3 FILET',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2032011',     item: '3-5 FILET',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2032011S',    item: '3-5 SPLIT',            category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2042011',     item: '4-5 FILET',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2042011S',    item: '4-5 SPLIT',            category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2052011',     item: '5-7 FILET',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2052011S',    item: '5-6 SPLIT',            category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2052711S',    item: '5-7 SPLIT',            category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2062011',     item: '6-7 FILET',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2062011S',    item: '6-7 SPLIT',            category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2072011',     item: '7-9 FILET',            category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2072011S',    item: '7-9 SPLIT',            category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2092011',     item: '9-11 FILET',           category: 'FILET',    lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2092011S',    item: '9-11 SPLIT',           category: 'SPLITS',   lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2112011',     item: '11+ FILET',            category: 'FILET',    lbs_per_case: 15 },
   { pool: 'ICE PACK', sku: '2005211',     item: 'MISCUTS',              category: 'MISCUTS',  lbs_per_case: 15 },
   { pool: 'ICE PACK', sku: '2005011',     item: 'GOR STEAK',            category: 'STEAKS',   lbs_per_case: 15 },
   { pool: 'ICE PACK', sku: '2024011',     item: '2 OZ CATFISH PORTION', category: 'PORTIONS', lbs_per_case: 15 },
@@ -181,16 +214,20 @@ async function migrateNamesOnce(sql, companyId) {
       WHERE company_id = ${companyId}
     `;
     for (const e of rows) {
+      // Step 1: strip "15#" / "24# CARTON" suffixes
       const parsed = stripCaseWeight(e.item_name);
+      // Step 2: enforce "{size} {type}" order (e.g. "FILET 2-3" → "2-3 FILET")
+      const finalName = standardizeNaming(parsed.name);
+
       const poolDefault = (e.pool === 'FREEZER-IQF' || e.pool === 'ICE PACK') ? 15 : null;
       const newLbs = e.lbs_per_case != null
         ? Number(e.lbs_per_case)
         : (parsed.lbs != null ? parsed.lbs : poolDefault);
-      const nameChanged = parsed.name !== e.item_name;
+      const nameChanged = finalName !== e.item_name;
       const lbsChanged = (newLbs != null && Number(e.lbs_per_case || 0) !== Number(newLbs));
       if (nameChanged || lbsChanged) {
         await sql`UPDATE prod_skus SET
-          item_name = ${parsed.name},
+          item_name = ${finalName},
           lbs_per_case = ${newLbs},
           updated_at = NOW()
           WHERE id = ${e.id}`;
@@ -661,8 +698,10 @@ module.exports = async function handler(req, res) {
       `;
       let renamed = 0, caseFilled = 0;
       for (const e of existing) {
+        // Strip case-weight suffixes, then enforce "{size} {type}" order
         const parsed = stripCaseWeight(e.item_name);
-        const nameChanged = parsed.name !== e.item_name;
+        const finalName = standardizeNaming(parsed.name);
+        const nameChanged = finalName !== e.item_name;
         // Priority for case size: existing (if already set) > parsed from
         // name > pool default (15 for FREEZER-IQF/ICE PACK, null for COOLER).
         const poolDefault = (e.pool === 'FREEZER-IQF' || e.pool === 'ICE PACK') ? 15 : null;
@@ -672,7 +711,7 @@ module.exports = async function handler(req, res) {
         const lbsChanged = (newLbs != null && Number(e.lbs_per_case || 0) !== Number(newLbs));
         if (nameChanged || lbsChanged) {
           await sql`UPDATE prod_skus SET
-            item_name = ${parsed.name},
+            item_name = ${finalName},
             lbs_per_case = ${newLbs},
             updated_at = NOW()
             WHERE id = ${e.id}`;
