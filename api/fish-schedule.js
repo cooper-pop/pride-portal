@@ -71,6 +71,57 @@ async function ensureTables(sql) {
     ON live_haul_deliveries(company_id, day_date)`;
   await sql`CREATE INDEX IF NOT EXISTS live_haul_deliveries_farmer_idx
     ON live_haul_deliveries(farmer_id)`;
+
+  // ── Phase B: per-load intake (actual truck arrival) ──────────────────
+  // One row per truck that actually showed up. Optionally linked back to a
+  // scheduled delivery via delivery_id, so the Schedule tab can show
+  // "actual vs expected" once a load is recorded.
+  //
+  // Size bands match Cooper's spec: 0-4 / 4.01-5.99 / 6-7.99 / 8+ lbs per
+  // fish. Stored as pounds in each band (not fish count) so totals
+  // reconcile directly with net_lbs.
+  //
+  // Deductions are in *pounds*, not count. Dock price is optional — not
+  // every load has one (supply-and-demand driven). Computed fields
+  // (net_lbs, payable_lbs, payable_total) are denormalized on save so
+  // reports don't re-compute on every query.
+  await sql`CREATE TABLE IF NOT EXISTS live_haul_loads (
+    id SERIAL PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    day_date DATE NOT NULL,
+    arrived_at TIMESTAMPTZ,
+
+    farmer_id INTEGER REFERENCES live_haul_farmers(id),
+    pond_ref TEXT,
+    truck_ref TEXT,
+    delivery_id INTEGER REFERENCES live_haul_deliveries(id) ON DELETE SET NULL,
+
+    gross_lbs NUMERIC,
+    tare_lbs NUMERIC,
+    net_lbs NUMERIC,
+
+    size_0_4_lbs NUMERIC DEFAULT 0,
+    size_4_6_lbs NUMERIC DEFAULT 0,
+    size_6_8_lbs NUMERIC DEFAULT 0,
+    size_8_plus_lbs NUMERIC DEFAULT 0,
+
+    deduction_lbs NUMERIC DEFAULT 0,
+    deduction_reason TEXT,
+
+    dock_price_per_lb NUMERIC,
+    payable_lbs NUMERIC,
+    payable_total NUMERIC,
+
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_company_day_idx
+    ON live_haul_loads(company_id, day_date)`;
+  await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_farmer_idx
+    ON live_haul_loads(farmer_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_delivery_idx
+    ON live_haul_loads(delivery_id)`;
 }
 
 const VALID_TIME_SLOTS = new Set(['startup', 'morning', 'noon', 'afternoon']);
@@ -141,6 +192,27 @@ module.exports = async function handler(req, res) {
         ORDER BY time_slot, id
       `;
 
+      // Sum net_lbs across any intake loads linked to each delivery. This
+      // is how the Schedule tab renders "actual vs expected" once a truck
+      // has been received — no second round-trip, no Phase-B coupling in
+      // the frontend. Missing delivery_id = unlinked load, excluded here.
+      const linkedLoads = await sql`
+        SELECT delivery_id, SUM(net_lbs) AS net_sum, COUNT(*) AS load_count
+        FROM live_haul_loads
+        WHERE company_id = ${companyId}
+          AND delivery_id IS NOT NULL
+          AND day_date >= ${weekStart}::date
+          AND day_date <= ${weekEnd}::date
+        GROUP BY delivery_id
+      `;
+      const actualByDelivery = {};
+      linkedLoads.forEach(r => {
+        actualByDelivery[r.delivery_id] = {
+          net_sum: r.net_sum == null ? null : Number(r.net_sum),
+          load_count: Number(r.load_count) || 0
+        };
+      });
+
       // Index day-level notes by ISO date for O(1) lookup while building the
       // final day objects.
       const dayByDate = {};
@@ -157,12 +229,15 @@ module.exports = async function handler(req, res) {
         const k = (x.day_date instanceof Date)
           ? x.day_date.toISOString().split('T')[0]
           : String(x.day_date).slice(0, 10);
+        const linked = actualByDelivery[x.id];
         (delByDate[k] = delByDate[k] || []).push({
           id: x.id,
           farmer_id: x.farmer_id,
           time_slot: x.time_slot,
           expected_lbs: x.expected_lbs,
-          actual_lbs: x.actual_lbs,
+          actual_lbs: x.actual_lbs, // legacy column (kept in sync for now)
+          actual_net_lbs: linked ? linked.net_sum : null, // Phase B: summed from loads
+          linked_load_count: linked ? linked.load_count : 0,
           notes: x.notes || ''
         });
       });
@@ -399,6 +474,195 @@ module.exports = async function handler(req, res) {
         action: 'fishschedule.save_day',
         resource_type: 'day', resource_id: dayDate,
         details: { is_no_kill: isNoKill }
+      });
+      return res.json({ ok: true });
+    }
+
+    // ── GET get_intake ──────────────────────────────────────────────────
+    // Returns every intake load for a week, plus the same farmer + delivery
+    // metadata the Schedule tab uses so the Intake UI can render farmer
+    // names / scheduled-delivery pickers without a second round-trip.
+    //
+    // Shape:
+    //   { farmers, deliveries: [...], loads: [{...}] }
+    // Deliveries are filtered to the same week so the "Fulfill scheduled
+    // delivery" dropdown stays manageable.
+    if (req.method === 'GET' && action === 'get_intake') {
+      if (!perms.canPerform(user, 'fishschedule', 'view')) {
+        return perms.deny(res, user, 'fishschedule', 'view');
+      }
+      const weekStart = (url.searchParams.get('week_start') || '').trim();
+      if (!weekStart) return res.status(400).json({ error: 'week_start required (YYYY-MM-DD)' });
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(weekStart + 'T00:00:00');
+        d.setDate(d.getDate() + i);
+        days.push(d.toISOString().split('T')[0]);
+      }
+      const weekEnd = days[6];
+
+      const farmers = await sql`
+        SELECT id, name, color, active, notes
+        FROM live_haul_farmers
+        WHERE company_id = ${companyId} AND active = true
+        ORDER BY name
+      `;
+      const deliveries = await sql`
+        SELECT id, day_date, farmer_id, time_slot, expected_lbs
+        FROM live_haul_deliveries
+        WHERE company_id = ${companyId}
+          AND day_date >= ${weekStart}::date
+          AND day_date <= ${weekEnd}::date
+        ORDER BY day_date, time_slot, id
+      `;
+      const loads = await sql`
+        SELECT id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+               gross_lbs, tare_lbs, net_lbs,
+               size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
+               deduction_lbs, deduction_reason,
+               dock_price_per_lb, payable_lbs, payable_total,
+               notes, updated_at
+        FROM live_haul_loads
+        WHERE company_id = ${companyId}
+          AND day_date >= ${weekStart}::date
+          AND day_date <= ${weekEnd}::date
+        ORDER BY day_date, arrived_at NULLS LAST, id
+      `;
+
+      // Normalize Postgres DATE → YYYY-MM-DD so the frontend can key by
+      // string without worrying about timezone math.
+      const norm = (x) => (x && x.day_date instanceof Date)
+        ? Object.assign({}, x, { day_date: x.day_date.toISOString().split('T')[0] })
+        : x;
+
+      return res.json({
+        ok: true,
+        week_start: weekStart,
+        farmers,
+        deliveries: deliveries.map(norm),
+        loads: loads.map(norm)
+      });
+    }
+
+    // ── POST save_load ──────────────────────────────────────────────────
+    // Upsert a per-load intake record. Computes net_lbs / payable_lbs /
+    // payable_total from the submitted numbers so reports never have to.
+    //
+    // Size bands are optional individually, but if any are provided the
+    // sum is not enforced to equal net_lbs — operators often leave bands
+    // empty when they haven't graded a load yet, or the net comes from a
+    // truck scale while size bands come later off the grader. Mismatch is
+    // reported in the UI, not blocked on save.
+    if (req.method === 'POST' && action === 'save_load') {
+      const body = req.body || {};
+      if (!perms.canPerform(user, 'fishschedule', body.id ? 'edit' : 'create')) {
+        return perms.deny(res, user, 'fishschedule', body.id ? 'edit' : 'create');
+      }
+      const dayDate = String(body.day_date || '').trim();
+      if (!dayDate) return res.status(400).json({ error: 'day_date required' });
+
+      // Pull + coerce numerics. Empty string / null / undefined → null so
+      // Postgres stores NULL instead of 0 (important for "not entered yet"
+      // vs "entered as 0").
+      const num = (v) => {
+        if (v === '' || v === null || v === undefined) return null;
+        const n = Number(v);
+        return isNaN(n) ? null : n;
+      };
+      const farmerId = body.farmer_id ? parseInt(body.farmer_id, 10) : null;
+      const deliveryId = body.delivery_id ? parseInt(body.delivery_id, 10) : null;
+      const arrivedAt = body.arrived_at || null;
+      const pondRef = (body.pond_ref || '').trim() || null;
+      const truckRef = (body.truck_ref || '').trim() || null;
+
+      const gross = num(body.gross_lbs);
+      const tare = num(body.tare_lbs);
+      const sz04 = num(body.size_0_4_lbs) || 0;
+      const sz46 = num(body.size_4_6_lbs) || 0;
+      const sz68 = num(body.size_6_8_lbs) || 0;
+      const sz8p = num(body.size_8_plus_lbs) || 0;
+      const deduction = num(body.deduction_lbs) || 0;
+      const deductionReason = (body.deduction_reason || '').trim() || null;
+      const dockPrice = num(body.dock_price_per_lb);
+      const notes = (body.notes || '').trim() || null;
+
+      // Derived. If gross & tare provided, net = gross - tare; otherwise
+      // net can be entered directly (body.net_lbs override).
+      let net = num(body.net_lbs);
+      if (net == null && gross != null && tare != null) net = gross - tare;
+      const payableLbs = (net == null) ? null : (net - deduction);
+      const payableTotal = (payableLbs != null && dockPrice != null)
+        ? Math.round(payableLbs * dockPrice * 100) / 100
+        : null;
+
+      if (farmerId === null) return res.status(400).json({ error: 'farmer_id required' });
+
+      if (body.id) {
+        const [updated] = await sql`
+          UPDATE live_haul_loads
+          SET day_date = ${dayDate}::date, arrived_at = ${arrivedAt},
+              farmer_id = ${farmerId}, pond_ref = ${pondRef}, truck_ref = ${truckRef},
+              delivery_id = ${deliveryId},
+              gross_lbs = ${gross}, tare_lbs = ${tare}, net_lbs = ${net},
+              size_0_4_lbs = ${sz04}, size_4_6_lbs = ${sz46},
+              size_6_8_lbs = ${sz68}, size_8_plus_lbs = ${sz8p},
+              deduction_lbs = ${deduction}, deduction_reason = ${deductionReason},
+              dock_price_per_lb = ${dockPrice}, payable_lbs = ${payableLbs},
+              payable_total = ${payableTotal},
+              notes = ${notes}, updated_at = NOW()
+          WHERE id = ${body.id} AND company_id = ${companyId}
+          RETURNING id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+                    gross_lbs, tare_lbs, net_lbs,
+                    size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
+                    deduction_lbs, deduction_reason,
+                    dock_price_per_lb, payable_lbs, payable_total, notes
+        `;
+        await logAudit(sql, req, user, {
+          action: 'fishschedule.save_load',
+          resource_type: 'load', resource_id: body.id,
+          details: { day_date: dayDate, farmer_id: farmerId, net_lbs: net, updated: true }
+        });
+        return res.json({ ok: true, load: updated });
+      }
+
+      const [created] = await sql`
+        INSERT INTO live_haul_loads
+          (company_id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+           gross_lbs, tare_lbs, net_lbs,
+           size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
+           deduction_lbs, deduction_reason,
+           dock_price_per_lb, payable_lbs, payable_total, notes)
+        VALUES
+          (${companyId}, ${dayDate}::date, ${arrivedAt}, ${farmerId}, ${pondRef}, ${truckRef}, ${deliveryId},
+           ${gross}, ${tare}, ${net},
+           ${sz04}, ${sz46}, ${sz68}, ${sz8p},
+           ${deduction}, ${deductionReason},
+           ${dockPrice}, ${payableLbs}, ${payableTotal}, ${notes})
+        RETURNING id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+                  gross_lbs, tare_lbs, net_lbs,
+                  size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
+                  deduction_lbs, deduction_reason,
+                  dock_price_per_lb, payable_lbs, payable_total, notes
+      `;
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.save_load',
+        resource_type: 'load', resource_id: created.id,
+        details: { day_date: dayDate, farmer_id: farmerId, net_lbs: net, updated: false }
+      });
+      return res.json({ ok: true, load: created });
+    }
+
+    // ── POST delete_load ────────────────────────────────────────────────
+    if (req.method === 'POST' && action === 'delete_load') {
+      if (!perms.canPerform(user, 'fishschedule', 'delete')) {
+        return perms.deny(res, user, 'fishschedule', 'delete');
+      }
+      const id = (req.body && req.body.id) || null;
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sql`DELETE FROM live_haul_loads WHERE id = ${id} AND company_id = ${companyId}`;
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.delete_load',
+        resource_type: 'load', resource_id: id
       });
       return res.json({ ok: true });
     }

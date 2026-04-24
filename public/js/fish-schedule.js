@@ -21,6 +21,9 @@
     weekStart: '',    // ISO YYYY-MM-DD (Sunday)
     farmers: [],      // [{id, name, color}]
     days: [],         // [{day_date, is_no_kill, deliveries: [...]}]
+    // Intake state (Phase B):
+    loads: [],        // [{id, day_date, farmer_id, gross_lbs, ..., payable_total}]
+    deliveries: [],   // Flat list of scheduled deliveries for the week (for "attach to schedule" dropdown)
     loading: false
   };
 
@@ -70,6 +73,7 @@
     var wt = document.getElementById('widget-tabs');
     var tabs = [
       { id: 'schedule', label: '📅 Schedule' },
+      { id: 'intake',   label: '🐟 Intake' },
       { id: 'farmers',  label: '🚜 Farmers' }
     ];
     wt.innerHTML = tabs.map(function (t) {
@@ -84,7 +88,7 @@
 
   function fsShowTab(tab) {
     _fsState.tab = tab;
-    ['schedule', 'farmers'].forEach(function (t) {
+    ['schedule', 'intake', 'farmers'].forEach(function (t) {
       var btn = document.getElementById('fs-tab-' + t);
       if (!btn) return;
       var active = (t === tab);
@@ -92,6 +96,7 @@
       btn.style.borderBottomColor = active ? '#1a3a6b' : 'transparent';
     });
     if (tab === 'schedule') fsLoadAndRenderSchedule();
+    else if (tab === 'intake') fsLoadAndRenderIntake();
     else if (tab === 'farmers') fsLoadAndRenderFarmers();
   }
 
@@ -194,10 +199,34 @@
           var farmer = _fsState.farmers.find(function (f) { return f.id === dl.farmer_id; });
           var farmerName = farmer ? farmer.name : '(deleted)';
           var color = farmer ? (farmer.color || '#1a3a6b') : '#64748b';
+
+          // Actual-vs-expected: if a Phase-B load has been attached, show
+          // the net received with a variance arrow. Green ↑ if over, amber
+          // ↓ if under, neutral if within 5%.
+          var actual = (dl.actual_net_lbs != null) ? Number(dl.actual_net_lbs) : null;
+          var expected = (dl.expected_lbs != null) ? Number(dl.expected_lbs) : null;
+          var actualRow = '';
+          if (actual != null) {
+            var varianceBadge = '';
+            if (expected != null && expected > 0) {
+              var diff = actual - expected;
+              var pct = (diff / expected) * 100;
+              var arrow = Math.abs(pct) < 5 ? '≈' : (diff > 0 ? '↑' : '↓');
+              var badgeColor = Math.abs(pct) < 5 ? '#64748b' : (diff > 0 ? '#059669' : '#b45309');
+              varianceBadge = ' <span style="color:' + badgeColor + ';font-weight:700">' + arrow + ' '
+                + (diff > 0 ? '+' : '') + Math.round(pct) + '%</span>';
+            }
+            actualRow = '<div style="font-size:.68rem;color:#059669;font-weight:600">✓ ' + fmtLbs(actual)
+              + ' recv'
+              + (dl.linked_load_count > 1 ? ' (' + dl.linked_load_count + ' loads)' : '')
+              + varianceBadge + '</div>';
+          }
+
           body += '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid ' + color + ';border-radius:5px;padding:4px 6px;margin-bottom:3px;display:flex;align-items:center;gap:4px">'
             + '<div style="flex:1;min-width:0">'
             + '<div style="font-size:.74rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(farmerName) + '">' + esc(farmerName) + '</div>'
-            + '<div style="font-size:.7rem;color:#1a3a6b;font-weight:700">' + fmtLbs(dl.expected_lbs) + '</div>'
+            + '<div style="font-size:.7rem;color:#1a3a6b;font-weight:700">' + fmtLbs(dl.expected_lbs) + ' exp</div>'
+            + actualRow
             + (dl.notes ? '<div style="font-size:.66rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(dl.notes) + '">' + esc(dl.notes) + '</div>' : '')
             + '</div>'
             + (permsLocal.canEdit ? '<button title="Edit" onclick="fsEditDelivery(' + dl.id + ')" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:.82rem;padding:0 4px">✎</button>' : '')
@@ -341,6 +370,566 @@
         var m = document.getElementById('fs-modal'); if (m) m.remove();
         toast('Deleted');
         fsLoadAndRenderSchedule();
+      })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
+  // ═══ INTAKE TAB (Phase B) ══════════════════════════════════════════════
+  // Per-load intake entry. One card per truck actually received. Captures
+  // gross/tare/net, size breakdown (0-4 / 4-6 / 6-8 / 8+ lbs per fish),
+  // deductions in pounds, optional dock price, farmer + pond traceability.
+  // Payable $ and payable lbs auto-compute on save (and preview live in
+  // the modal).
+  function fmtMoney(n) {
+    if (n == null || n === '' || isNaN(n)) return '—';
+    return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtPrice(n) {
+    if (n == null || n === '' || isNaN(n)) return '—';
+    return '$' + Number(n).toFixed(2) + '/lb';
+  }
+  // Stubborn one: strip trailing zeros so 5000.00 shows as 5,000 but 5000.50
+  // stays 5,000.5 — Cooper's sheet doesn't show decimal zeros.
+  function fmtLbsLoose(n) {
+    if (n == null || n === '' || isNaN(n)) return '—';
+    var v = Number(n);
+    return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  }
+
+  function fsLoadAndRenderIntake() {
+    var panel = document.getElementById('widget-content');
+    panel.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading intake…</div>';
+    apiCall('GET', '/api/fish-schedule?action=get_intake&week_start=' + _fsState.weekStart)
+      .then(function (r) {
+        _fsState.farmers = r.farmers || [];
+        _fsState.deliveries = r.deliveries || [];
+        _fsState.loads = r.loads || [];
+        fsRenderIntake();
+      })
+      .catch(function (err) {
+        panel.innerHTML = '<div style="padding:20px;color:#ef4444">Failed to load: ' + esc(err.message) + '</div>';
+      });
+  }
+
+  function fsRenderIntake() {
+    var panel = document.getElementById('widget-content');
+    if (!panel) return;
+
+    var canCreate = (typeof userCan === 'function') && userCan('fishschedule', 'create');
+    var canEdit = (typeof userCan === 'function') && userCan('fishschedule', 'edit');
+    var canDelete = (typeof userCan === 'function') && userCan('fishschedule', 'delete');
+
+    // Bucket loads by day + compute weekly totals
+    var byDay = {}; // iso date → [loads]
+    var weekly = { net: 0, payable_lbs: 0, payable_total: 0, deduct: 0, loads: 0,
+                   sz04: 0, sz46: 0, sz68: 0, sz8p: 0 };
+    _fsState.loads.forEach(function (l) {
+      var d = l.day_date;
+      (byDay[d] = byDay[d] || []).push(l);
+      weekly.net += Number(l.net_lbs) || 0;
+      weekly.payable_lbs += Number(l.payable_lbs) || 0;
+      weekly.payable_total += Number(l.payable_total) || 0;
+      weekly.deduct += Number(l.deduction_lbs) || 0;
+      weekly.sz04 += Number(l.size_0_4_lbs) || 0;
+      weekly.sz46 += Number(l.size_4_6_lbs) || 0;
+      weekly.sz68 += Number(l.size_6_8_lbs) || 0;
+      weekly.sz8p += Number(l.size_8_plus_lbs) || 0;
+      weekly.loads++;
+    });
+
+    // Days of the week, even empty ones, so operators can add loads for
+    // any day without navigating elsewhere
+    var weekDays = [];
+    for (var i = 0; i < 7; i++) weekDays.push(addDaysIso(_fsState.weekStart, i));
+
+    var html = '<div style="padding:14px;max-width:100%;margin:0 auto">';
+
+    // Header: nav + range + weekly summary chips
+    html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+      + '<button style="' + BTN_SUB + '" onclick="fsWeekNavIntake(-1)">← Prev</button>'
+      + '<button style="' + BTN_SUB + '" onclick="fsGoTodayIntake()">This Week</button>'
+      + '<button style="' + BTN_SUB + '" onclick="fsWeekNavIntake(1)">Next →</button>'
+      + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:1rem;margin-left:12px">'
+      + prettyRange(_fsState.weekStart) + '</div>'
+      + '</div>';
+
+    // Weekly summary strip
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px">'
+      + summaryChip('🚚 Loads', String(weekly.loads), '#0369a1')
+      + summaryChip('📦 Net Received', fmtLbsLoose(weekly.net) + ' lbs', '#1a3a6b')
+      + summaryChip('✂️ Deductions', fmtLbsLoose(weekly.deduct) + ' lbs', '#991b1b')
+      + summaryChip('💰 Payable', fmtLbsLoose(weekly.payable_lbs) + ' lbs', '#065f46')
+      + summaryChip('💵 Total $', fmtMoney(weekly.payable_total), '#065f46')
+      + '</div>';
+
+    // Size band strip (weekly)
+    if (weekly.net > 0) {
+      html += '<div style="background:#fff;border-radius:10px;padding:10px 14px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+        + '<div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Size Breakdown (weekly)</div>'
+        + sizeBandBar(weekly.sz04, weekly.sz46, weekly.sz68, weekly.sz8p)
+        + '</div>';
+    }
+
+    if (_fsState.farmers.length === 0) {
+      html += '<div style="background:#fef3c7;border:1px solid #fde68a;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.82rem;color:#92400e">'
+        + '⚠️ No farmers added yet. Switch to the <strong>🚜 Farmers</strong> tab to add your first farmer before recording loads.'
+        + '</div>';
+    }
+
+    // One section per day
+    weekDays.forEach(function (d) {
+      var dayLoads = byDay[d] || [];
+      var dayNet = 0, dayPay = 0, dayDeduct = 0;
+      dayLoads.forEach(function (l) {
+        dayNet += Number(l.net_lbs) || 0;
+        dayPay += Number(l.payable_total) || 0;
+        dayDeduct += Number(l.deduction_lbs) || 0;
+      });
+      var isToday = (d === isoDate(new Date()));
+
+      html += '<div style="background:#fff;border-radius:10px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
+      html += '<div style="background:' + (isToday ? '#1a3a6b' : '#f1f5f9') + ';color:' + (isToday ? '#fff' : '#334155') + ';padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        + '<div style="font-weight:700;font-size:.95rem">' + prettyDay(d) + '</div>'
+        + '<div style="flex:1"></div>'
+        + (dayLoads.length
+            ? '<div style="font-size:.74rem;opacity:.85">' + dayLoads.length + ' load' + (dayLoads.length === 1 ? '' : 's')
+              + ' · ' + fmtLbsLoose(dayNet) + ' lbs net'
+              + (dayDeduct > 0 ? ' · −' + fmtLbsLoose(dayDeduct) + ' ded' : '')
+              + (dayPay > 0 ? ' · ' + fmtMoney(dayPay) : '')
+              + '</div>'
+            : '<div style="font-size:.74rem;opacity:.6;font-style:italic">no loads</div>')
+        + (canCreate
+            ? '<button style="background:rgba(255,255,255,' + (isToday ? '.18' : '0') + ');border:1px solid ' + (isToday ? 'rgba(255,255,255,.3)' : '#cbd5e1') + ';color:' + (isToday ? '#fff' : '#1a3a6b') + ';border-radius:6px;padding:4px 10px;font-size:.74rem;font-weight:700;cursor:pointer" onclick="fsAddLoad(\'' + d + '\')">+ Add Load</button>'
+            : '')
+        + '</div>';
+
+      if (dayLoads.length === 0) {
+        html += '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:.8rem;font-style:italic">No loads recorded yet for this day.</div>';
+      } else {
+        html += '<div style="padding:6px 10px">';
+        dayLoads.forEach(function (l) {
+          html += fsRenderLoadCard(l, { canEdit: canEdit, canDelete: canDelete });
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+
+    html += '</div>';
+    panel.innerHTML = html;
+  }
+
+  function summaryChip(label, value, color) {
+    return '<div style="background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+      + '<div style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em">' + label + '</div>'
+      + '<div style="font-size:1.05rem;font-weight:700;color:' + color + ';margin-top:2px">' + value + '</div>'
+      + '</div>';
+  }
+
+  // Stacked bar showing % of pounds in each size band. Only rendered when
+  // at least one band has weight. Colors: blue→teal→green→amber (small→big).
+  function sizeBandBar(sz04, sz46, sz68, sz8p) {
+    var total = (sz04 || 0) + (sz46 || 0) + (sz68 || 0) + (sz8p || 0);
+    if (total <= 0) return '<div style="color:#94a3b8;font-size:.74rem;font-style:italic">No size-grade data yet.</div>';
+    var bands = [
+      { label: '0–4 lb',     lbs: sz04 || 0, color: '#0369a1' },
+      { label: '4.01–5.99',  lbs: sz46 || 0, color: '#0891b2' },
+      { label: '6–7.99',     lbs: sz68 || 0, color: '#059669' },
+      { label: '8+ lb',      lbs: sz8p || 0, color: '#ca8a04' }
+    ];
+    var bar = '<div style="display:flex;height:18px;border-radius:4px;overflow:hidden;background:#f1f5f9">';
+    bands.forEach(function (b) {
+      if (b.lbs <= 0) return;
+      var pct = (b.lbs / total) * 100;
+      bar += '<div title="' + b.label + ': ' + fmtLbsLoose(b.lbs) + ' lbs (' + pct.toFixed(1) + '%)" '
+        + 'style="width:' + pct + '%;background:' + b.color + '"></div>';
+    });
+    bar += '</div>';
+
+    var legend = '<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap;font-size:.72rem;color:#475569">';
+    bands.forEach(function (b) {
+      var pct = total > 0 ? ((b.lbs / total) * 100).toFixed(1) : '0';
+      legend += '<div style="display:flex;align-items:center;gap:5px">'
+        + '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + b.color + '"></span>'
+        + '<span>' + b.label + ': <strong>' + fmtLbsLoose(b.lbs) + '</strong> (' + pct + '%)</span>'
+        + '</div>';
+    });
+    legend += '</div>';
+    return bar + legend;
+  }
+
+  function fsRenderLoadCard(l, p) {
+    var farmer = _fsState.farmers.find(function (f) { return f.id === l.farmer_id; });
+    var farmerName = farmer ? farmer.name : '(unknown farmer)';
+    var color = farmer ? (farmer.color || '#1a3a6b') : '#64748b';
+
+    // Size bands — only render rows that have values to keep cards tight
+    var bands = [];
+    if (Number(l.size_0_4_lbs) > 0) bands.push(['0–4', l.size_0_4_lbs]);
+    if (Number(l.size_4_6_lbs) > 0) bands.push(['4–6', l.size_4_6_lbs]);
+    if (Number(l.size_6_8_lbs) > 0) bands.push(['6–8', l.size_6_8_lbs]);
+    if (Number(l.size_8_plus_lbs) > 0) bands.push(['8+', l.size_8_plus_lbs]);
+
+    var html = '<div style="border:1px solid #e2e8f0;border-left:4px solid ' + color + ';border-radius:8px;margin:6px 0;padding:10px 12px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">';
+
+    // Left column: farmer + pond + truck + arrived
+    html += '<div style="flex:1;min-width:160px">'
+      + '<div style="font-weight:700;color:#0f172a;font-size:.9rem">' + esc(farmerName) + '</div>'
+      + (l.pond_ref ? '<div style="font-size:.72rem;color:#64748b">🏞️ ' + esc(l.pond_ref) + '</div>' : '')
+      + (l.truck_ref ? '<div style="font-size:.72rem;color:#64748b">🚚 ' + esc(l.truck_ref) + '</div>' : '')
+      + (l.arrived_at ? '<div style="font-size:.7rem;color:#94a3b8">arr. ' + esc(formatArrivedShort(l.arrived_at)) + '</div>' : '')
+      + (l.delivery_id ? '<div style="font-size:.68rem;color:#0369a1;margin-top:2px">🔗 scheduled</div>' : '')
+      + '</div>';
+
+    // Middle column: weights
+    html += '<div style="min-width:130px">'
+      + '<div style="font-size:.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Weight</div>';
+    if (l.gross_lbs != null || l.tare_lbs != null) {
+      html += '<div style="font-size:.74rem;color:#475569">'
+        + 'Gross ' + fmtLbsLoose(l.gross_lbs) + ' − Tare ' + fmtLbsLoose(l.tare_lbs)
+        + '</div>';
+    }
+    html += '<div style="font-size:.92rem;color:#1a3a6b;font-weight:700">Net ' + fmtLbsLoose(l.net_lbs) + ' lbs</div>';
+    if (Number(l.deduction_lbs) > 0) {
+      html += '<div style="font-size:.74rem;color:#991b1b">− ' + fmtLbsLoose(l.deduction_lbs) + ' ded'
+        + (l.deduction_reason ? ' (' + esc(l.deduction_reason) + ')' : '')
+        + '</div>';
+    }
+    html += '</div>';
+
+    // Size bands
+    if (bands.length) {
+      html += '<div style="min-width:120px">'
+        + '<div style="font-size:.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Size Bands</div>';
+      bands.forEach(function (b) {
+        html += '<div style="font-size:.74rem;color:#475569">'
+          + '<span style="color:#94a3b8">' + b[0] + ':</span> '
+          + '<strong>' + fmtLbsLoose(b[1]) + '</strong>'
+          + '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Pricing
+    if (l.dock_price_per_lb != null || l.payable_total != null) {
+      html += '<div style="min-width:120px">'
+        + '<div style="font-size:.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Pay</div>'
+        + (l.dock_price_per_lb != null ? '<div style="font-size:.74rem;color:#475569">' + fmtPrice(l.dock_price_per_lb) + '</div>' : '')
+        + (l.payable_lbs != null ? '<div style="font-size:.74rem;color:#475569">Payable ' + fmtLbsLoose(l.payable_lbs) + ' lbs</div>' : '')
+        + (l.payable_total != null ? '<div style="font-size:.92rem;color:#065f46;font-weight:700">' + fmtMoney(l.payable_total) + '</div>' : '')
+        + '</div>';
+    }
+
+    // Notes (full width)
+    if (l.notes) {
+      html += '<div style="flex-basis:100%;font-size:.74rem;color:#64748b;background:#f8fafc;border-radius:5px;padding:5px 8px;margin-top:4px">📝 ' + esc(l.notes) + '</div>';
+    }
+
+    // Action buttons
+    if (p.canEdit || p.canDelete) {
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
+      if (p.canEdit) html += '<button title="Edit" onclick="fsEditLoad(' + l.id + ')" style="background:#f1f5f9;color:#1a3a6b;border:none;border-radius:5px;padding:4px 8px;font-size:.72rem;font-weight:600;cursor:pointer">✎ Edit</button>';
+      if (p.canDelete) html += '<button title="Delete" onclick="fsDeleteLoad(' + l.id + ')" style="background:#fee2e2;color:#991b1b;border:none;border-radius:5px;padding:4px 8px;font-size:.72rem;font-weight:600;cursor:pointer">× Delete</button>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function formatArrivedShort(ts) {
+    try {
+      var d = new Date(ts);
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return String(ts); }
+  }
+
+  function fsWeekNavIntake(delta) {
+    _fsState.weekStart = addDaysIso(_fsState.weekStart, delta * 7);
+    fsLoadAndRenderIntake();
+  }
+  function fsGoTodayIntake() {
+    _fsState.weekStart = weekStartOf();
+    fsLoadAndRenderIntake();
+  }
+
+  // ── Load modal ────────────────────────────────────────────────────────
+  function fsAddLoad(dayDate) {
+    fsOpenLoadModal({ day_date: dayDate });
+  }
+  function fsEditLoad(id) {
+    var l = _fsState.loads.find(function (x) { return x.id === id; });
+    if (l) fsOpenLoadModal(l);
+  }
+  function fsDeleteLoad(id) {
+    if (!confirm('Delete this load record? Historical load will be gone for good.')) return;
+    apiCall('POST', '/api/fish-schedule?action=delete_load', { id: id })
+      .then(function () { toast('Load deleted'); fsLoadAndRenderIntake(); })
+      .catch(function (err) { toast('⚠️ ' + err.message); });
+  }
+
+  function fsOpenLoadModal(initial) {
+    var isEdit = !!initial.id;
+    var overlay = document.createElement('div');
+    overlay.id = 'fs-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+
+    var farmerOpts = '<option value="">— Select farmer —</option>'
+      + _fsState.farmers.map(function (f) {
+          return '<option value="' + f.id + '"' + (f.id === initial.farmer_id ? ' selected' : '') + '>' + esc(f.name) + '</option>';
+        }).join('');
+
+    // Scheduled deliveries dropdown — only show ones for this day's farmer
+    // once the user picks a farmer. For now show all this-week deliveries.
+    var delOpts = '<option value="">— None —</option>'
+      + _fsState.deliveries.map(function (d) {
+          var farmer = _fsState.farmers.find(function (f) { return f.id === d.farmer_id; });
+          var farmerName = farmer ? farmer.name : '(unknown)';
+          var label = d.day_date + ' ' + d.time_slot + ' · ' + farmerName
+            + (d.expected_lbs ? ' · ' + Number(d.expected_lbs).toLocaleString() + ' lbs exp.' : '');
+          return '<option value="' + d.id + '"' + (d.id === initial.delivery_id ? ' selected' : '') + '>' + esc(label) + '</option>';
+        }).join('');
+
+    // Pre-fill arrived_at with "now" for new loads, locked to the chosen day
+    var arrivedInitial = initial.arrived_at || '';
+    if (!isEdit && !arrivedInitial) {
+      var now = new Date();
+      // datetime-local wants YYYY-MM-DDTHH:MM in local time
+      var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+      var localIso = (initial.day_date || isoDate(now)) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+      arrivedInitial = localIso;
+    } else if (isEdit && arrivedInitial) {
+      // Convert ISO back to datetime-local format (strip seconds/ms/TZ)
+      var d2 = new Date(arrivedInitial);
+      if (!isNaN(d2.getTime())) {
+        var pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
+        arrivedInitial = d2.getFullYear() + '-' + pad2(d2.getMonth() + 1) + '-' + pad2(d2.getDate())
+          + 'T' + pad2(d2.getHours()) + ':' + pad2(d2.getMinutes());
+      }
+    }
+
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 40px);overflow-y:auto">'
+      + '<div style="font-weight:700;font-size:1.1rem;color:#1a3a6b;margin-bottom:14px">' + (isEdit ? '✎ Edit Load' : '🐟 New Load') + '</div>'
+
+      // Row 1: date + arrived + farmer
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Day</label>'
+      + '<input id="fs-l-date" type="date" value="' + esc(initial.day_date || '') + '" style="' + INP + '"></div>'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Arrived</label>'
+      + '<input id="fs-l-arrived" type="datetime-local" value="' + esc(arrivedInitial) + '" style="' + INP + '"></div>'
+      + '</div>'
+
+      + '<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Farmer *</label>'
+      + '<select id="fs-l-farmer" style="' + INP + '" onchange="fsLoadModalRefreshDeliveries()">' + farmerOpts + '</select></div>'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Pond</label>'
+      + '<input id="fs-l-pond" type="text" placeholder="e.g., Pond 4" value="' + esc(initial.pond_ref || '') + '" style="' + INP + '"></div>'
+      + '</div>'
+
+      + '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Truck / Driver</label>'
+      + '<input id="fs-l-truck" type="text" placeholder="e.g., Truck #3 / James" value="' + esc(initial.truck_ref || '') + '" style="' + INP + '"></div>'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Fulfilled scheduled delivery (optional)</label>'
+      + '<select id="fs-l-delivery" style="' + INP + '">' + delOpts + '</select></div>'
+      + '</div>'
+
+      // Weight section
+      + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
+      + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">⚖️ Weight</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Gross (lbs)</label>'
+      + '<input id="fs-l-gross" type="number" min="0" step="1" placeholder="e.g., 42000" value="' + (initial.gross_lbs == null ? '' : initial.gross_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Tare (lbs)</label>'
+      + '<input id="fs-l-tare" type="number" min="0" step="1" placeholder="e.g., 18000" value="' + (initial.tare_lbs == null ? '' : initial.tare_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Net (lbs) <span style="color:#94a3b8;font-weight:400">auto</span></label>'
+      + '<input id="fs-l-net" type="number" min="0" step="1" placeholder="auto" value="' + (initial.net_lbs == null ? '' : initial.net_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + ';background:#fff"></div>'
+      + '</div></div>'
+
+      // Size bands
+      + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
+      + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">📏 Size Bands <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(pounds in each band — optional)</span></div>'
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'
+      + sizeInput('fs-l-sz04', '0–4 lb',      initial.size_0_4_lbs)
+      + sizeInput('fs-l-sz46', '4.01–5.99',   initial.size_4_6_lbs)
+      + sizeInput('fs-l-sz68', '6–7.99',      initial.size_6_8_lbs)
+      + sizeInput('fs-l-sz8p', '8+ lb',       initial.size_8_plus_lbs)
+      + '</div>'
+      + '<div id="fs-l-size-warn" style="font-size:.7rem;color:#92400e;margin-top:6px;display:none"></div>'
+      + '</div>'
+
+      // Deductions
+      + '<div style="background:#fef2f2;border-radius:8px;padding:12px;margin-bottom:10px">'
+      + '<div style="font-size:.78rem;font-weight:700;color:#991b1b;margin-bottom:8px">✂️ Deductions <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(in pounds)</span></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Lbs Deducted</label>'
+      + '<input id="fs-l-deduct" type="number" min="0" step="1" placeholder="0" value="' + (initial.deduction_lbs == null ? '' : initial.deduction_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Reason</label>'
+      + '<input id="fs-l-dedreason" type="text" placeholder="e.g., DOAs, undersized" value="' + esc(initial.deduction_reason || '') + '" style="' + INP + '"></div>'
+      + '</div></div>'
+
+      // Pricing
+      + '<div style="background:#ecfdf5;border-radius:8px;padding:12px;margin-bottom:10px">'
+      + '<div style="font-size:.78rem;font-weight:700;color:#065f46;margin-bottom:8px">💰 Pricing <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(dock price varies by supply/demand — leave blank if none)</span></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Dock Price ($/lb)</label>'
+      + '<input id="fs-l-price" type="number" min="0" step="0.01" placeholder="e.g., 1.35" value="' + (initial.dock_price_per_lb == null ? '' : initial.dock_price_per_lb) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Payable Lbs <span style="color:#94a3b8;font-weight:400">auto</span></label>'
+      + '<input id="fs-l-paylbs" type="text" readonly placeholder="—" style="' + INP + ';background:#fff;color:#065f46;font-weight:700"></div>'
+      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Total $ <span style="color:#94a3b8;font-weight:400">auto</span></label>'
+      + '<input id="fs-l-paytotal" type="text" readonly placeholder="—" style="' + INP + ';background:#fff;color:#065f46;font-weight:700"></div>'
+      + '</div></div>'
+
+      // Notes
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Notes <span style="color:#94a3b8;font-weight:400">(optional)</span></label>'
+      + '<textarea id="fs-l-notes" rows="2" placeholder="e.g., ran long, driver needed to unload at dock 2" style="' + INP + ';resize:vertical">' + esc(initial.notes || '') + '</textarea>'
+
+      + '<div id="fs-l-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">'
+      + (isEdit ? '<button style="' + BTN_D + ';padding:8px 14px;font-size:.78rem" onclick="fsDeleteLoadFromModal(' + initial.id + ')">Delete</button>' : '')
+      + '<button style="' + BTN_SUB + ';padding:8px 14px" onclick="document.getElementById(\'fs-modal\').remove()">Cancel</button>'
+      + '<button style="' + BTN_P + ';padding:8px 14px" onclick="fsSaveLoad(' + (initial.id || 'null') + ')">Save Load</button>'
+      + '</div>'
+      + '</div>';
+
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    setTimeout(function () {
+      var el = document.getElementById('fs-l-farmer'); if (el) el.focus();
+      fsLoadModalRecalc(); // initial payable computation
+    }, 80);
+  }
+
+  function sizeInput(id, label, v) {
+    return '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">' + label + '</label>'
+      + '<input id="' + id + '" type="number" min="0" step="1" placeholder="0" value="' + (v == null ? '' : v) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>';
+  }
+
+  // Live recompute of Net / Payable Lbs / Total $ as the operator types. Also
+  // warns (not blocks) if size bands don't sum close to Net, which usually
+  // means a typo.
+  function fsLoadModalRecalc() {
+    var getNum = function (id) {
+      var el = document.getElementById(id);
+      if (!el) return null;
+      var v = el.value;
+      if (v === '' || v == null) return null;
+      var n = Number(v);
+      return isNaN(n) ? null : n;
+    };
+    var gross = getNum('fs-l-gross');
+    var tare = getNum('fs-l-tare');
+    var netField = document.getElementById('fs-l-net');
+    var netManual = getNum('fs-l-net');
+
+    // If user typed a net, respect it. Otherwise auto-fill from gross-tare.
+    var net = netManual;
+    if (net == null && gross != null && tare != null) {
+      net = gross - tare;
+      if (netField) netField.value = net;
+    }
+
+    var deduct = getNum('fs-l-deduct') || 0;
+    var price = getNum('fs-l-price');
+    var payLbs = (net == null) ? null : (net - deduct);
+    var payTot = (payLbs != null && price != null) ? Math.round(payLbs * price * 100) / 100 : null;
+
+    var paylbsEl = document.getElementById('fs-l-paylbs');
+    var paytotEl = document.getElementById('fs-l-paytotal');
+    if (paylbsEl) paylbsEl.value = payLbs == null ? '' : Number(payLbs).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    if (paytotEl) paytotEl.value = payTot == null ? '' : '$' + Number(payTot).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Size-band reconciliation
+    var bandSum = (getNum('fs-l-sz04') || 0) + (getNum('fs-l-sz46') || 0)
+      + (getNum('fs-l-sz68') || 0) + (getNum('fs-l-sz8p') || 0);
+    var warn = document.getElementById('fs-l-size-warn');
+    if (warn) {
+      if (bandSum > 0 && net != null && Math.abs(bandSum - net) > Math.max(50, net * 0.02)) {
+        // Only warn if off by more than 50 lbs AND more than 2% (so small
+        // rounding noise doesn't trigger it)
+        warn.style.display = 'block';
+        warn.textContent = '⚠️ Size bands sum to ' + Number(bandSum).toLocaleString() + ' lbs but net is '
+          + Number(net).toLocaleString() + ' lbs (' + (bandSum > net ? '+' : '') + Number(bandSum - net).toLocaleString() + ').';
+      } else {
+        warn.style.display = 'none';
+      }
+    }
+  }
+
+  // Farmer change — filter delivery dropdown to just this farmer's
+  // scheduled deliveries (plus current selection)
+  function fsLoadModalRefreshDeliveries() {
+    var farmerEl = document.getElementById('fs-l-farmer');
+    var delEl = document.getElementById('fs-l-delivery');
+    if (!farmerEl || !delEl) return;
+    var farmerId = parseInt(farmerEl.value, 10);
+    var currentId = parseInt(delEl.value, 10);
+
+    var opts = '<option value="">— None —</option>';
+    _fsState.deliveries.forEach(function (d) {
+      if (farmerId && d.farmer_id !== farmerId && d.id !== currentId) return;
+      var farmer = _fsState.farmers.find(function (f) { return f.id === d.farmer_id; });
+      var farmerName = farmer ? farmer.name : '(unknown)';
+      var label = d.day_date + ' ' + d.time_slot + ' · ' + farmerName
+        + (d.expected_lbs ? ' · ' + Number(d.expected_lbs).toLocaleString() + ' lbs exp.' : '');
+      opts += '<option value="' + d.id + '"' + (d.id === currentId ? ' selected' : '') + '>' + esc(label) + '</option>';
+    });
+    delEl.innerHTML = opts;
+  }
+
+  function fsSaveLoad(id) {
+    var err = document.getElementById('fs-l-err');
+    err.style.display = 'none';
+    var val = function (sel) {
+      var el = document.getElementById(sel);
+      return el ? el.value : '';
+    };
+
+    var farmerId = val('fs-l-farmer');
+    var dayDate = val('fs-l-date');
+    if (!dayDate) { err.textContent = 'Day is required.'; err.style.display = 'block'; return; }
+    if (!farmerId) { err.textContent = 'Farmer is required.'; err.style.display = 'block'; return; }
+
+    var arrived = val('fs-l-arrived');
+    var body = {
+      day_date: dayDate,
+      arrived_at: arrived ? new Date(arrived).toISOString() : null,
+      farmer_id: parseInt(farmerId, 10),
+      pond_ref: val('fs-l-pond') || null,
+      truck_ref: val('fs-l-truck') || null,
+      delivery_id: val('fs-l-delivery') ? parseInt(val('fs-l-delivery'), 10) : null,
+      gross_lbs: val('fs-l-gross') || null,
+      tare_lbs: val('fs-l-tare') || null,
+      net_lbs: val('fs-l-net') || null,
+      size_0_4_lbs: val('fs-l-sz04') || null,
+      size_4_6_lbs: val('fs-l-sz46') || null,
+      size_6_8_lbs: val('fs-l-sz68') || null,
+      size_8_plus_lbs: val('fs-l-sz8p') || null,
+      deduction_lbs: val('fs-l-deduct') || null,
+      deduction_reason: val('fs-l-dedreason') || null,
+      dock_price_per_lb: val('fs-l-price') || null,
+      notes: val('fs-l-notes') || null
+    };
+    if (id) body.id = id;
+
+    apiCall('POST', '/api/fish-schedule?action=save_load', body)
+      .then(function () {
+        document.getElementById('fs-modal').remove();
+        toast(id ? 'Load saved' : 'Load added');
+        fsLoadAndRenderIntake();
+      })
+      .catch(function (e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+      });
+  }
+
+  function fsDeleteLoadFromModal(id) {
+    if (!confirm('Delete this load record?')) return;
+    apiCall('POST', '/api/fish-schedule?action=delete_load', { id: id })
+      .then(function () {
+        var m = document.getElementById('fs-modal'); if (m) m.remove();
+        toast('Load deleted');
+        fsLoadAndRenderIntake();
       })
       .catch(function (err) { toast('⚠️ ' + err.message); });
   }
@@ -498,4 +1087,14 @@
   window.fsSaveFarmer = fsSaveFarmer;
   window.fsDeleteFarmer = fsDeleteFarmer;
   window.fsImportFlvFarmers = fsImportFlvFarmers;
+  // Intake (Phase B)
+  window.fsWeekNavIntake = fsWeekNavIntake;
+  window.fsGoTodayIntake = fsGoTodayIntake;
+  window.fsAddLoad = fsAddLoad;
+  window.fsEditLoad = fsEditLoad;
+  window.fsDeleteLoad = fsDeleteLoad;
+  window.fsSaveLoad = fsSaveLoad;
+  window.fsDeleteLoadFromModal = fsDeleteLoadFromModal;
+  window.fsLoadModalRecalc = fsLoadModalRecalc;
+  window.fsLoadModalRefreshDeliveries = fsLoadModalRefreshDeliveries;
 })();
