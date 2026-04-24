@@ -47,7 +47,10 @@ const WIDGET_PERMS = {
   parts:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   // ── Tools (managers+) ────────────────────────────────────────────────
-  ai:        { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
+  ai:            { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
+  // `ask` is a custom action used by the Union Contract widget for "Ask the
+  // Lawyer" — manager+ can invoke it; upload / edit / delete remain admin-only.
+  contracts:     { view:'manager',    create:'admin',      edit:'admin',      delete:'admin',   ask:'manager' },
   // ── Settings / platform admin (admin only) ───────────────────────────
   settings:  { view:'admin',      create:'admin',      edit:'admin',      delete:'admin' }
 };
@@ -65,6 +68,7 @@ const WIDGET_CATEGORIES = {
   parts:        'maintenance',
   todo:      'maintenance',
   ai:        'tools',
+  contracts: 'tools',
   settings:  'settings'
 };
 

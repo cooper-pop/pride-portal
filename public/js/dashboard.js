@@ -45,7 +45,8 @@ function buildDash() {
       { id:'production',   label:'Production',     icon:'📊', color:'#065f46', category:'production' },
       { id:'todo',         label:'To-Do List',     icon:'📋', color:'#1a3a6b', category:'maintenance' },
       { id:'parts',        label:'Parts',          icon:'⚙️', color:'#7c3aed', category:'maintenance' },
-      { id:'ai',           label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' }
+      { id:'ai',           label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' },
+      { id:'contracts',    label:'Union Contract', icon:'⚖️', color:'#7c2d12', category:'tools' }
     ];
   } else if (currentCompany === 'bfn') {
     // Battle Fish North portal — data is company-scoped automatically via the
@@ -121,6 +122,7 @@ function openWidget(id, label) {
   else if (id === 'bids') buildBidsWidget();
   else if (id === 'fishschedule') buildFishScheduleWidget();
   else if (id === 'production') buildProductionWidget();
+  else if (id === 'contracts') buildContractsWidget();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }
 

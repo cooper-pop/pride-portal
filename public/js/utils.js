@@ -56,6 +56,7 @@ var WIDGET_PERMS = {
   parts:         { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   ai:        { view:'manager',    create:'manager',    edit:'manager',    delete:'manager' },
+  contracts: { view:'manager',    create:'admin',      edit:'admin',      delete:'admin',   ask:'manager' },
   settings:  { view:'admin',      create:'admin',      edit:'admin',      delete:'admin' }
 };
 // Returns true if the current user can perform `action` on `widget`.

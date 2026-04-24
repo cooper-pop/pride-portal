@@ -39,6 +39,11 @@
     "api/bids.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/contracts.js": {
+      "maxDuration": 120,
+      "memory": 1024,
+      "includeFiles": "_contract_seed_text.txt"
     }
   },
   "headers": [
