@@ -43,6 +43,9 @@ const WIDGET_PERMS = {
   flavor:        { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   fishschedule:  { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
   production:    { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
+  // Production Report (Phase C) — read-only dashboard. Manager+ only because
+  // it surfaces farmer pricing + payables supervisors shouldn't see.
+  productionreport: { view:'manager' },
   // ── Maintenance (supervisors can view + create; managers+ can edit/delete) ─
   parts:     { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
   todo:      { view:'supervisor', create:'supervisor', edit:'manager',    delete:'manager' },
@@ -65,6 +68,7 @@ const WIDGET_CATEGORIES = {
   flavor:       'production',
   fishschedule: 'production',
   production:   'production',
+  productionreport: 'production',
   parts:        'maintenance',
   todo:      'maintenance',
   ai:        'tools',
