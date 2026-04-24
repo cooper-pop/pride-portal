@@ -155,11 +155,11 @@ const SEED_SKUS = [
   { pool: 'FREEZER-IQF', sku: '',           item: 'POLY BAG 4OZ 10#',      category: 'PORTIONS', lbs_per_case: 10, initial_balance: 0 },
   { pool: 'FREEZER-IQF', sku: '',           item: '40# 4OZ PORTION',       category: 'PORTIONS', lbs_per_case: 40, initial_balance: 68 },
 
-  // ── Flavored products (1# individual / 10# packs) ───────────────────
-  { pool: 'FREEZER-IQF', sku: '', item: 'JALAPENO 1#',  category: 'FLAVORED', lbs_per_case: 1,  initial_balance: 2412 },
-  { pool: 'FREEZER-IQF', sku: '', item: 'REGULAR 1#',   category: 'FLAVORED', lbs_per_case: 1,  initial_balance: 931 },
-  { pool: 'FREEZER-IQF', sku: '', item: 'JALAPENO 10#', category: 'FLAVORED', lbs_per_case: 10, initial_balance: 146 },
-  { pool: 'FREEZER-IQF', sku: '', item: 'REGULAR 10#',  category: 'FLAVORED', lbs_per_case: 10, initial_balance: 112 },
+  // ── Hushpuppies (separate product line from the catfish; 1# + 10# packs) ─
+  { pool: 'FREEZER-IQF', sku: '', item: 'JALAPENO 1#',  category: 'HUSHPUPPIES', lbs_per_case: 1,  initial_balance: 2412 },
+  { pool: 'FREEZER-IQF', sku: '', item: 'REGULAR 1#',   category: 'HUSHPUPPIES', lbs_per_case: 1,  initial_balance: 931 },
+  { pool: 'FREEZER-IQF', sku: '', item: 'JALAPENO 10#', category: 'HUSHPUPPIES', lbs_per_case: 10, initial_balance: 146 },
+  { pool: 'FREEZER-IQF', sku: '', item: 'REGULAR 10#',  category: 'HUSHPUPPIES', lbs_per_case: 10, initial_balance: 112 },
 
   // ICE PACK (all 15-lb cases per the "ALL 15LB." sheet header) ───────
   { pool: 'ICE PACK', sku: '2051011',     item: '5-7 WHOLE',            category: 'WHOLE',    lbs_per_case: 15 },
@@ -272,6 +272,9 @@ async function ensureTables(sql) {
   // Backfill column for deployments that predate this change.
   try {
     await sql`ALTER TABLE prod_skus ADD COLUMN IF NOT EXISTS initial_balance_lbs NUMERIC DEFAULT 0`;
+    // Rename an old category label — these items are hushpuppies, not
+    // flavored catfish. Idempotent (no rows left to update after first run).
+    await sql`UPDATE prod_skus SET category = 'HUSHPUPPIES' WHERE category = 'FLAVORED'`;
   } catch (e) { /* already present */ }
   await sql`CREATE INDEX IF NOT EXISTS prod_skus_company_idx
     ON prod_skus(company_id, pool, active)`;

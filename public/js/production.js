@@ -164,13 +164,25 @@
     // like the paper inventory sheet.
     var poolRows = rows.filter(function (r) { return r.pool === _ps.activePool; });
 
-    // Pool totals
-    var poolTotals = { produced: 0, shipped: 0, balance: 0 };
+    // Pool totals — split catfish (raw/primary product) from hushpuppies
+    // (the JALAPENO / REGULAR 1# and 10# packs). They don't combine
+    // meaningfully: one is by the case of catfish, the other is a
+    // separate hushpuppy product line in its own packaging.
+    var catfishTotals = { produced: 0, shipped: 0, balance: 0 };
+    var hushTotals    = { produced: 0, shipped: 0, balance: 0 };
+    var hasHush = false;
     poolRows.forEach(function (r) {
-      poolTotals.produced += Number(r.produced_lbs || 0);
-      poolTotals.shipped += Number(r.shipped_lbs || 0);
-      poolTotals.balance += Number(r.balance_lbs || 0);
+      var t = (r.category === 'HUSHPUPPIES') ? hushTotals : catfishTotals;
+      t.produced += Number(r.produced_lbs || 0);
+      t.shipped  += Number(r.shipped_lbs || 0);
+      t.balance  += Number(r.balance_lbs || 0);
+      if (r.category === 'HUSHPUPPIES') hasHush = true;
     });
+    var poolTotals = {
+      produced: catfishTotals.produced + hushTotals.produced,
+      shipped:  catfishTotals.shipped  + hushTotals.shipped,
+      balance:  catfishTotals.balance  + hushTotals.balance
+    };
 
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
 
@@ -195,14 +207,25 @@
       html += renderDailyRow(r, canEdit || canCreate);
     });
 
-    // Totals footer
-    html += '<tr style="background:#f1f5f9;font-weight:700">'
-      + '<td style="padding:10px 10px" colspan="5">TOTAL ' + _ps.activePool + '</td>'
-      + '<td style="padding:10px 6px;text-align:right;color:#1e40af">' + fmtLbs(poolTotals.produced) + '</td>'
-      + '<td></td>'
-      + '<td style="padding:10px 6px;text-align:right">' + fmtLbs(poolTotals.shipped) + '</td>'
-      + '<td style="padding:10px 6px;text-align:right;color:#0f766e">' + fmtLbs(poolTotals.balance) + '</td>'
-      + '</tr>';
+    // Totals footer. If hushpuppy items are present, break totals into
+    // Catfish / Hushpuppies / Grand rows so the two product lines are
+    // reported separately.
+    function totalsRow(label, t, bg, textColor) {
+      return '<tr style="background:' + bg + ';font-weight:700;color:' + (textColor || '#0f172a') + '">'
+        + '<td style="padding:8px 10px" colspan="5">' + label + '</td>'
+        + '<td style="padding:8px 6px;text-align:right;color:#1e40af">' + fmtLbs(t.produced) + '</td>'
+        + '<td></td>'
+        + '<td style="padding:8px 6px;text-align:right">' + fmtLbs(t.shipped) + '</td>'
+        + '<td style="padding:8px 6px;text-align:right;color:#0f766e">' + fmtLbs(t.balance) + '</td>'
+        + '</tr>';
+    }
+    if (hasHush) {
+      html += totalsRow('Catfish Subtotal', catfishTotals, '#f1f5f9');
+      html += totalsRow('Hushpuppies Subtotal', hushTotals, '#fef3c7', '#9a3412');
+      html += totalsRow('TOTAL ' + _ps.activePool, poolTotals, '#1a3a6b', '#ffffff');
+    } else {
+      html += totalsRow('TOTAL ' + _ps.activePool, poolTotals, '#f1f5f9');
+    }
 
     html += '</tbody></table></div>';
     html += '</div>';
@@ -592,33 +615,57 @@
     html += '</tr></thead><tbody>';
 
     // Flat list in display_order — matches Daily Entry / PDF sequence.
+    // Totals split into catfish + hushpuppies (if present) for reporting.
     var poolTotalDays = new Array(days.length).fill(0);
     var poolTotalLbs = 0;
     var poolTotalCases = 0;
+    var catfishDays = new Array(days.length).fill(0);
+    var catfishLbs = 0, catfishCases = 0;
+    var hushDays = new Array(days.length).fill(0);
+    var hushLbs = 0, hushCases = 0;
+    var hasHushW = false;
 
     rows.forEach(function (r) {
+      var isHush = (r.category === 'HUSHPUPPIES');
+      if (isHush) hasHushW = true;
       var casesCell = (r.lbs_per_case == null) ? '—' : esc(String(r.lbs_per_case));
       html += '<tr>'
         + '<td style="padding:5px 10px;color:#0f172a;position:sticky;left:0;background:#fff">' + esc(r.item_name) + '</td>'
         + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>';
       (r.daily || []).forEach(function (v, i) {
-        poolTotalDays[i] += Number(v || 0);
+        var n = Number(v || 0);
+        poolTotalDays[i] += n;
+        if (isHush) hushDays[i] += n; else catfishDays[i] += n;
         html += '<td style="padding:5px 6px;text-align:right;color:' + (v > 0 ? '#0f172a' : '#cbd5e1') + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
       });
-      poolTotalLbs += Number(r.total_lbs || 0);
-      if (r.total_cases != null) poolTotalCases += Number(r.total_cases);
-      html += '<td style="padding:5px 10px;text-align:right;color:#334155">' + (r.total_cases != null && r.total_cases > 0 ? Number(r.total_cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
-      html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (r.total_lbs > 0 ? fmtLbs(r.total_lbs) : '—') + '</td></tr>';
+      var rowLbs = Number(r.total_lbs || 0);
+      var rowCases = r.total_cases != null ? Number(r.total_cases) : 0;
+      poolTotalLbs += rowLbs;
+      poolTotalCases += rowCases;
+      if (isHush) { hushLbs += rowLbs; hushCases += rowCases; }
+      else        { catfishLbs += rowLbs; catfishCases += rowCases; }
+      html += '<td style="padding:5px 10px;text-align:right;color:#334155">' + (rowCases > 0 ? rowCases.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
+      html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (rowLbs > 0 ? fmtLbs(rowLbs) : '—') + '</td></tr>';
     });
 
-    html += '<tr style="background:#f1f5f9;font-weight:700">'
-      + '<td style="padding:10px;position:sticky;left:0;background:#f1f5f9">TOTAL ' + _ps.activePool + '</td>'
-      + '<td></td>';
-    poolTotalDays.forEach(function (v) {
-      html += '<td style="padding:10px 6px;text-align:right">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
-    });
-    html += '<td style="padding:10px;text-align:right">' + (poolTotalCases > 0 ? Number(poolTotalCases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
-    html += '<td style="padding:10px;text-align:right;color:#0f766e">' + (poolTotalLbs > 0 ? fmtLbs(poolTotalLbs) : '—') + '</td></tr>';
+    // Totals footer — split catfish / hushpuppies / grand if hushpuppy
+    // items are present; single row otherwise.
+    function wkTotalsRow(label, days, cases, lbs, bg, textColor) {
+      var tr = '<tr style="background:' + bg + ';font-weight:700;color:' + (textColor || '#0f172a') + '">'
+        + '<td style="padding:10px;position:sticky;left:0;background:' + bg + ';color:' + (textColor || '#0f172a') + '">' + label + '</td>'
+        + '<td></td>';
+      days.forEach(function (v) { tr += '<td style="padding:10px 6px;text-align:right">' + (v > 0 ? fmtLbs(v) : '—') + '</td>'; });
+      tr += '<td style="padding:10px;text-align:right">' + (cases > 0 ? Number(cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
+      tr += '<td style="padding:10px;text-align:right;color:' + (textColor || '#0f766e') + '">' + (lbs > 0 ? fmtLbs(lbs) : '—') + '</td></tr>';
+      return tr;
+    }
+    if (hasHushW) {
+      html += wkTotalsRow('Catfish Subtotal', catfishDays, catfishCases, catfishLbs, '#f1f5f9');
+      html += wkTotalsRow('Hushpuppies Subtotal', hushDays, hushCases, hushLbs, '#fef3c7', '#9a3412');
+      html += wkTotalsRow('TOTAL ' + _ps.activePool, poolTotalDays, poolTotalCases, poolTotalLbs, '#1a3a6b', '#ffffff');
+    } else {
+      html += wkTotalsRow('TOTAL ' + _ps.activePool, poolTotalDays, poolTotalCases, poolTotalLbs, '#f1f5f9');
+    }
 
     html += '</tbody></table></div></div>';
     panel.innerHTML = html;
