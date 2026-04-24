@@ -194,7 +194,8 @@
     panel.innerHTML = periodBar()
       + '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading report…</div>';
 
-    var qs = '?start=' + encodeURIComponent(_prs.start) + '&end=' + encodeURIComponent(_prs.end);
+    // Use & (not ?) to join — action is already a query param in the base URL
+    var qs = '&start=' + encodeURIComponent(_prs.start) + '&end=' + encodeURIComponent(_prs.end);
     if (_prs.tab === 'summary') {
       apiCall('GET', '/api/production-report?action=get_summary' + qs)
         .then(function (r) { _prs.summary = r; prsRenderSummary(); })
