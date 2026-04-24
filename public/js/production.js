@@ -175,8 +175,9 @@
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
 
     // Table header. Lbs/Case sits right after Item so operators see case
-    // context as they scan the row.
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
+    // context as they scan the row. Grid-style cell borders applied via
+    // .pr-grid-table rule in public/css/style.css.
+    html += '<table class="pr-grid-table" style="width:100%;border-collapse:collapse;font-size:.78rem">'
       + '<thead style="position:sticky;top:0;background:#1a3a6b;color:#fff;z-index:1"><tr>'
       + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:140px">Item</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:60px;font-size:.68rem;opacity:.85">Lbs/Case</th>'
@@ -579,7 +580,7 @@
 
     // Table. Column order: Item | Lbs/Case | MON..SAT + MON2 + TUE2 | CASES | LBS
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:auto">';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.76rem"><thead><tr style="background:#1a3a6b;color:#fff">'
+    html += '<table class="pr-grid-table" style="width:100%;border-collapse:collapse;font-size:.76rem"><thead><tr style="background:#1a3a6b;color:#fff">'
       + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:160px;position:sticky;left:0;background:#1a3a6b;z-index:2">Item</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:66px;font-size:.68rem;opacity:.85">Lbs/Case</th>';
     days.forEach(function (d, i) {
