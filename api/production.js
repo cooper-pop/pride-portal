@@ -162,6 +162,46 @@ const SEED_SKUS = [
   { pool: 'COOLER', sku: '', item: 'WHOLE STEAK',      category: 'STEAKS',    lbs_per_case: null }
 ];
 
+// Tracks which company_ids have had their SKU name migration applied
+// in this serverless container's lifetime. Since Vercel instances are
+// short-lived, this effectively runs "once per cold start per company".
+const _namesMigratedFor = new Set();
+
+// Walks every SKU for a company, strips weight suffixes from item_name,
+// and backfills lbs_per_case. Idempotent — second run finds nothing to
+// update. Called lazily from get_day / get_skus / seed_skus so Cooper
+// doesn't have to click any "migrate" button.
+async function migrateNamesOnce(sql, companyId) {
+  if (_namesMigratedFor.has(companyId)) return;
+  _namesMigratedFor.add(companyId); // mark up front so concurrent requests skip
+  try {
+    const rows = await sql`
+      SELECT id, pool, item_name, lbs_per_case
+      FROM prod_skus
+      WHERE company_id = ${companyId}
+    `;
+    for (const e of rows) {
+      const parsed = stripCaseWeight(e.item_name);
+      const poolDefault = (e.pool === 'FREEZER-IQF' || e.pool === 'ICE PACK') ? 15 : null;
+      const newLbs = e.lbs_per_case != null
+        ? Number(e.lbs_per_case)
+        : (parsed.lbs != null ? parsed.lbs : poolDefault);
+      const nameChanged = parsed.name !== e.item_name;
+      const lbsChanged = (newLbs != null && Number(e.lbs_per_case || 0) !== Number(newLbs));
+      if (nameChanged || lbsChanged) {
+        await sql`UPDATE prod_skus SET
+          item_name = ${parsed.name},
+          lbs_per_case = ${newLbs},
+          updated_at = NOW()
+          WHERE id = ${e.id}`;
+      }
+    }
+  } catch (e) {
+    console.error('[production] auto-migrate names failed:', e.message);
+    _namesMigratedFor.delete(companyId); // allow retry next request
+  }
+}
+
 async function ensureTables(sql) {
   // SKU catalog. Soft-deleted via active=false so history survives.
   await sql`CREATE TABLE IF NOT EXISTS prod_skus (
@@ -282,6 +322,8 @@ module.exports = async function handler(req, res) {
     // ── GET get_skus ───────────────────────────────────────────────────
     if (req.method === 'GET' && action === 'get_skus') {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
+      // Auto-migrate dirty names / missing case sizes on first hit per container
+      await migrateNamesOnce(sql, companyId);
       const rows = await sql`
         SELECT id, sku, item_name, category, pool, lbs_per_case, display_order, notes
         FROM prod_skus
@@ -298,6 +340,8 @@ module.exports = async function handler(req, res) {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const entryDate = (url.searchParams.get('entry_date') || '').trim();
       if (!entryDate) return res.status(400).json({ error: 'entry_date required (YYYY-MM-DD)' });
+      // Auto-migrate dirty names / missing case sizes on first hit per container
+      await migrateNamesOnce(sql, companyId);
 
       const skus = await sql`
         SELECT id, sku, item_name, category, pool, lbs_per_case, display_order
@@ -370,6 +414,7 @@ module.exports = async function handler(req, res) {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const weekStart = (url.searchParams.get('week_start') || '').trim();
       if (!weekStart) return res.status(400).json({ error: 'week_start required (Monday YYYY-MM-DD)' });
+      await migrateNamesOnce(sql, companyId);
 
       // 8-day range: Mon of this week through Tue of next week (Mon2 + Tue2)
       const days = [];
