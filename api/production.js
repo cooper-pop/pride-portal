@@ -580,32 +580,43 @@ module.exports = async function handler(req, res) {
     }
 
     // ── POST save_transfer ─────────────────────────────────────────────
-    // Cross-pool (or same-pool) transfer between two SKUs. Creates two
-    // paired adjustment rows: -lbs on source SKU, +lbs on destination SKU,
-    // both carrying the same transfer_pair_id for easy undo.
+    // Cross-SKU swap. Creates two paired adjustment rows sharing a
+    // transfer_pair_id. Accepts asymmetric lbs — e.g. 100 cs × 15# (1500
+    // lbs) out of SKU A paired with 150 cs × 10# (1500 lbs) into SKU B;
+    // OR imbalanced amounts where a few lbs are lost/gained to packing.
+    //
+    // Input: from_lbs (positive) and to_lbs (positive); backend negates the
+    // from side. Legacy `lbs` field is accepted for backward compatibility
+    // (applies symmetrically to both sides).
     if (req.method === 'POST' && action === 'save_transfer') {
       if (!perms.canPerform(user, 'production', 'edit')) return perms.deny(res, user, 'production', 'edit');
       const b = req.body || {};
       const fromSkuId = parseInt(b.from_sku_id, 10);
       const toSkuId = parseInt(b.to_sku_id, 10);
       const entryDate = String(b.entry_date || '').trim();
-      const lbs = Number(b.lbs);
       const note = b.note || null;
+      const fromLbs = b.from_lbs != null ? Number(b.from_lbs) : (b.lbs != null ? Number(b.lbs) : NaN);
+      const toLbs   = b.to_lbs   != null ? Number(b.to_lbs)   : (b.lbs != null ? Number(b.lbs) : NaN);
+
       if (!fromSkuId || !toSkuId || fromSkuId === toSkuId) return res.status(400).json({ error: 'from_sku_id and to_sku_id required and must differ' });
       if (!entryDate) return res.status(400).json({ error: 'entry_date required' });
-      if (isNaN(lbs) || lbs <= 0) return res.status(400).json({ error: 'lbs must be a positive number' });
+      if (isNaN(fromLbs) || fromLbs <= 0) return res.status(400).json({ error: 'from_lbs must be a positive number' });
+      if (isNaN(toLbs) || toLbs <= 0) return res.status(400).json({ error: 'to_lbs must be a positive number' });
 
       const [{ pair_id }] = await sql`SELECT gen_random_uuid() AS pair_id`;
       await sql`
         INSERT INTO prod_adjustments (company_id, entry_date, sku_id, delta_lbs, note, transfer_pair_id)
         VALUES
-          (${companyId}, ${entryDate}::date, ${fromSkuId}, ${-lbs}, ${note}, ${pair_id}),
-          (${companyId}, ${entryDate}::date, ${toSkuId},   ${lbs},  ${note}, ${pair_id})
+          (${companyId}, ${entryDate}::date, ${fromSkuId}, ${-fromLbs}, ${note}, ${pair_id}),
+          (${companyId}, ${entryDate}::date, ${toSkuId},   ${toLbs},   ${note}, ${pair_id})
       `;
       await logAudit(sql, req, user, {
         action: 'production.save_transfer',
         resource_type: 'transfer', resource_id: pair_id,
-        details: { from_sku_id: fromSkuId, to_sku_id: toSkuId, entry_date: entryDate, lbs, note }
+        details: {
+          from_sku_id: fromSkuId, to_sku_id: toSkuId, entry_date: entryDate,
+          from_lbs: fromLbs, to_lbs: toLbs, balance_delta: toLbs - fromLbs, note
+        }
       });
       return res.json({ ok: true, pair_id });
     }

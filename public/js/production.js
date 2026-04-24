@@ -222,13 +222,27 @@
       + 'data-sku="' + r.sku_id + '" data-field="shipped_lbs" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#fef2f2' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     var adjCell;
+    // Adjust column displays in CASES (cases = lbs / lbs_per_case). Fallback
+    // to lbs if lbs_per_case isn't set, though with COOLER retired every
+    // active SKU should have one.
+    var adjCases = (r.lbs_per_case && r.lbs_per_case > 0)
+      ? (Number(r.adjust_lbs) / Number(r.lbs_per_case))
+      : null;
+    function fmtAdjLabel() {
+      if (r.adjust_lbs === 0) return '+ Adj';
+      if (adjCases != null) {
+        var cs = Number(adjCases.toFixed(2));
+        return (cs > 0 ? '+' : '') + cs + ' cs';
+      }
+      return (r.adjust_lbs > 0 ? '+' : '') + fmtLbs(r.adjust_lbs) + ' lbs';
+    }
     if (writable) {
       var hasAdj = r.adjust_count > 0;
       var adjColor = r.adjust_lbs > 0 ? '#065f46' : (r.adjust_lbs < 0 ? '#991b1b' : '#64748b');
       adjCell = '<button onclick="prOpenAdjust(' + r.sku_id + ')" style="background:' + (hasAdj ? '#fef3c7' : 'transparent') + ';border:1px dashed #cbd5e1;border-radius:4px;padding:3px 8px;font-size:.72rem;color:' + adjColor + ';cursor:pointer;width:100%;font-weight:' + (hasAdj ? '700' : '500') + '">'
-        + (r.adjust_lbs === 0 ? '+ Adj' : (r.adjust_lbs > 0 ? '+' : '') + fmtLbs(r.adjust_lbs)) + (hasAdj ? ' ·' + r.adjust_count : '') + '</button>';
+        + fmtAdjLabel() + (hasAdj ? ' ·' + r.adjust_count : '') + '</button>';
     } else {
-      adjCell = '<span style="font-size:.72rem;color:#64748b">' + (r.adjust_lbs === 0 ? '—' : fmtLbs(r.adjust_lbs)) + '</span>';
+      adjCell = '<span style="font-size:.72rem;color:#64748b">' + (r.adjust_lbs === 0 ? '—' : fmtAdjLabel()) + '</span>';
     }
     // Lbs/Case cell — COOLER items have null (tubs not cases) → em-dash.
     var casesCell = (r.lbs_per_case == null || r.lbs_per_case === '')
@@ -296,57 +310,95 @@
     overlay.id = 'pr-adj-modal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
 
-    // Existing adjustments list
+    var rowLbsPerCase = row.lbs_per_case && row.lbs_per_case > 0 ? Number(row.lbs_per_case) : null;
+
+    // Existing adjustments list — shown in CASES (cases = delta / lbs_per_case)
+    // with the computed lbs alongside for sanity-checking.
     var existingHtml = '';
     if (row.adjustments && row.adjustments.length) {
       existingHtml = '<div style="margin-top:10px;border-top:1px solid #e2e8f0;padding-top:10px"><div style="font-size:.72rem;color:#475569;font-weight:700;margin-bottom:6px">EXISTING ADJUSTMENTS TODAY</div>';
       row.adjustments.forEach(function (a) {
         var color = a.delta > 0 ? '#065f46' : '#991b1b';
         var sign = a.delta > 0 ? '+' : '';
+        var display;
+        if (rowLbsPerCase) {
+          var cs = Number((Number(a.delta) / rowLbsPerCase).toFixed(2));
+          display = sign + cs + ' cs <span style="font-weight:400;color:#64748b;font-size:.7rem">(' + sign + fmtLbs(a.delta) + ' lbs)</span>';
+        } else {
+          display = sign + fmtLbs(a.delta) + ' lbs';
+        }
         existingHtml += '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9">'
-          + '<span style="font-weight:700;color:' + color + ';min-width:70px">' + sign + fmtLbs(a.delta) + ' lbs</span>'
-          + '<span style="flex:1;font-size:.76rem;color:#334155">' + esc(a.note || '') + (a.transfer_pair_id ? ' <span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:4px;font-size:.62rem;font-weight:600;margin-left:4px">TRANSFER</span>' : '') + '</span>'
+          + '<span style="font-weight:700;color:' + color + ';min-width:130px">' + display + '</span>'
+          + '<span style="flex:1;font-size:.76rem;color:#334155">' + esc(a.note || '') + (a.transfer_pair_id ? ' <span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:4px;font-size:.62rem;font-weight:600;margin-left:4px">SWAP</span>' : '') + '</span>'
           + '<button onclick="prDeleteAdjustment(' + a.id + ')" style="' + BTN_D + '">Del</button>'
           + '</div>';
       });
       existingHtml += '</div>';
     }
 
-    // SKU dropdown for transfer target
+    // SKU dropdown for swap target. Carries each candidate's lbs_per_case
+    // in data-lbs so the live-hint math can pull it without another fetch.
     var transferOpts = (_ps.day.rows || [])
       .filter(function (s) { return s.sku_id !== skuId; })
-      .map(function (s) { return '<option value="' + s.sku_id + '">[' + s.pool + '] ' + esc(s.item_name) + (s.sku ? ' — ' + esc(s.sku) : '') + '</option>'; })
+      .map(function (s) {
+        var lbs = s.lbs_per_case && s.lbs_per_case > 0 ? Number(s.lbs_per_case) : '';
+        return '<option value="' + s.sku_id + '" data-lbs="' + lbs + '">['
+          + s.pool + '] ' + esc(s.item_name)
+          + (lbs ? ' (' + lbs + '#)' : '')
+          + (s.sku ? ' — ' + esc(s.sku) : '')
+          + '</option>';
+      })
       .join('');
 
-    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:540px;width:100%;max-height:90vh;overflow-y:auto">'
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto">'
       + '<div style="font-weight:700;color:#1a3a6b;font-size:1.05rem;margin-bottom:4px">Adjust: ' + esc(row.item_name) + '</div>'
-      + '<div style="font-size:.74rem;color:#64748b;margin-bottom:12px">[' + row.pool + ']' + (row.sku ? ' · SKU ' + esc(row.sku) : '') + ' · Entry date ' + _ps.entryDate + '</div>'
+      + '<div style="font-size:.74rem;color:#64748b;margin-bottom:12px">[' + row.pool + ']'
+      + (rowLbsPerCase ? ' · ' + rowLbsPerCase + '# case' : '')
+      + (row.sku ? ' · SKU ' + esc(row.sku) : '')
+      + ' · Entry date ' + _ps.entryDate + '</div>'
 
-      // Tabs: Simple adjust vs Cross-pool transfer
+      // Tabs: Correction vs Product Swap
       + '<div style="display:flex;gap:0;border-bottom:1px solid #e2e8f0;margin-bottom:12px">'
       + '<button id="pr-adj-t-simple" onclick="prAdjTab(\'simple\')" style="flex:1;padding:8px;border:none;background:transparent;cursor:pointer;font-size:.78rem;font-weight:600;color:#1a3a6b;border-bottom:2px solid #1a3a6b">Correction</button>'
-      + '<button id="pr-adj-t-transfer" onclick="prAdjTab(\'transfer\')" style="flex:1;padding:8px;border:none;background:transparent;cursor:pointer;font-size:.78rem;font-weight:600;color:#94a3b8;border-bottom:2px solid transparent">Pool Transfer</button>'
+      + '<button id="pr-adj-t-transfer" onclick="prAdjTab(\'transfer\')" style="flex:1;padding:8px;border:none;background:transparent;cursor:pointer;font-size:.78rem;font-weight:600;color:#94a3b8;border-bottom:2px solid transparent">Product Swap</button>'
       + '</div>'
 
-      // Simple correction form
+      // Correction: cases in, cases out
       + '<div id="pr-adj-pane-simple">'
-      + '<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">Add pounds (positive) or subtract (negative). E.g. -5 for a scale error correction.</div>'
-      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:6px 0 4px">Pounds (±)</label>'
-      + '<input id="pr-adj-delta" type="number" step="0.1" placeholder="e.g., -5 or +12" style="' + INP + '">'
+      + '<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">Add or subtract <strong>cases</strong> for this SKU. E.g. <code>-1</code> for a miscount, <code>+2</code> for a late-found pallet.</div>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:6px 0 4px">Cases (±)</label>'
+      + '<input id="pr-adj-cases" type="number" step="0.1" placeholder="e.g., -1 or +2" oninput="prAdjUpdateCasesHint()" style="' + INP + '">'
+      + '<div id="pr-adj-cases-hint" style="font-size:.72rem;color:#64748b;margin-top:4px;min-height:1.1em">&nbsp;</div>'
       + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Note <span style="font-weight:400;color:#94a3b8">(why)</span></label>'
-      + '<input id="pr-adj-note" type="text" placeholder="e.g., recounted, scale re-zero" style="' + INP + '">'
+      + '<input id="pr-adj-note" type="text" placeholder="e.g., recounted, miscount" style="' + INP + '">'
       + '<div id="pr-adj-err" style="color:#ef4444;font-size:.76rem;margin-top:6px;display:none"></div>'
       + '</div>'
 
-      // Transfer form (hidden by default)
+      // Product Swap: e.g. 100 cs 3-5 FILET (15#) → 150 cs FILETS POLY BAG (10#)
       + '<div id="pr-adj-pane-transfer" style="display:none">'
-      + '<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">Move pounds from this SKU into another SKU (e.g. IQF 3-5 Fillets → Ice Pack 3-5 Fillets). Creates two paired adjustments.</div>'
-      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:6px 0 4px">Move to SKU</label>'
-      + '<select id="pr-adj-to-sku" style="' + INP + '">' + transferOpts + '</select>'
-      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Pounds to move</label>'
-      + '<input id="pr-adj-tlbs" type="number" step="0.1" min="0" placeholder="e.g., 10" style="' + INP + '">'
-      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Note</label>'
-      + '<input id="pr-adj-tnote" type="text" placeholder="e.g., repack from freezer to ice pack" style="' + INP + '">'
+      + '<div style="font-size:.72rem;color:#64748b;margin-bottom:10px">Swap this SKU into another SKU (e.g. <em>100 cs 3-5 FILET 15# → 150 cs FILETS POLY BAG 10#</em>). Total lbs on each side are computed — a mismatch means pack yield loss or gain.</div>'
+
+      + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
+      + '<div style="font-size:.7rem;color:#991b1b;font-weight:700;margin-bottom:6px">FROM (this SKU) — removed</div>'
+      + '<div style="font-size:.86rem;color:#0f172a;margin-bottom:6px">' + esc(row.item_name) + (rowLbsPerCase ? ' · ' + rowLbsPerCase + '# case' : '') + '</div>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:4px 0 4px">Cases to remove</label>'
+      + '<input id="pr-adj-from-cases" type="number" step="0.1" min="0" placeholder="e.g., 100" oninput="prAdjUpdateTransferHint()" style="' + INP + '">'
+      + '<div id="pr-adj-from-hint" style="font-size:.72rem;color:#991b1b;margin-top:4px;min-height:1.1em">&nbsp;</div>'
+      + '</div>'
+
+      + '<div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
+      + '<div style="font-size:.7rem;color:#065f46;font-weight:700;margin-bottom:6px">TO (destination SKU) — added</div>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:0 0 4px">Move to SKU</label>'
+      + '<select id="pr-adj-to-sku" onchange="prAdjUpdateTransferHint()" style="' + INP + '">' + transferOpts + '</select>'
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Cases to add</label>'
+      + '<input id="pr-adj-to-cases" type="number" step="0.1" min="0" placeholder="e.g., 150" oninput="prAdjUpdateTransferHint()" style="' + INP + '">'
+      + '<div id="pr-adj-to-hint" style="font-size:.72rem;color:#065f46;margin-top:4px;min-height:1.1em">&nbsp;</div>'
+      + '</div>'
+
+      + '<div id="pr-adj-balance-hint" style="font-size:.76rem;color:#64748b;padding:6px 10px;background:#f8fafc;border-radius:6px;margin-bottom:10px;min-height:1.3em">&nbsp;</div>'
+
+      + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:4px 0 4px">Note</label>'
+      + '<input id="pr-adj-tnote" type="text" placeholder="e.g., repack 3-5 filet into poly bag" style="' + INP + '">'
       + '<div id="pr-adj-terr" style="color:#ef4444;font-size:.76rem;margin-top:6px;display:none"></div>'
       + '</div>'
 
@@ -358,8 +410,66 @@
       + '</div>'
       + '</div>';
     overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    // Stash the row's lbs/case on the modal so the helpers can read it
+    overlay.dataset.lbsPerCase = rowLbsPerCase || '';
     document.body.appendChild(overlay);
-    setTimeout(function () { var el = document.getElementById('pr-adj-delta'); if (el) el.focus(); }, 80);
+    setTimeout(function () { var el = document.getElementById('pr-adj-cases'); if (el) el.focus(); }, 80);
+  }
+
+  // Live "= X lbs" hint under the Correction cases input
+  function prAdjUpdateCasesHint() {
+    var overlay = document.getElementById('pr-adj-modal');
+    if (!overlay) return;
+    var lpc = Number(overlay.dataset.lbsPerCase) || null;
+    var hint = document.getElementById('pr-adj-cases-hint');
+    var v = document.getElementById('pr-adj-cases').value;
+    if (v === '' || isNaN(Number(v)) || Number(v) === 0 || !lpc) {
+      hint.textContent = '\u00a0';
+      return;
+    }
+    var lbs = Number(v) * lpc;
+    hint.textContent = '= ' + (lbs > 0 ? '+' : '') + fmtLbs(lbs) + ' lbs';
+    hint.style.color = lbs > 0 ? '#065f46' : '#991b1b';
+  }
+
+  // Live hints for Product Swap: from lbs, to lbs, and a balance check row
+  function prAdjUpdateTransferHint() {
+    var overlay = document.getElementById('pr-adj-modal');
+    if (!overlay) return;
+    var fromLpc = Number(overlay.dataset.lbsPerCase) || null;
+    var fromCases = Number(document.getElementById('pr-adj-from-cases').value);
+    var toSel = document.getElementById('pr-adj-to-sku');
+    var toCases = Number(document.getElementById('pr-adj-to-cases').value);
+    var toLpc = (toSel && toSel.selectedOptions[0])
+      ? Number(toSel.selectedOptions[0].getAttribute('data-lbs')) : null;
+
+    var fromHint = document.getElementById('pr-adj-from-hint');
+    var toHint = document.getElementById('pr-adj-to-hint');
+    var balHint = document.getElementById('pr-adj-balance-hint');
+
+    var fromLbs = (fromCases > 0 && fromLpc) ? fromCases * fromLpc : null;
+    var toLbs = (toCases > 0 && toLpc) ? toCases * toLpc : null;
+
+    fromHint.textContent = fromLbs != null ? '= ' + fmtLbs(fromLbs) + ' lbs out' : '\u00a0';
+    toHint.textContent = toLbs != null ? '= ' + fmtLbs(toLbs) + ' lbs in' : '\u00a0';
+
+    if (fromLbs != null && toLbs != null) {
+      var delta = toLbs - fromLbs;
+      if (Math.abs(delta) < 0.05) {
+        balHint.innerHTML = '✓ Balanced — ' + fmtLbs(fromLbs) + ' lbs both sides.';
+        balHint.style.color = '#065f46';
+        balHint.style.background = '#ecfdf5';
+      } else {
+        var sign = delta > 0 ? '+' : '';
+        balHint.innerHTML = '⚠ Off by ' + sign + fmtLbs(delta) + ' lbs (' + (delta > 0 ? 'gain' : 'yield loss') + '). You can still save — the mismatch shows up in the audit trail.';
+        balHint.style.color = '#92400e';
+        balHint.style.background = '#fef3c7';
+      }
+    } else {
+      balHint.innerHTML = '&nbsp;';
+      balHint.style.background = '#f8fafc';
+      balHint.style.color = '#64748b';
+    }
   }
 
   function prAdjTab(which) {
@@ -370,46 +480,69 @@
     document.getElementById('pr-adj-t-transfer').style.color = which === 'transfer' ? '#1a3a6b' : '#94a3b8';
     document.getElementById('pr-adj-t-transfer').style.borderBottomColor = which === 'transfer' ? '#1a3a6b' : 'transparent';
     var btn = document.getElementById('pr-adj-save');
-    btn.textContent = which === 'simple' ? 'Add Correction' : 'Save Transfer';
+    btn.textContent = which === 'simple' ? 'Add Correction' : 'Save Swap';
     btn.setAttribute('data-which', which);
   }
 
   function prSaveAdjustment(skuId) {
     var btn = document.getElementById('pr-adj-save');
     var which = btn.getAttribute('data-which') || 'simple';
+    var overlay = document.getElementById('pr-adj-modal');
+    var fromLpc = overlay && overlay.dataset.lbsPerCase ? Number(overlay.dataset.lbsPerCase) : null;
+
     if (which === 'simple') {
-      var delta = document.getElementById('pr-adj-delta').value;
+      // Correction: cases × lbs_per_case → delta_lbs on the backend.
+      // Fallback: if the SKU has no case size (shouldn't happen post-
+      // migration), treat the input as raw lbs.
+      var cases = document.getElementById('pr-adj-cases').value;
       var note = document.getElementById('pr-adj-note').value.trim();
       var err = document.getElementById('pr-adj-err');
       err.style.display = 'none';
-      if (delta === '' || isNaN(Number(delta)) || Number(delta) === 0) {
-        err.textContent = 'Enter a non-zero number (use negative for subtract).'; err.style.display = 'block'; return;
+      if (cases === '' || isNaN(Number(cases)) || Number(cases) === 0) {
+        err.textContent = 'Enter a non-zero number of cases (use negative for subtract).';
+        err.style.display = 'block'; return;
       }
+      var deltaLbs = fromLpc ? Number(cases) * fromLpc : Number(cases);
       apiCall('POST', '/api/production?action=save_adjustment', {
-        sku_id: skuId, entry_date: _ps.entryDate, delta_lbs: Number(delta), note: note || null
+        sku_id: skuId, entry_date: _ps.entryDate, delta_lbs: deltaLbs, note: note || null
       }).then(function () {
         document.getElementById('pr-adj-modal').remove();
         toast('Adjustment saved');
         loadDaily();
       }).catch(function (e) { err.textContent = e.message; err.style.display = 'block'; });
-    } else {
-      var toSku = document.getElementById('pr-adj-to-sku').value;
-      var lbs = document.getElementById('pr-adj-tlbs').value;
-      var note = document.getElementById('pr-adj-tnote').value.trim();
-      var err = document.getElementById('pr-adj-terr');
-      err.style.display = 'none';
-      if (!toSku || !lbs || isNaN(Number(lbs)) || Number(lbs) <= 0) {
-        err.textContent = 'Pick a destination SKU and a positive pound amount.'; err.style.display = 'block'; return;
-      }
-      apiCall('POST', '/api/production?action=save_transfer', {
-        from_sku_id: skuId, to_sku_id: parseInt(toSku, 10), entry_date: _ps.entryDate,
-        lbs: Number(lbs), note: note || null
-      }).then(function () {
-        document.getElementById('pr-adj-modal').remove();
-        toast('Transfer saved');
-        loadDaily();
-      }).catch(function (e) { err.textContent = e.message; err.style.display = 'block'; });
+      return;
     }
+
+    // Product Swap — independent cases on each side → independent lbs.
+    var toSel = document.getElementById('pr-adj-to-sku');
+    var toSku = toSel.value;
+    var toLpc = toSel.selectedOptions[0] ? Number(toSel.selectedOptions[0].getAttribute('data-lbs')) : null;
+    var fromCases = Number(document.getElementById('pr-adj-from-cases').value);
+    var toCases = Number(document.getElementById('pr-adj-to-cases').value);
+    var note = document.getElementById('pr-adj-tnote').value.trim();
+    var err = document.getElementById('pr-adj-terr');
+    err.style.display = 'none';
+    if (!toSku) {
+      err.textContent = 'Pick a destination SKU.'; err.style.display = 'block'; return;
+    }
+    if (!(fromCases > 0) || !(toCases > 0)) {
+      err.textContent = 'Enter positive case counts on both sides.';
+      err.style.display = 'block'; return;
+    }
+    if (!fromLpc || !toLpc) {
+      err.textContent = 'Both SKUs need a Lbs/Case value — set one on the SKUs tab.';
+      err.style.display = 'block'; return;
+    }
+    var fromLbs = fromCases * fromLpc;
+    var toLbs = toCases * toLpc;
+    apiCall('POST', '/api/production?action=save_transfer', {
+      from_sku_id: skuId, to_sku_id: parseInt(toSku, 10), entry_date: _ps.entryDate,
+      from_lbs: fromLbs, to_lbs: toLbs, note: note || null
+    }).then(function () {
+      document.getElementById('pr-adj-modal').remove();
+      toast('Swap saved');
+      loadDaily();
+    }).catch(function (e) { err.textContent = e.message; err.style.display = 'block'; });
   }
 
   function prDeleteAdjustment(id) {
@@ -662,6 +795,8 @@
   window.prSaveCell = prSaveCell;
   window.prOpenAdjust = prOpenAdjust;
   window.prAdjTab = prAdjTab;
+  window.prAdjUpdateCasesHint = prAdjUpdateCasesHint;
+  window.prAdjUpdateTransferHint = prAdjUpdateTransferHint;
   window.prSaveAdjustment = prSaveAdjustment;
   window.prDeleteAdjustment = prDeleteAdjustment;
   window.prWeekStep = prWeekStep;
