@@ -159,16 +159,10 @@
       return;
     }
 
-    // Filter to active pool
+    // Filter to active pool. Items render in display_order (set by the seed /
+    // SKUs tab) — no category re-sort, so Daily Entry reads top-to-bottom
+    // like the paper inventory sheet.
     var poolRows = rows.filter(function (r) { return r.pool === _ps.activePool; });
-
-    // Group by category inside the pool for readability
-    var byCat = {};
-    poolRows.forEach(function (r) {
-      var cat = r.category || 'OTHER';
-      if (!byCat[cat]) byCat[cat] = [];
-      byCat[cat].push(r);
-    });
 
     // Pool totals
     var poolTotals = { produced: 0, shipped: 0, balance: 0 };
@@ -195,13 +189,9 @@
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:80px;background:#0f766e">Balance</th>'
       + '</tr></thead><tbody>';
 
-    Object.keys(byCat).sort().forEach(function (cat) {
-      // Category header row. Spans the full 9-column table now.
-      html += '<tr style="background:#f8fafc"><td colspan="9" style="padding:6px 10px;font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em">'
-        + esc(cat) + '</td></tr>';
-      byCat[cat].forEach(function (r) {
-        html += renderDailyRow(r, canEdit || canCreate);
-      });
+    // Render rows in display_order — flat list mirrors the PDF sequence.
+    poolRows.forEach(function (r) {
+      html += renderDailyRow(r, canEdit || canCreate);
     });
 
     // Totals footer
@@ -600,30 +590,24 @@
       + '<th style="padding:8px 10px;text-align:right;font-weight:600;background:#0f766e">LBS</th>';
     html += '</tr></thead><tbody>';
 
-    // Category grouping
-    var byCat = {};
-    rows.forEach(function (r) { var c = r.category || 'OTHER'; if (!byCat[c]) byCat[c] = []; byCat[c].push(r); });
+    // Flat list in display_order — matches Daily Entry / PDF sequence.
     var poolTotalDays = new Array(days.length).fill(0);
     var poolTotalLbs = 0;
     var poolTotalCases = 0;
-    var colSpan = days.length + 4; // Item + Lbs/Case + days + Cases + LBS
 
-    Object.keys(byCat).sort().forEach(function (cat) {
-      html += '<tr style="background:#f8fafc"><td colspan="' + colSpan + '" style="padding:6px 10px;font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;position:sticky;left:0;background:#f8fafc">' + esc(cat) + '</td></tr>';
-      byCat[cat].forEach(function (r) {
-        var casesCell = (r.lbs_per_case == null) ? '—' : esc(String(r.lbs_per_case));
-        html += '<tr>'
-          + '<td style="padding:5px 10px;color:#0f172a;position:sticky;left:0;background:#fff">' + esc(r.item_name) + '</td>'
-          + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>';
-        (r.daily || []).forEach(function (v, i) {
-          poolTotalDays[i] += Number(v || 0);
-          html += '<td style="padding:5px 6px;text-align:right;color:' + (v > 0 ? '#0f172a' : '#cbd5e1') + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
-        });
-        poolTotalLbs += Number(r.total_lbs || 0);
-        if (r.total_cases != null) poolTotalCases += Number(r.total_cases);
-        html += '<td style="padding:5px 10px;text-align:right;color:#334155">' + (r.total_cases != null && r.total_cases > 0 ? Number(r.total_cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
-        html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (r.total_lbs > 0 ? fmtLbs(r.total_lbs) : '—') + '</td></tr>';
+    rows.forEach(function (r) {
+      var casesCell = (r.lbs_per_case == null) ? '—' : esc(String(r.lbs_per_case));
+      html += '<tr>'
+        + '<td style="padding:5px 10px;color:#0f172a;position:sticky;left:0;background:#fff">' + esc(r.item_name) + '</td>'
+        + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>';
+      (r.daily || []).forEach(function (v, i) {
+        poolTotalDays[i] += Number(v || 0);
+        html += '<td style="padding:5px 6px;text-align:right;color:' + (v > 0 ? '#0f172a' : '#cbd5e1') + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
       });
+      poolTotalLbs += Number(r.total_lbs || 0);
+      if (r.total_cases != null) poolTotalCases += Number(r.total_cases);
+      html += '<td style="padding:5px 10px;text-align:right;color:#334155">' + (r.total_cases != null && r.total_cases > 0 ? Number(r.total_cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
+      html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (r.total_lbs > 0 ? fmtLbs(r.total_lbs) : '—') + '</td></tr>';
     });
 
     html += '<tr style="background:#f1f5f9;font-weight:700">'
