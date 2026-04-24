@@ -288,6 +288,16 @@ module.exports = async function handler(req, res) {
 
       if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'AI not configured (missing ANTHROPIC_API_KEY).' });
       if (!Anthropic) return res.status(500).json({ error: 'Anthropic SDK not installed on the server.' });
+      // Defensive: make sure we actually loaded a class. The SDK exports the
+      // Anthropic class as the default — if module shape changed, surface it.
+      if (typeof Anthropic !== 'function') {
+        console.error('[contracts] Anthropic SDK shape unexpected:', typeof Anthropic, Object.keys(Anthropic || {}));
+        return res.status(500).json({ error: 'Anthropic SDK import unexpected shape' });
+      }
+      // Sanity check: the contract must have text to quote
+      if (!contract.full_text || contract.full_text.length < 500) {
+        return res.status(500).json({ error: 'Contract has no full_text stored — reinstall the contract.' });
+      }
 
       const systemPrompt = 'You are an experienced labor-relations analyst advising the Company under a collective bargaining agreement. You read the full contract and answer scenario questions with precision — citing exact articles and sections, quoting the contract text verbatim in the relevant_articles list, and flagging any situation that likely requires outside counsel. You do not provide actual legal advice; you interpret the contract.';
 
@@ -326,17 +336,30 @@ Rules:
 - Confidence: "high" if the contract has explicit language on point; "medium" if inference is required; "low" if the contract is silent or ambiguous.`;
 
       const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const msg = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }]
-      });
+      let msg;
+      try {
+        msg = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }]
+        });
+      } catch (e) {
+        // Surface the real Anthropic error so Cooper can see what failed
+        // (bad api key, model not found, rate limit, etc.).
+        console.error('[contracts] Anthropic call failed:', e && e.message, e && e.status, e && e.error);
+        var detail = e && (e.message || JSON.stringify(e.error || {})) || 'unknown';
+        return res.status(500).json({
+          error: 'Claude call failed: ' + detail,
+          anthropic_status: (e && e.status) || null
+        });
+      }
       const raw = (msg.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').trim()
         .replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim();
       let parsed;
       try { parsed = JSON.parse(raw); }
       catch (e) {
+        console.error('[contracts] JSON parse failed. Raw head:', raw.slice(0, 300));
         return res.status(500).json({ error: 'AI response not JSON', raw: raw.slice(0, 600) });
       }
 
@@ -396,7 +419,10 @@ Rules:
 
     return res.status(400).json({ error: 'Unknown action: ' + action });
   } catch (err) {
-    console.error('[contracts] error:', err);
-    return res.status(500).json({ error: 'Server error: ' + err.message });
+    console.error('[contracts] error:', err && err.stack ? err.stack : err);
+    return res.status(500).json({
+      error: 'Server error: ' + ((err && err.message) || 'unknown'),
+      name: err && err.name
+    });
   }
 };
