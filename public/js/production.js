@@ -13,7 +13,10 @@
 // transfers. BEGIN / LW / BALANCE are read-only (computed server-side).
 
 (function () {
-  var POOLS = ['FREEZER-IQF', 'ICE PACK', 'COOLER'];
+  // COOLER pool was retired — archived at the backend so existing SKUs stop
+  // appearing in the daily grid. Leaving it out of POOLS removes the tab
+  // and filters from the UI.
+  var POOLS = ['FREEZER-IQF', 'ICE PACK'];
 
   var _ps = {
     tab: 'daily',

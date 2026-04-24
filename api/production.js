@@ -20,7 +20,9 @@ const { neon } = require('@neondatabase/serverless');
 const perms = require('./_permissions');
 const { logAudit } = require('./_audit');
 
-const VALID_POOLS = new Set(['FREEZER-IQF', 'ICE PACK', 'COOLER']);
+// COOLER was retired — existing COOLER SKUs get auto-archived in
+// migrateNamesOnce. New SKUs can only be created in the active pools.
+const VALID_POOLS = new Set(['FREEZER-IQF', 'ICE PACK']);
 
 // Strips a trailing or leading "15#" / "24# CARTON" / "4 #" style token from
 // an item name. Returns { name, lbs }. Examples:
@@ -165,34 +167,11 @@ const SEED_SKUS = [
   { pool: 'ICE PACK', sku: '2005011',     item: 'GOR STEAK',            category: 'STEAKS',   lbs_per_case: 15 },
   { pool: 'ICE PACK', sku: '2024011',     item: '2 OZ CATFISH PORTION', category: 'PORTIONS', lbs_per_case: 15 },
   { pool: 'ICE PACK', sku: '2005211T',    item: 'BUFFETS / TENDERS',    category: 'TENDERS',  lbs_per_case: 15 },
-  { pool: 'ICE PACK', sku: '2003011',     item: 'NUGGET',               category: 'NUGGETS',  lbs_per_case: 15 },
+  { pool: 'ICE PACK', sku: '2003011',     item: 'NUGGET',               category: 'NUGGETS',  lbs_per_case: 15 }
 
-  // COOLER (tubs, not cases — lbs_per_case stays null) ────────────────
-  { pool: 'COOLER', sku: '', item: '3-5 WHOLE',        category: 'WHOLE',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '5-7 WHOLE',        category: 'WHOLE',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '7-9 WHOLE',        category: 'WHOLE',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '9-11 WHOLE',       category: 'WHOLE',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'MIXED WHOLE',      category: 'WHOLE',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'UN SKINNED WHOLE', category: 'WHOLE',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '2-3 FILET',        category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '3-5 FILET',        category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '5-7 FILET',        category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'SPLITS',           category: 'SPLITS',    lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '7-8 FILET',        category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '9-11 FILET',       category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'MIXED FILETS',     category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'GOR STEAK',        category: 'STEAKS',    lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '4 OZ PORTION',     category: 'PORTIONS',  lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'SKIN',             category: 'DEEP SKIN', lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'DEEP SKIN 11+',    category: 'DEEP SKIN', lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'CHUNKS',           category: 'MISCUTS',   lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'BUFFET SPLITS',    category: 'SPLITS',    lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'UN TRIM FILETS',   category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: '11+ FILET',        category: 'FILET',     lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'NUGGETS',          category: 'NUGGETS',   lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'UN NUGGETS',       category: 'NUGGETS',   lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'MISCUTS',          category: 'MISCUTS',   lbs_per_case: null },
-  { pool: 'COOLER', sku: '', item: 'WHOLE STEAK',      category: 'STEAKS',    lbs_per_case: null }
+  // COOLER pool retired — intentionally no COOLER entries. The migration
+  // in migrateNamesOnce auto-archives any pre-existing COOLER SKUs so the
+  // tab disappears without touching historical daily entries.
 ];
 
 // Tracks which company_ids have had their SKU name migration applied
@@ -208,6 +187,13 @@ async function migrateNamesOnce(sql, companyId) {
   if (_namesMigratedFor.has(companyId)) return;
   _namesMigratedFor.add(companyId); // mark up front so concurrent requests skip
   try {
+    // Retire the COOLER pool: soft-archive any still-active COOLER SKUs.
+    // Historical entries stay intact; the items just stop showing up in
+    // the daily grid / weekly roll / SKU catalog.
+    await sql`UPDATE prod_skus
+      SET active = false, updated_at = NOW()
+      WHERE company_id = ${companyId} AND pool = 'COOLER' AND active = true`;
+
     const rows = await sql`
       SELECT id, pool, item_name, lbs_per_case
       FROM prod_skus
