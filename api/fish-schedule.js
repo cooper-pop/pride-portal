@@ -675,6 +675,46 @@ module.exports = async function handler(req, res) {
         ORDER BY day_date, arrived_at NULLS LAST, id
       `;
 
+      // Pull the company's flavor-sample ponds so the Intake form can offer
+      // a per-farmer pond dropdown. Cooper's two systems (live-haul +
+      // flavor) have separate `farmers` tables but the rows usually share
+      // names, so we match case-insensitively on the trimmed name. If a
+      // live-haul farmer doesn't have a corresponding flavor farmer, that
+      // farmer just gets an empty pond list (the dropdown shows a hint to
+      // add ponds in the Flavor widget).
+      //
+      // The flv_* tables use INTEGER company_id while live_haul_* uses TEXT
+      // — cast to int to be unambiguous.
+      const flvPondData = await sql`
+        SELECT
+          LOWER(TRIM(f.name)) AS farmer_key,
+          g.name              AS group_name,
+          p.number            AS pond_number
+        FROM flv_ponds p
+        JOIN flv_pond_groups g ON g.id = p.pond_group_id
+        JOIN flv_farmers     f ON f.id = g.farmer_id
+        WHERE f.company_id = ${companyId}::int
+          AND f.archived = false
+          AND g.archived = false
+          AND p.archived = false
+        ORDER BY f.name, g.name, p.number
+      `;
+      const flvByFarmerKey = {};
+      flvPondData.forEach(r => {
+        const key = r.farmer_key;
+        if (!flvByFarmerKey[key]) flvByFarmerKey[key] = [];
+        flvByFarmerKey[key].push({
+          group: r.group_name,
+          number: r.pond_number,
+          label: r.group_name + ' › ' + r.pond_number
+        });
+      });
+      const farmer_ponds = {};
+      farmers.forEach(f => {
+        const key = String(f.name || '').trim().toLowerCase();
+        farmer_ponds[f.id] = flvByFarmerKey[key] || [];
+      });
+
       // Normalize Postgres DATE → YYYY-MM-DD so the frontend can key by
       // string without worrying about timezone math.
       const norm = (x) => (x && x.day_date instanceof Date)
@@ -686,7 +726,8 @@ module.exports = async function handler(req, res) {
         week_start: weekStart,
         farmers,
         deliveries: deliveries.map(norm),
-        loads: loads.map(norm)
+        loads: loads.map(norm),
+        farmer_ponds
       });
     }
 

@@ -27,6 +27,10 @@
     // Dock price profile (lazy-loaded on first Intake render). Used to label
     // size bands + price inputs everywhere they're displayed.
     dockConfig: null,
+    // Per-farmer pond options sourced from the Flavor Sample widget's pond
+    // tables, matched by farmer name (case-insensitive). Populated by
+    // get_intake. Shape: { [farmerId]: [{group, number, label}, ...] }
+    farmerPonds: {},
     loading: false
   };
 
@@ -40,6 +44,35 @@
     tier4_label: '8+ lb',      tier4_min_lbs: 8, tier4_max_lbs: null, tier4_default_price: null
   };
   function dockConfig() { return _fsState.dockConfig || DEFAULT_DOCK_CONFIG; }
+
+  // Build <option> HTML for a farmer's pond dropdown. Sourced from the
+  // Flavor Sample widget's pond data (per-farmer, name-matched in get_intake).
+  // Always includes:
+  //   - "— Pick pond —" placeholder (selected when nothing's chosen)
+  //   - The current value as a custom-tagged option if it doesn't match any
+  //     flavor pond (so editing old loads doesn't drop their pond_ref)
+  //   - "Other / Type custom..." sentinel that lets the user override
+  function pondSelectOptions(farmerId, currentValue) {
+    var ponds = (farmerId && _fsState.farmerPonds[farmerId]) || [];
+    var current = currentValue || '';
+    var labels = ponds.map(function (p) { return p.label; });
+    var inList = labels.indexOf(current) >= 0;
+    var html = '<option value="">— Pick pond —</option>';
+    if (current && !inList) {
+      // Preserve historical free-text values (loads created before this
+      // change). Tag as "(custom)" so the operator knows it's not from the
+      // flavor list.
+      html += '<option value="' + esc(current) + '" selected>' + esc(current) + ' (custom)</option>';
+    }
+    if (ponds.length === 0 && !current) {
+      html += '<option value="" disabled>(no ponds set up — add in Flavor Sample › Farms &amp; Ponds)</option>';
+    }
+    ponds.forEach(function (p) {
+      var sel = (current === p.label) ? ' selected' : '';
+      html += '<option value="' + esc(p.label) + '"' + sel + '>' + esc(p.label) + '</option>';
+    });
+    return html;
+  }
   function loadDockConfig(cb) {
     apiCall('GET', '/api/fish-schedule?action=get_dock_config')
       .then(function (r) { _fsState.dockConfig = r && r.config ? r.config : DEFAULT_DOCK_CONFIG; if (cb) cb(); })
@@ -434,6 +467,7 @@
         _fsState.farmers = r.farmers || [];
         _fsState.deliveries = r.deliveries || [];
         _fsState.loads = r.loads || [];
+        _fsState.farmerPonds = r.farmer_ponds || {};
         if (dc && dc.config) _fsState.dockConfig = dc.config;
         fsRenderIntake();
       })
@@ -770,9 +804,9 @@
       + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Day</label>'
       + '<input id="fs-l-date" type="date" value="' + esc(initial.day_date || '') + '" style="' + INP + '"></div>'
       + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Farmer *</label>'
-      + '<select id="fs-l-farmer" style="' + INP + '">' + farmerOpts + '</select></div>'
-      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Pond</label>'
-      + '<input id="fs-l-pond" type="text" placeholder="e.g., Pond 4" value="' + esc(initial.pond_ref || '') + '" style="' + INP + '"></div>'
+      + '<select id="fs-l-farmer" onchange="fsLoadModalRefreshPonds()" style="' + INP + '">' + farmerOpts + '</select></div>'
+      + '<div><label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin-bottom:4px">Pond <span style="color:#94a3b8;font-weight:400;font-size:.66rem">(from Flavor)</span></label>'
+      + '<select id="fs-l-pond" style="' + INP + '">' + pondSelectOptions(initial.farmer_id, initial.pond_ref) + '</select></div>'
       + '</div>'
 
       // Weight section. Cooper's data model:
@@ -945,6 +979,17 @@
   // Price" convenience field hooked to it. The field was removed once
   // dock-config defaults landed; per-tier prices are entered individually.
   function fsLoadModalFillBandPrices() { /* removed in dock-config UX pass */ }
+
+  // Refresh the Pond dropdown when the user changes the Farmer selection.
+  // Resets the pond selection (different farmer = different pond list);
+  // operator picks again from the new farmer's ponds.
+  function fsLoadModalRefreshPonds() {
+    var farmerEl = document.getElementById('fs-l-farmer');
+    var pondEl = document.getElementById('fs-l-pond');
+    if (!farmerEl || !pondEl) return;
+    var farmerId = parseInt(farmerEl.value, 10) || null;
+    pondEl.innerHTML = pondSelectOptions(farmerId, '');
+  }
 
   // Live recompute — Cooper's flow:
   //   Difference   = Truck − Plant       (display only; transit/scale variance)
@@ -1359,12 +1404,23 @@
       : '<span style="color:#0369a1;font-size:.78rem;font-weight:600">' + dayLoads.length + ' load' + (dayLoads.length === 1 ? '' : 's') + ' already saved for ' + prettyDate(_wiz.day) + '.</span>';
 
     var rows = _wiz.newRows.map(function (r, idx) {
-      return '<tr style="border-bottom:1px solid #f1f5f9">'
+      // Farmer dropdown — bulk-rebuilt so the selected option reflects r.farmer_id
+      var farmerSelect = '<option value="">— Pick farmer —</option>'
+        + _fsState.farmers.map(function (f) {
+            var sel = (String(f.id) === String(r.farmer_id)) ? ' selected' : '';
+            return '<option value="' + f.id + '"' + sel + '>' + esc(f.name) + '</option>';
+          }).join('');
+      // Pond dropdown driven by the row's farmer_id. Re-renders on farmer
+      // change via fsBulkUpdRow → fsBulkRender (full table rebuild). For
+      // small N rows this is fine; would only matter at 100+ rows.
+      var pondId = parseInt(r.farmer_id, 10) || null;
+      var pondSelect = pondSelectOptions(pondId, r.pond);
+      return '<tr style="border-bottom:1px solid #f1f5f9" data-row="' + idx + '">'
         + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.movement || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'movement\',this.value)" placeholder="Ticket #" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
-        + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRow(' + idx + ',\'farmer_id\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">'
-        + farmerOpts.replace('value="' + r.farmer_id + '"', 'value="' + r.farmer_id + '" selected')
+        + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRowFarmer(' + idx + ',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">'
+        + farmerSelect
         + '</select></td>'
-        + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.pond || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'pond\',this.value)" placeholder="Pond" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRow(' + idx + ',\'pond\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">' + pondSelect + '</select></td>'
         + '<td style="padding:6px 6px"><input type="number" min="0" step="1" value="' + (r.truck || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'truck\',this.value)" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
         + '<td style="padding:6px 4px;text-align:center"><button onclick="fsBulkRemoveRow(' + idx + ')" title="Remove row" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:.7rem;font-weight:700">×</button></td>'
         + '</tr>';
@@ -1410,6 +1466,17 @@
     _wiz.newRows[idx][field] = value;
     // Don't re-render on every keystroke (would steal focus). Difference
     // recompute on blur via setTimeout would be nicer; for now skip.
+  }
+
+  // When a row's farmer changes, the pond options change with it. Clear the
+  // pond selection and rebuild the table so the new pond list shows. The
+  // farmer dropdown was already changed, so focus loss isn't an issue —
+  // the operator's next click will be on the pond column.
+  function fsBulkUpdRowFarmer(idx, value) {
+    if (!_wiz.newRows[idx]) return;
+    _wiz.newRows[idx].farmer_id = value;
+    _wiz.newRows[idx].pond = ''; // reset pond — different farmer's list
+    fsBulkRender();
   }
 
   function fsBulkSaveStep1() {
@@ -2284,6 +2351,7 @@
   window.fsDeleteLoadFromModal = fsDeleteLoadFromModal;
   window.fsLoadModalRecalc = fsLoadModalRecalc;
   window.fsLoadModalRefreshDeliveries = fsLoadModalRefreshDeliveries;
+  window.fsLoadModalRefreshPonds = fsLoadModalRefreshPonds;
   window.fsLoadModalFillBandPrices = fsLoadModalFillBandPrices;
   // Currency formatting handlers used by inline onfocus/onblur on the
   // per-tier $/lb inputs.
@@ -2300,6 +2368,7 @@
   window.fsBulkAddRow = fsBulkAddRow;
   window.fsBulkRemoveRow = fsBulkRemoveRow;
   window.fsBulkUpdRow = fsBulkUpdRow;
+  window.fsBulkUpdRowFarmer = fsBulkUpdRowFarmer;
   window.fsBulkSaveStep1 = fsBulkSaveStep1;
   window.fsBulkSaveStep2 = fsBulkSaveStep2;
   window.fsBulkSaveStep3 = fsBulkSaveStep3;
