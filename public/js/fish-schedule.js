@@ -475,14 +475,16 @@
 
     var html = '<div style="padding:14px;max-width:100%;margin:0 auto">';
 
-    // Header: nav + range + dock-config button
+    // Header: nav + range + bulk-entry + dock-config buttons
     var canEditDock = (typeof userCan === 'function') && userCan('fishschedule', 'edit');
+    var canCreate2 = (typeof userCan === 'function') && userCan('fishschedule', 'create');
     html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
       + '<button style="' + BTN_SUB + '" onclick="fsWeekNavIntake(-1)">← Prev</button>'
       + '<button style="' + BTN_SUB + '" onclick="fsGoTodayIntake()">This Week</button>'
       + '<button style="' + BTN_SUB + '" onclick="fsWeekNavIntake(1)">Next →</button>'
       + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:1rem;margin-left:12px">'
       + prettyRange(_fsState.weekStart) + '</div>'
+      + (canCreate2 ? '<button style="' + BTN_P + '" onclick="fsOpenBulkWizard()">🚀 Bulk Entry (1·2·3)</button>' : '')
       + (canEditDock ? '<button style="' + BTN_SUB + '" onclick="fsOpenDockConfig()">⚙️ Dock Settings</button>' : '')
       + '</div>';
 
@@ -1250,6 +1252,492 @@
       });
   }
 
+  // ═══ BULK ENTRY WIZARD (Step 1 → 2 → 3) ════════════════════════════════
+  // Cooper's data-entry flow has three stages, each happening at a
+  // different point in the day:
+  //
+  //   Step 1 RECEIVING   — trucks arrive, get weighed, ticket logged.
+  //                        Bulk-add multiple rows (one per truck).
+  //   Step 2 DEDUCTIONS  — fish are inspected; bad ones (DOA, shad, turtles,
+  //                        non-catfish, fingerlings) are weighed out per
+  //                        farmer.
+  //   Step 3 GRADING     — fish are sized into the dock-config tiers and
+  //                        each tier gets its $/lb. Notes go here too.
+  //
+  // The wizard lets the user open at any step and edit any load on the
+  // selected operating day. Steps 2 & 3 read from already-saved loads;
+  // Step 1 stages new rows in memory and saves them all on commit.
+  var _wiz = {
+    day: null,        // operating day, ISO YYYY-MM-DD
+    step: 1,
+    newRows: []       // [{movement, farmer_id, pond, truck, plant}]
+  };
+
+  function fsOpenBulkWizard() {
+    if (!userCan('fishschedule', 'create')) {
+      toast('⚠️ Need create permission'); return;
+    }
+    // Default the operating day to today (or the first day of the current
+    // week if today isn't in this week). One blank row pre-seeded.
+    var today = new Date().toISOString().split('T')[0];
+    _wiz.day = today;
+    _wiz.step = 1;
+    _wiz.newRows = [bulkEmptyRow()];
+    fsBulkRender();
+  }
+  function bulkEmptyRow() {
+    return { movement: '', farmer_id: '', pond: '', truck: '', plant: '' };
+  }
+  function fsBulkClose() {
+    var m = document.getElementById('fs-wiz'); if (m) m.remove();
+  }
+  function fsBulkSetStep(n) {
+    _wiz.step = n;
+    fsBulkRender();
+  }
+  function fsBulkSetDay(iso) {
+    _wiz.day = iso;
+    fsBulkRender();
+  }
+
+  // ── Render shell ─────────────────────────────────────────────────────
+  function fsBulkRender() {
+    var existing = document.getElementById('fs-wiz');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'fs-wiz';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:flex-start;justify-content:center;padding:14px;overflow-y:auto';
+
+    var stepBtn = function (n, label) {
+      var active = (_wiz.step === n);
+      return '<button onclick="fsBulkSetStep(' + n + ')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-size:.84rem;font-weight:700;'
+        + (active ? 'background:#1a3a6b;color:#fff' : 'background:#f1f5f9;color:#475569')
+        + '">' + label + '</button>';
+    };
+
+    var content = '';
+    if (_wiz.step === 1) content = bulkRenderStep1();
+    else if (_wiz.step === 2) content = bulkRenderStep2();
+    else if (_wiz.step === 3) content = bulkRenderStep3();
+
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:18px 20px;max-width:1100px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);margin-top:20px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap">'
+      + '<div style="font-weight:800;font-size:1.15rem;color:#1a3a6b">🚀 Bulk Load Entry</div>'
+      + '<div style="display:flex;gap:8px;align-items:center">'
+      + '<label style="font-size:.78rem;color:#475569;font-weight:600">Operating Day:</label>'
+      + '<input type="date" value="' + esc(_wiz.day) + '" onchange="fsBulkSetDay(this.value)" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:.84rem">'
+      + '<button onclick="fsBulkClose()" style="background:#f1f5f9;color:#475569;border:none;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer">✕ Close</button>'
+      + '</div></div>'
+      + '<div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:2px solid #e2e8f0;padding-bottom:12px">'
+      + stepBtn(1, '1. Receiving')
+      + stepBtn(2, '2. Deductions')
+      + stepBtn(3, '3. Grading & Pricing')
+      + '</div>'
+      + content
+      + '</div>';
+    overlay.onclick = function (e) { if (e.target === overlay) fsBulkClose(); };
+    document.body.appendChild(overlay);
+  }
+
+  // ── STEP 1: Receiving (bulk add new loads) ───────────────────────────
+  function bulkRenderStep1() {
+    var farmerOpts = '<option value="">— Pick farmer —</option>'
+      + _fsState.farmers.map(function (f) {
+          return '<option value="' + f.id + '">' + esc(f.name) + '</option>';
+        }).join('');
+
+    // Show counts + summary of loads already saved for this day
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    var summary = dayLoads.length === 0
+      ? '<span style="color:#94a3b8;font-size:.78rem">No loads saved yet for ' + prettyDate(_wiz.day) + '.</span>'
+      : '<span style="color:#0369a1;font-size:.78rem;font-weight:600">' + dayLoads.length + ' load' + (dayLoads.length === 1 ? '' : 's') + ' already saved for ' + prettyDate(_wiz.day) + '.</span>';
+
+    var rows = _wiz.newRows.map(function (r, idx) {
+      var truck = parseFloat(r.truck) || 0;
+      var plant = parseFloat(r.plant) || 0;
+      var diff = (r.truck && r.plant) ? (truck - plant) : '';
+      return '<tr style="border-bottom:1px solid #f1f5f9">'
+        + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.movement || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'movement\',this.value)" placeholder="Ticket #" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRow(' + idx + ',\'farmer_id\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">'
+        + farmerOpts.replace('value="' + r.farmer_id + '"', 'value="' + r.farmer_id + '" selected')
+        + '</select></td>'
+        + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.pond || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'pond\',this.value)" placeholder="Pond" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:6px 6px"><input type="number" min="0" step="1" value="' + (r.truck || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'truck\',this.value)" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:6px 6px"><input type="number" min="0" step="1" value="' + (r.plant || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'plant\',this.value)" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:6px 6px;text-align:right;color:#475569;font-weight:600">' + (diff === '' ? '—' : Number(diff).toLocaleString()) + '</td>'
+        + '<td style="padding:6px 4px;text-align:center"><button onclick="fsBulkRemoveRow(' + idx + ')" title="Remove row" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:.7rem;font-weight:700">×</button></td>'
+        + '</tr>';
+    }).join('');
+
+    return ''
+      + '<div style="background:#f0f7ff;border-left:3px solid #1e40af;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#1e40af">'
+      + '📋 <strong>Step 1:</strong> log every truck that arrived. Add a row per movement ticket. Bands and prices come later in Step 3.'
+      + '</div>'
+      + '<div style="margin-bottom:8px">' + summary + '</div>'
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:880px">'
+      + '<thead><tr style="background:#1a3a6b;color:#fff">'
+      + '<th style="padding:8px 6px;text-align:left">Movement #</th>'
+      + '<th style="padding:8px 6px;text-align:left">Farmer *</th>'
+      + '<th style="padding:8px 6px;text-align:left">Pond</th>'
+      + '<th style="padding:8px 6px;text-align:left">Truck Wt</th>'
+      + '<th style="padding:8px 6px;text-align:left">Plant Wt</th>'
+      + '<th style="padding:8px 6px;text-align:right">Difference</th>'
+      + '<th style="padding:8px 6px;text-align:center"></th>'
+      + '</tr></thead>'
+      + '<tbody>' + rows + '</tbody>'
+      + '</table>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">'
+      + '<button onclick="fsBulkAddRow()" style="' + BTN_SUB + '">+ Add Row</button>'
+      + '<div style="display:flex;gap:8px">'
+      + '<button onclick="fsBulkSaveStep1()" style="' + BTN_P + ';padding:10px 18px">💾 Save All & Continue to Step 2 →</button>'
+      + '</div>'
+      + '</div>'
+      + '<div id="fs-wiz-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>';
+  }
+
+  function fsBulkAddRow() {
+    _wiz.newRows.push(bulkEmptyRow());
+    fsBulkRender();
+  }
+  function fsBulkRemoveRow(idx) {
+    _wiz.newRows.splice(idx, 1);
+    if (_wiz.newRows.length === 0) _wiz.newRows.push(bulkEmptyRow());
+    fsBulkRender();
+  }
+  function fsBulkUpdRow(idx, field, value) {
+    if (!_wiz.newRows[idx]) return;
+    _wiz.newRows[idx][field] = value;
+    // Don't re-render on every keystroke (would steal focus). Difference
+    // recompute on blur via setTimeout would be nicer; for now skip.
+  }
+
+  function fsBulkSaveStep1() {
+    var err = document.getElementById('fs-wiz-err');
+    var validRows = _wiz.newRows.filter(function (r) {
+      return r.movement || r.farmer_id || r.pond || r.truck || r.plant;
+    });
+    if (validRows.length === 0) {
+      err.textContent = 'Nothing to save — fill at least one row.';
+      err.style.display = 'block'; return;
+    }
+    // Validate each row has the minimum: farmer_id is required.
+    for (var i = 0; i < validRows.length; i++) {
+      if (!validRows[i].farmer_id) {
+        err.textContent = 'Row ' + (i + 1) + ': farmer is required.';
+        err.style.display = 'block'; return;
+      }
+    }
+    err.style.display = 'none';
+    var nowIso = new Date().toISOString();
+    // Save sequentially so invoice numbers come out in row order. Parallel
+    // would race the per-day sequence backfill.
+    var idx = 0;
+    function next() {
+      if (idx >= validRows.length) {
+        toast('✓ Saved ' + validRows.length + ' load' + (validRows.length === 1 ? '' : 's'));
+        // Refresh state then move to Step 2
+        fsLoadAndRenderIntake();
+        _wiz.newRows = [bulkEmptyRow()];
+        // Wait briefly for state refresh, then step 2
+        setTimeout(function () { _wiz.step = 2; fsBulkRender(); }, 350);
+        return;
+      }
+      var r = validRows[idx++];
+      apiCall('POST', '/api/fish-schedule?action=save_load', {
+        day_date: _wiz.day,
+        arrived_at: nowIso,
+        farmer_id: parseInt(r.farmer_id, 10),
+        pond_ref: r.pond || null,
+        movement_ticket_number: r.movement || null,
+        gross_lbs: r.truck || null,
+        net_lbs: r.plant || null
+      }).then(next).catch(function (e) {
+        err.textContent = 'Save failed on row ' + idx + ': ' + (e.message || 'unknown');
+        err.style.display = 'block';
+      });
+    }
+    next();
+  }
+
+  // ── STEP 2: Deductions (per-load 5-category inputs) ──────────────────
+  function bulkRenderStep2() {
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    if (dayLoads.length === 0) {
+      return ''
+        + '<div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;padding:14px 18px;color:#92400e">'
+        + 'No loads saved for ' + prettyDate(_wiz.day) + '. Go back to <strong>Step 1</strong> and log the trucks first.'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
+        + '<button onclick="fsBulkSetStep(1)" style="' + BTN_SUB + '">← Back to Step 1</button>'
+        + '</div>';
+    }
+
+    var rows = dayLoads.map(function (l) {
+      var farmer = _fsState.farmers.find(function (f) { return f.id === l.farmer_id; });
+      var name = farmer ? farmer.name : '(unknown)';
+      var color = farmer ? farmer.color : '#1a3a6b';
+      var ded = ['doa', 'shad', 'turtles', 'other_species', 'fingerlings'].map(function (k) {
+        var v = Number(l['deduction_' + k + '_lbs']) || 0;
+        return '<td style="padding:6px 6px"><input id="fs-wiz-ded-' + l.id + '-' + k + '" type="number" min="0" step="1" value="' + (v === 0 ? '' : v) + '" placeholder="0" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box;text-align:right"></td>';
+      }).join('');
+      return '<tr style="border-bottom:1px solid #f1f5f9">'
+        + '<td style="padding:6px 8px;font-weight:700">'
+        + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(color) + ';margin-right:6px"></span>'
+        + esc(name) + (l.pond_ref ? ' <span style="color:#94a3b8;font-weight:400">› ' + esc(l.pond_ref) + '</span>' : '')
+        + (l.movement_ticket_number ? '<div style="font-size:.7rem;color:#1e40af;font-weight:600;margin-top:2px">📋 #' + esc(l.movement_ticket_number) + '</div>' : '')
+        + '</td>'
+        + '<td style="padding:6px 8px;text-align:right;font-weight:600;color:#1a3a6b">' + (l.net_lbs ? Number(l.net_lbs).toLocaleString() : '—') + '</td>'
+        + ded
+        + '</tr>';
+    }).join('');
+
+    return ''
+      + '<div style="background:#fef2f2;border-left:3px solid #991b1b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#991b1b">'
+      + '✂️ <strong>Step 2:</strong> per farmer, weigh out the bad fish by category. Leave blank if zero.'
+      + '</div>'
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:920px">'
+      + '<thead><tr style="background:#991b1b;color:#fff">'
+      + '<th style="padding:8px 8px;text-align:left">Farmer › Pond</th>'
+      + '<th style="padding:8px 8px;text-align:right">Plant Wt</th>'
+      + '<th style="padding:8px 6px;text-align:right">DOA</th>'
+      + '<th style="padding:8px 6px;text-align:right">Shad</th>'
+      + '<th style="padding:8px 6px;text-align:right">Turtles</th>'
+      + '<th style="padding:8px 6px;text-align:right">Other Species</th>'
+      + '<th style="padding:8px 6px;text-align:right">Fingerlings</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
+      + '<button onclick="fsBulkSetStep(1)" style="' + BTN_SUB + '">← Back to Step 1</button>'
+      + '<button onclick="fsBulkSaveStep2()" style="' + BTN_P + ';padding:10px 18px">💾 Save Deductions & Continue to Step 3 →</button>'
+      + '</div>'
+      + '<div id="fs-wiz-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>';
+  }
+
+  function fsBulkSaveStep2() {
+    var err = document.getElementById('fs-wiz-err');
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    if (dayLoads.length === 0) return;
+    var num = function (id) {
+      var el = document.getElementById(id);
+      if (!el || !el.value) return null;
+      var n = Number(el.value);
+      return isNaN(n) ? null : n;
+    };
+    var idx = 0;
+    function next() {
+      if (idx >= dayLoads.length) {
+        toast('✓ Deductions saved');
+        fsLoadAndRenderIntake();
+        setTimeout(function () { _wiz.step = 3; fsBulkRender(); }, 350);
+        return;
+      }
+      var l = dayLoads[idx++];
+      // Send full load body (server upserts) — preserve everything we already
+      // had on the load, just overlay the deductions. arrived_at + truck_ref
+      // + delivery_id are forwarded so the backend doesn't null them.
+      apiCall('POST', '/api/fish-schedule?action=save_load', {
+        id: l.id,
+        day_date: l.day_date,
+        arrived_at: l.arrived_at,
+        farmer_id: l.farmer_id,
+        pond_ref: l.pond_ref,
+        truck_ref: l.truck_ref,
+        delivery_id: l.delivery_id,
+        movement_ticket_number: l.movement_ticket_number,
+        gross_lbs: l.gross_lbs,
+        tare_lbs: null,
+        net_lbs: l.net_lbs,
+        size_4_6_lbs: l.size_4_6_lbs,
+        size_6_8_lbs: l.size_6_8_lbs,
+        size_8_plus_lbs: l.size_8_plus_lbs,
+        size_0_4_lbs: l.size_0_4_lbs,
+        deduction_doa_lbs: num('fs-wiz-ded-' + l.id + '-doa'),
+        deduction_shad_lbs: num('fs-wiz-ded-' + l.id + '-shad'),
+        deduction_turtles_lbs: num('fs-wiz-ded-' + l.id + '-turtles'),
+        deduction_other_species_lbs: num('fs-wiz-ded-' + l.id + '-other_species'),
+        deduction_fingerlings_lbs: num('fs-wiz-ded-' + l.id + '-fingerlings'),
+        price_4_6_per_lb: l.price_4_6_per_lb,
+        price_6_8_per_lb: l.price_6_8_per_lb,
+        price_8_plus_per_lb: l.price_8_plus_per_lb,
+        price_0_4_per_lb: l.price_0_4_per_lb,
+        notes: l.notes
+      }).then(next).catch(function (e) {
+        err.textContent = 'Save failed: ' + (e.message || 'unknown');
+        err.style.display = 'block';
+      });
+    }
+    next();
+  }
+
+  // ── STEP 3: Grading & Pricing ────────────────────────────────────────
+  // Stacked cards (one per load) because each card has 8 numeric inputs +
+  // 4 currency inputs + a notes field. Per-farmer pricing memory:
+  // when a load doesn't have its own prices yet, look up the most recent
+  // OTHER load by the same farmer (any day) with prices and use those.
+  function bulkRenderStep3() {
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    if (dayLoads.length === 0) {
+      return ''
+        + '<div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;padding:14px 18px;color:#92400e">'
+        + 'No loads saved for ' + prettyDate(_wiz.day) + '. Go back to Step 1 to log them first.'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
+        + '<button onclick="fsBulkSetStep(2)" style="' + BTN_SUB + '">← Back to Step 2</button>'
+        + '</div>';
+    }
+    var dc = dockConfig();
+    var cards = dayLoads.map(function (l) {
+      var farmer = _fsState.farmers.find(function (f) { return f.id === l.farmer_id; });
+      var name = farmer ? farmer.name : '(unknown)';
+      var color = farmer ? farmer.color : '#1a3a6b';
+      // Per-farmer pricing memory: most recent other load by this farmer
+      // with any per-band price set. Falls through to dock-config defaults.
+      var farmerPrior = null;
+      _fsState.loads.forEach(function (x) {
+        if (x.id === l.id) return;
+        if (x.farmer_id !== l.farmer_id) return;
+        if (x.price_0_4_per_lb == null && x.price_4_6_per_lb == null
+            && x.price_6_8_per_lb == null && x.price_8_plus_per_lb == null) return;
+        if (!farmerPrior || (x.day_date > farmerPrior.day_date)) farmerPrior = x;
+      });
+      var priceFor = function (key) {
+        if (l[key] != null && l[key] !== '') return Number(l[key]);
+        if (farmerPrior && farmerPrior[key] != null) return Number(farmerPrior[key]);
+        return null;
+      };
+      var p04 = priceFor('price_0_4_per_lb') ?? dc.tier1_default_price;
+      var p46 = priceFor('price_4_6_per_lb') ?? dc.tier2_default_price;
+      var p68 = priceFor('price_6_8_per_lb') ?? dc.tier3_default_price;
+      var p8p = priceFor('price_8_plus_per_lb') ?? dc.tier4_default_price;
+
+      var totalDed = (Number(l.deduction_doa_lbs) || 0)
+        + (Number(l.deduction_shad_lbs) || 0)
+        + (Number(l.deduction_turtles_lbs) || 0)
+        + (Number(l.deduction_other_species_lbs) || 0)
+        + (Number(l.deduction_fingerlings_lbs) || 0);
+      var payable = (Number(l.net_lbs) || 0) - totalDed;
+
+      var cur = function (n) {
+        return n == null || isNaN(n) ? '' : '$' + Number(n).toFixed(2);
+      };
+      var sz = function (id, label, v) {
+        return '<div><label style="display:block;font-size:.66rem;color:#475569;font-weight:600;margin-bottom:3px;min-height:24px">' + esc(label) + '</label>'
+          + '<input id="' + id + '" type="number" min="0" step="1" value="' + (v == null || v === 0 ? '' : v) + '" placeholder="0" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></div>';
+      };
+      var pr = function (id, label, v) {
+        return '<div><label style="display:block;font-size:.66rem;color:#475569;font-weight:600;margin-bottom:3px;min-height:24px">' + esc(label) + ' $/lb</label>'
+          + '<input id="' + id + '" type="text" inputmode="decimal" value="' + cur(v) + '" placeholder="$0.00"'
+          + ' onfocus="fsCurrencyFocus(this)" onblur="fsCurrencyBlur(this)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></div>';
+      };
+      var farmerPriorTag = farmerPrior
+        ? '<span style="font-size:.68rem;color:#0369a1;font-weight:600;margin-left:6px">prices from prior ' + esc(farmerPrior.day_date) + '</span>'
+        : '';
+
+      return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:10px">'
+        + '<div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + esc(color) + ';margin-right:8px"></span>'
+        + '<strong style="font-size:.92rem;color:#0f172a">' + esc(name) + '</strong>'
+        + (l.pond_ref ? ' <span style="color:#94a3b8">› ' + esc(l.pond_ref) + '</span>' : '')
+        + (l.invoice_number ? ' <span style="font-size:.72rem;color:#64748b">Inv #' + esc(l.invoice_number) + '</span>' : '')
+        + farmerPriorTag
+        + '</div>'
+        + '<div style="font-size:.78rem;color:#64748b">Plant <strong>' + (l.net_lbs ? Number(l.net_lbs).toLocaleString() : '—')
+        + '</strong> − Ded <strong>' + Number(totalDed).toLocaleString() + '</strong> = '
+        + '<strong style="color:#065f46">' + Number(payable).toLocaleString() + ' lbs payable</strong></div>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">'
+        + sz('fs-wiz-sz-' + l.id + '-tier1', dc.tier1_label, l.size_0_4_lbs)
+        + sz('fs-wiz-sz-' + l.id + '-tier2', dc.tier2_label, l.size_4_6_lbs)
+        + sz('fs-wiz-sz-' + l.id + '-tier3', dc.tier3_label, l.size_6_8_lbs)
+        + sz('fs-wiz-sz-' + l.id + '-tier4', dc.tier4_label, l.size_8_plus_lbs)
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">'
+        + pr('fs-wiz-pr-' + l.id + '-tier1', dc.tier1_label, p04)
+        + pr('fs-wiz-pr-' + l.id + '-tier2', dc.tier2_label, p46)
+        + pr('fs-wiz-pr-' + l.id + '-tier3', dc.tier3_label, p68)
+        + pr('fs-wiz-pr-' + l.id + '-tier4', dc.tier4_label, p8p)
+        + '</div>'
+        + '<input id="fs-wiz-notes-' + l.id + '" type="text" placeholder="Notes (optional)" value="' + esc(l.notes || '') + '" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">'
+        + '</div>';
+    }).join('');
+
+    return ''
+      + '<div style="background:#ecfdf5;border-left:3px solid #065f46;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#065f46">'
+      + '📏 <strong>Step 3:</strong> grade each farmer\'s fish into bands and confirm $/lb. Per-farmer prior prices auto-fill when available.'
+      + '</div>'
+      + cards
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
+      + '<button onclick="fsBulkSetStep(2)" style="' + BTN_SUB + '">← Back to Step 2</button>'
+      + '<button onclick="fsBulkSaveStep3()" style="' + BTN_P + ';padding:10px 18px">✓ Save All & Done</button>'
+      + '</div>'
+      + '<div id="fs-wiz-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>';
+  }
+
+  function fsBulkSaveStep3() {
+    var err = document.getElementById('fs-wiz-err');
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    if (dayLoads.length === 0) return;
+    var num = function (id) {
+      var el = document.getElementById(id);
+      if (!el || !el.value) return null;
+      var n = Number(el.value);
+      return isNaN(n) ? null : n;
+    };
+    var pr = function (id) {
+      var el = document.getElementById(id);
+      return el ? parseCurrency(el.value) : null;
+    };
+    var notes = function (id) {
+      var el = document.getElementById(id);
+      return el ? (el.value || null) : null;
+    };
+    var idx = 0;
+    function next() {
+      if (idx >= dayLoads.length) {
+        toast('✓ Grading saved');
+        fsLoadAndRenderIntake();
+        setTimeout(fsBulkClose, 350);
+        return;
+      }
+      var l = dayLoads[idx++];
+      apiCall('POST', '/api/fish-schedule?action=save_load', {
+        id: l.id,
+        day_date: l.day_date,
+        arrived_at: l.arrived_at,
+        farmer_id: l.farmer_id,
+        pond_ref: l.pond_ref,
+        truck_ref: l.truck_ref,
+        delivery_id: l.delivery_id,
+        movement_ticket_number: l.movement_ticket_number,
+        gross_lbs: l.gross_lbs,
+        tare_lbs: null,
+        net_lbs: l.net_lbs,
+        // Tier1=size_0_4, tier2=size_4_6, tier3=size_6_8, tier4=size_8_plus
+        size_0_4_lbs: num('fs-wiz-sz-' + l.id + '-tier1'),
+        size_4_6_lbs: num('fs-wiz-sz-' + l.id + '-tier2'),
+        size_6_8_lbs: num('fs-wiz-sz-' + l.id + '-tier3'),
+        size_8_plus_lbs: num('fs-wiz-sz-' + l.id + '-tier4'),
+        deduction_doa_lbs: l.deduction_doa_lbs,
+        deduction_shad_lbs: l.deduction_shad_lbs,
+        deduction_turtles_lbs: l.deduction_turtles_lbs,
+        deduction_other_species_lbs: l.deduction_other_species_lbs,
+        deduction_fingerlings_lbs: l.deduction_fingerlings_lbs,
+        price_0_4_per_lb: pr('fs-wiz-pr-' + l.id + '-tier1'),
+        price_4_6_per_lb: pr('fs-wiz-pr-' + l.id + '-tier2'),
+        price_6_8_per_lb: pr('fs-wiz-pr-' + l.id + '-tier3'),
+        price_8_plus_per_lb: pr('fs-wiz-pr-' + l.id + '-tier4'),
+        notes: notes('fs-wiz-notes-' + l.id)
+      }).then(next).catch(function (e) {
+        err.textContent = 'Save failed: ' + (e.message || 'unknown');
+        err.style.display = 'block';
+      });
+    }
+    next();
+  }
+
   function fsDeleteLoadFromModal(id) {
     if (!confirm('Delete this load record?')) return;
     apiCall('POST', '/api/fish-schedule?action=delete_load', { id: id })
@@ -1677,6 +2165,17 @@
   // Dock config (manager+ only — backend enforces, frontend hides button)
   window.fsOpenDockConfig = fsOpenDockConfig;
   window.fsSaveDockConfig = fsSaveDockConfig;
+  // Bulk Entry wizard (3-step Receiving → Deductions → Grading flow)
+  window.fsOpenBulkWizard = fsOpenBulkWizard;
+  window.fsBulkClose = fsBulkClose;
+  window.fsBulkSetStep = fsBulkSetStep;
+  window.fsBulkSetDay = fsBulkSetDay;
+  window.fsBulkAddRow = fsBulkAddRow;
+  window.fsBulkRemoveRow = fsBulkRemoveRow;
+  window.fsBulkUpdRow = fsBulkUpdRow;
+  window.fsBulkSaveStep1 = fsBulkSaveStep1;
+  window.fsBulkSaveStep2 = fsBulkSaveStep2;
+  window.fsBulkSaveStep3 = fsBulkSaveStep3;
   // Fish Payable (invoice rollup)
   window.fsWeekNavPayable = fsWeekNavPayable;
   window.fsGoTodayPayable = fsGoTodayPayable;
