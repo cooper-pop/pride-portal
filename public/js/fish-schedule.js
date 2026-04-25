@@ -1322,13 +1322,23 @@
     if (!userCan('fishschedule', 'create')) {
       toast('⚠️ Need create permission'); return;
     }
-    // Default the operating day to today (or the first day of the current
-    // week if today isn't in this week). One blank row pre-seeded.
+    // Default the operating day to today. Make sure _fsState.weekStart
+    // points at today's week so Steps 2-4 can find the loads we'll save in
+    // Step 1 (loads are fetched per week_start).
     var today = new Date().toISOString().split('T')[0];
     _wiz.day = today;
     _wiz.step = 1;
     _wiz.newRows = [bulkEmptyRow()];
-    fsBulkRender();
+    var targetWeek = weekStartOf(today);
+    if (_fsState.weekStart !== targetWeek) {
+      _fsState.weekStart = targetWeek;
+      // Show the wizard immediately so it doesn't feel laggy, then refresh
+      // state in the background.
+      fsBulkRender();
+      reloadIntakeThenWiz(_wiz.step);
+    } else {
+      fsBulkRender();
+    }
   }
   function bulkEmptyRow() {
     // Plant weight is captured in Step 2 (separate operation: empty truck
@@ -1345,7 +1355,36 @@
   }
   function fsBulkSetDay(iso) {
     _wiz.day = iso;
-    fsBulkRender();
+    // Make sure the Intake state covers this day's week before re-rendering
+    // — otherwise Steps 2-4 would show "no loads" if the day is in a
+    // different week than _fsState.weekStart was set to.
+    var targetWeek = weekStartOf(iso);
+    if (_fsState.weekStart !== targetWeek) {
+      _fsState.weekStart = targetWeek;
+      reloadIntakeThenWiz(_wiz.step);
+    } else {
+      fsBulkRender();
+    }
+  }
+
+  // Reload Intake state from the server, then advance/refresh the wizard.
+  // Used by Step-N save handlers that need to read freshly-saved loads in
+  // the next step. Replaces the old setTimeout(..., 350) race-condition
+  // approach.
+  function reloadIntakeThenWiz(targetStep) {
+    var qs = '?action=get_intake&week_start=' + encodeURIComponent(_fsState.weekStart);
+    apiCall('GET', '/api/fish-schedule' + qs)
+      .then(function (r) {
+        _fsState.farmers = r.farmers || [];
+        _fsState.deliveries = r.deliveries || [];
+        _fsState.loads = r.loads || [];
+        _fsState.farmerPonds = r.farmer_ponds || {};
+        _wiz.step = targetStep;
+        fsBulkRender();
+      })
+      .catch(function (e) {
+        toast('⚠️ Reload failed: ' + (e && e.message ? e.message : 'unknown'));
+      });
   }
 
   // ── Render shell ─────────────────────────────────────────────────────
@@ -1557,10 +1596,11 @@
     function next() {
       if (idx >= validRows.length) {
         toast('✓ Saved ' + validRows.length + ' load' + (validRows.length === 1 ? '' : 's'));
-        fsLoadAndRenderIntake();
         _wiz.newRows = [bulkEmptyRow()];
-        // Wait briefly for state refresh, then advance to Step 2
-        setTimeout(function () { _wiz.step = 2; fsBulkRender(); }, 350);
+        // Chain — load Intake state from server first, THEN advance to
+        // Step 2. The previous setTimeout-based approach raced the fetch
+        // and Step 2 sometimes rendered with stale (empty) loads.
+        reloadIntakeThenWiz(2);
         return;
       }
       var r = validRows[idx++];
@@ -1667,8 +1707,7 @@
     function next() {
       if (idx >= dayLoads.length) {
         toast('✓ Plant weights saved');
-        fsLoadAndRenderIntake();
-        setTimeout(function () { _wiz.step = 3; fsBulkRender(); }, 350);
+        reloadIntakeThenWiz(3);
         return;
       }
       var l = dayLoads[idx++];
@@ -1777,8 +1816,7 @@
     function next() {
       if (idx >= dayLoads.length) {
         toast('✓ Deductions saved');
-        fsLoadAndRenderIntake();
-        setTimeout(function () { _wiz.step = 4; fsBulkRender(); }, 350);
+        reloadIntakeThenWiz(4);
         return;
       }
       var l = dayLoads[idx++];
@@ -1945,8 +1983,9 @@
     function next() {
       if (idx >= dayLoads.length) {
         toast('✓ Grading saved');
+        fsBulkClose();
+        // Refresh the Intake view with the saved data once the wizard is gone
         fsLoadAndRenderIntake();
-        setTimeout(fsBulkClose, 350);
         return;
       }
       var l = dayLoads[idx++];
