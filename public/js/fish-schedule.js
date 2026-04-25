@@ -858,16 +858,22 @@
       var n = Number(v);
       return isNaN(n) ? null : n;
     };
-    var gross = getNum('fs-l-gross');
-    var tare = getNum('fs-l-tare');
+    var gross = getNum('fs-l-gross');   // Truck Weight
+    var tare = getNum('fs-l-tare');     // Plant Weight
     var netField = document.getElementById('fs-l-net');
-    var netManual = getNum('fs-l-net');
 
-    // If user typed a net, respect it. Otherwise auto-fill from gross-tare.
-    var net = netManual;
-    if (net == null && gross != null && tare != null) {
+    // Difference is ALWAYS truck − plant when both are entered. Earlier
+    // version tried to honor a manual value in the Difference field, but
+    // that broke recalcs: once the field was auto-filled, future edits to
+    // Truck or Plant left the stale value locked in. Now we overwrite on
+    // every keystroke. Manual entry only kicks in if Truck or Plant is
+    // blank (a fallback for someone who only knows the fish weight).
+    var net;
+    if (gross != null && tare != null) {
       net = gross - tare;
       if (netField) netField.value = net;
+    } else {
+      net = getNum('fs-l-net');
     }
 
     // Sum the 5 deduction categories. The legacy single-field input
