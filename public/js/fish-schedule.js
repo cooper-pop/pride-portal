@@ -803,10 +803,12 @@
       + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
       + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">📏 Size Bands <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(processed fish, lbs per band)</span></div>'
       + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'
+      // Tier1 → tier4 (smallest → largest). Same order as the Pricing row
+      // below so each lbs input lines up vertically with its own $/lb input.
+      + sizeInput('fs-l-sz04', dockConfig().tier1_label, initial.size_0_4_lbs)
       + sizeInput('fs-l-sz46', dockConfig().tier2_label, initial.size_4_6_lbs)
       + sizeInput('fs-l-sz68', dockConfig().tier3_label, initial.size_6_8_lbs)
       + sizeInput('fs-l-sz8p', dockConfig().tier4_label, initial.size_8_plus_lbs)
-      + sizeInput('fs-l-sz04', dockConfig().tier1_label, initial.size_0_4_lbs)
       + '</div>'
       + '<div id="fs-l-size-warn" style="font-size:.7rem;color:#92400e;margin-top:6px;display:none"></div>'
       + '</div>'
@@ -831,26 +833,22 @@
       + dedInput('fs-l-dedFingerlings', 'Fingerlings',     initial.deduction_fingerlings_lbs)
       + '</div></div>'
 
-      // Pricing — four bands each with their own $/lb, matching FISH PAYABLE TOTAL.
-      // "Dock Price" convenience field populates all bands; overrides are kept
-      // if the user already set them individually.
+      // Pricing — one $/lb input per tier, ordered tier1 → tier4 (smallest
+      // to largest). Values display as currency ($1.30 / $0.85 / etc) and
+      // pre-fill from the dock config defaults. The legacy single "Dock
+      // Price" convenience field was removed once dock config landed —
+      // per-tier defaults make it redundant.
       + '<div style="background:' + (dockConfig().dock_active === false ? '#fef2f2' : '#ecfdf5') + ';border-radius:8px;padding:12px;margin-bottom:10px">'
       + '<div style="font-size:.78rem;font-weight:700;color:' + (dockConfig().dock_active === false ? '#991b1b' : '#065f46') + ';margin-bottom:8px">💰 Pricing '
       + (dockConfig().dock_active === false
           ? '<span style="font-weight:700;color:#991b1b">— DOCK OFF</span>'
           : '<span style="color:#94a3b8;font-weight:400;font-size:.72rem">($/lb per band — fills from dock config defaults)</span>')
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px">'
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Dock Price</label>'
-      + '<input id="fs-l-price" type="number" min="0" step="0.01" placeholder="e.g., 1.35" value="' + (initial.dock_price_per_lb == null ? '' : initial.dock_price_per_lb) + '" oninput="fsLoadModalFillBandPrices();fsLoadModalRecalc()" style="' + INP + '"></div>'
-      // Per-tier price inputs. Default value falls back through:
-      //   load's saved per-band → dock config tier default → load's flat dock price
-      // Labels match the size-band labels exactly so it's obvious which
-      // price drives which band.
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">'
+      + priceInput('fs-l-p04', dockConfig().tier1_label + ' $/lb', initial.price_0_4_per_lb, initial.dock_price_per_lb, dockConfig().tier1_default_price)
       + priceInput('fs-l-p46', dockConfig().tier2_label + ' $/lb', initial.price_4_6_per_lb, initial.dock_price_per_lb, dockConfig().tier2_default_price)
       + priceInput('fs-l-p68', dockConfig().tier3_label + ' $/lb', initial.price_6_8_per_lb, initial.dock_price_per_lb, dockConfig().tier3_default_price)
       + priceInput('fs-l-p8p', dockConfig().tier4_label + ' $/lb', initial.price_8_plus_per_lb, initial.dock_price_per_lb, dockConfig().tier4_default_price)
-      + priceInput('fs-l-p04', dockConfig().tier1_label + ' $/lb', initial.price_0_4_per_lb, initial.dock_price_per_lb, dockConfig().tier1_default_price)
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
       + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Payable Lbs <span style="color:#94a3b8;font-weight:400">auto</span></label>'
@@ -896,29 +894,55 @@
   //   2. The load's flat dock_price_per_lb (legacy / convenience override)
   //   3. The dock config's tier default (today's standing price for this band)
   //   4. Empty
-  // Result: a fresh New Load opens pre-populated with whatever Cooper has
-  // set as today's per-band rates in Dock Settings.
+  // Displayed as currency ($1.30, $0.85, $0.00...). On focus we strip back
+  // to the bare number for clean editing; on blur we reformat. Currency
+  // formatting is purely cosmetic — fsLoadModalRecalc / fsSaveLoad both
+  // run values through parseCurrency() before doing math.
   function priceInput(id, label, bandPrice, dockPrice, configDefault) {
-    var v = '';
-    if (bandPrice != null && bandPrice !== '') v = bandPrice;
-    else if (dockPrice != null && dockPrice !== '') v = dockPrice;
-    else if (configDefault != null && configDefault !== '') v = configDefault;
+    var v = null;
+    if (bandPrice != null && bandPrice !== '') v = Number(bandPrice);
+    else if (dockPrice != null && dockPrice !== '') v = Number(dockPrice);
+    else if (configDefault != null && configDefault !== '') v = Number(configDefault);
+    var display = (v != null && !isNaN(v)) ? formatCurrency(v) : '';
     return '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">' + label + '</label>'
-      + '<input id="' + id + '" type="number" min="0" step="0.01" placeholder="—" value="' + v + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>';
+      + '<input id="' + id + '" type="text" inputmode="decimal" placeholder="$0.00" value="' + display + '"'
+      + ' onfocus="fsCurrencyFocus(this)" onblur="fsCurrencyBlur(this);fsLoadModalRecalc()" oninput="fsLoadModalRecalc()"'
+      + ' style="' + INP + '"></div>';
   }
 
-  // Typing a dock price auto-fills every band-price input with it. Non-
-  // destructive in the sense that the user can type over any individual band
-  // afterwards; but repeatedly editing the dock price DOES overwrite band
-  // overrides (matches how people actually use the convenience field).
-  function fsLoadModalFillBandPrices() {
-    var dock = document.getElementById('fs-l-price');
-    if (!dock || dock.value === '') return;
-    ['fs-l-p46', 'fs-l-p68', 'fs-l-p8p', 'fs-l-p04'].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.value = dock.value;
-    });
+  // Format a raw number as $X.XX (always 2 decimals).
+  function formatCurrency(n) {
+    if (n == null || n === '' || isNaN(n)) return '';
+    return '$' + Number(n).toFixed(2);
   }
+  // Parse "$1.30" / "1.30" / "  $1.3  " → 1.3 (number). Returns null if blank
+  // or unparseable. Tolerant of stray whitespace and the $ being optional.
+  function parseCurrency(s) {
+    if (s == null) return null;
+    var clean = String(s).replace(/[$,\s]/g, '').trim();
+    if (clean === '') return null;
+    var n = Number(clean);
+    return isNaN(n) ? null : n;
+  }
+  // On focus: strip the "$" so the user types raw digits without fighting
+  // the dollar sign. We hold off on validation here.
+  function fsCurrencyFocus(el) {
+    if (!el) return;
+    el.value = String(el.value).replace(/[$,\s]/g, '');
+    setTimeout(function () { try { el.select(); } catch (e) {} }, 0);
+  }
+  // On blur: re-format whatever the user left in the field. Empty stays
+  // empty; anything parseable becomes "$X.XX".
+  function fsCurrencyBlur(el) {
+    if (!el) return;
+    var n = parseCurrency(el.value);
+    el.value = n == null ? '' : formatCurrency(n);
+  }
+
+  // Legacy no-op kept for any cached page that still has the old "Dock
+  // Price" convenience field hooked to it. The field was removed once
+  // dock-config defaults landed; per-tier prices are entered individually.
+  function fsLoadModalFillBandPrices() { /* removed in dock-config UX pass */ }
 
   // Live recompute — Cooper's flow:
   //   Difference   = Truck − Plant       (display only; transit/scale variance)
@@ -974,10 +998,16 @@
       sz04El.value = sz04Auto;
     }
 
-    var p46 = getNum('fs-l-p46');
-    var p68 = getNum('fs-l-p68');
-    var p8p = getNum('fs-l-p8p');
-    var p04 = getNum('fs-l-p04');
+    // Price inputs display as currency ($1.30) so we parse with currency
+    // helper instead of raw getNum.
+    var getCur = function (id) {
+      var el = document.getElementById(id);
+      return el ? parseCurrency(el.value) : null;
+    };
+    var p46 = getCur('fs-l-p46');
+    var p68 = getCur('fs-l-p68');
+    var p8p = getCur('fs-l-p8p');
+    var p04 = getCur('fs-l-p04');
 
     // Amount = Σ (band_lbs × band_price) over all 4 bands.
     var amount = 0;
@@ -1094,11 +1124,14 @@
       deduction_turtles_lbs: val('fs-l-dedTurtles') || null,
       deduction_other_species_lbs: val('fs-l-dedOtherSpecies') || null,
       deduction_fingerlings_lbs: val('fs-l-dedFingerlings') || null,
-      dock_price_per_lb: val('fs-l-price') || null,
-      price_4_6_per_lb: val('fs-l-p46') || null,
-      price_6_8_per_lb: val('fs-l-p68') || null,
-      price_8_plus_per_lb: val('fs-l-p8p') || null,
-      price_0_4_per_lb: val('fs-l-p04') || null,
+      // Dock Price convenience field was removed; dock_price_per_lb is no
+      // longer entered directly. Per-band prices are parsed from currency-
+      // formatted text inputs (e.g., "$1.30") via parseCurrency.
+      dock_price_per_lb: null,
+      price_4_6_per_lb: parseCurrency(val('fs-l-p46')),
+      price_6_8_per_lb: parseCurrency(val('fs-l-p68')),
+      price_8_plus_per_lb: parseCurrency(val('fs-l-p8p')),
+      price_0_4_per_lb: parseCurrency(val('fs-l-p04')),
       notes: val('fs-l-notes') || null
     };
     if (id) body.id = id;
@@ -1637,6 +1670,10 @@
   window.fsLoadModalRecalc = fsLoadModalRecalc;
   window.fsLoadModalRefreshDeliveries = fsLoadModalRefreshDeliveries;
   window.fsLoadModalFillBandPrices = fsLoadModalFillBandPrices;
+  // Currency formatting handlers used by inline onfocus/onblur on the
+  // per-tier $/lb inputs.
+  window.fsCurrencyFocus = fsCurrencyFocus;
+  window.fsCurrencyBlur = fsCurrencyBlur;
   // Dock config (manager+ only — backend enforces, frontend hides button)
   window.fsOpenDockConfig = fsOpenDockConfig;
   window.fsSaveDockConfig = fsSaveDockConfig;
