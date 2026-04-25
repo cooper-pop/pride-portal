@@ -154,6 +154,52 @@ async function ensureTables(sql) {
   } catch (e) { /* already present */ }
   await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_invoice_idx
     ON live_haul_loads(invoice_number)`;
+
+  // ── Dock Price config (per company) ───────────────────────────────────
+  // Each company has a single row holding the active dock-price profile:
+  //   - dock_active: true while we're buying, false during a "no-buy" stretch
+  //   - 4 tier slots, each with editable label + min/max range + default $/lb
+  //
+  // The size_*_lbs / price_*_per_lb columns on live_haul_loads still map to
+  // these slots positionally (tier1 = 0-4, tier2 = 4-5.99, tier3 = 6-7.99,
+  // tier4 = 8+). The tier *labels* are display-only — operators can rename
+  // them and adjust ranges without us migrating any historical data. The
+  // labels propagate to the Intake modal, Fish Payable invoice, and card.
+  await sql`CREATE TABLE IF NOT EXISTS live_haul_dock_config (
+    company_id TEXT PRIMARY KEY,
+    dock_active BOOLEAN DEFAULT true,
+    tier1_label TEXT DEFAULT '0–4 lb',
+    tier1_min_lbs NUMERIC DEFAULT 0,
+    tier1_max_lbs NUMERIC DEFAULT 4,
+    tier1_default_price NUMERIC,
+    tier2_label TEXT DEFAULT '4–5.99 lb',
+    tier2_min_lbs NUMERIC DEFAULT 4,
+    tier2_max_lbs NUMERIC DEFAULT 5.99,
+    tier2_default_price NUMERIC,
+    tier3_label TEXT DEFAULT '6–7.99 lb',
+    tier3_min_lbs NUMERIC DEFAULT 6,
+    tier3_max_lbs NUMERIC DEFAULT 7.99,
+    tier3_default_price NUMERIC,
+    tier4_label TEXT DEFAULT '8+ lb',
+    tier4_min_lbs NUMERIC DEFAULT 8,
+    tier4_max_lbs NUMERIC,
+    tier4_default_price NUMERIC,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_by TEXT
+  )`;
+}
+
+// Fetch (or lazily create) the dock config for a company. Always returns a
+// fully-populated config object so callers don't have to deal with missing
+// rows.
+async function getOrCreateDockConfig(sql, companyId) {
+  let rows = await sql`SELECT * FROM live_haul_dock_config WHERE company_id = ${companyId}`;
+  if (rows.length === 0) {
+    await sql`INSERT INTO live_haul_dock_config (company_id) VALUES (${companyId})
+              ON CONFLICT (company_id) DO NOTHING`;
+    rows = await sql`SELECT * FROM live_haul_dock_config WHERE company_id = ${companyId}`;
+  }
+  return rows[0];
 }
 
 // Generate invoice number from an ISO date string (YYYY-MM-DD) + sequence.
@@ -642,6 +688,68 @@ module.exports = async function handler(req, res) {
         deliveries: deliveries.map(norm),
         loads: loads.map(norm)
       });
+    }
+
+    // ── GET get_dock_config ──────────────────────────────────────────────
+    // Active dock price profile for this company. Always returns a config
+    // (creates a default row on first call). Anyone with fishschedule.view
+    // can read it — needed to render the Intake modal labels.
+    if (req.method === 'GET' && action === 'get_dock_config') {
+      if (!perms.canPerform(user, 'fishschedule', 'view')) {
+        return perms.deny(res, user, 'fishschedule', 'view');
+      }
+      const config = await getOrCreateDockConfig(sql, companyId);
+      return res.json({ ok: true, config });
+    }
+
+    // ── POST save_dock_config ────────────────────────────────────────────
+    // Updates the dock price profile. Manager+ only — supervisors enter
+    // loads but don't set pricing. The four tier slots are positional, so
+    // we always write all of them; the client sends a complete config.
+    if (req.method === 'POST' && action === 'save_dock_config') {
+      if (!perms.canPerform(user, 'fishschedule', 'edit')) {
+        return perms.deny(res, user, 'fishschedule', 'edit');
+      }
+      const b = req.body || {};
+      const num = (v) => {
+        if (v === '' || v === null || v === undefined) return null;
+        const n = Number(v);
+        return isNaN(n) ? null : n;
+      };
+      const dockActive = b.dock_active !== false; // default true
+      const who = user.full_name || user.username || ('user#' + user.user_id);
+      // Ensure the row exists first.
+      await getOrCreateDockConfig(sql, companyId);
+      await sql`
+        UPDATE live_haul_dock_config
+        SET dock_active = ${dockActive},
+            tier1_label = ${(b.tier1_label || '').trim() || '0–4 lb'},
+            tier1_min_lbs = ${num(b.tier1_min_lbs)},
+            tier1_max_lbs = ${num(b.tier1_max_lbs)},
+            tier1_default_price = ${num(b.tier1_default_price)},
+            tier2_label = ${(b.tier2_label || '').trim() || '4–5.99 lb'},
+            tier2_min_lbs = ${num(b.tier2_min_lbs)},
+            tier2_max_lbs = ${num(b.tier2_max_lbs)},
+            tier2_default_price = ${num(b.tier2_default_price)},
+            tier3_label = ${(b.tier3_label || '').trim() || '6–7.99 lb'},
+            tier3_min_lbs = ${num(b.tier3_min_lbs)},
+            tier3_max_lbs = ${num(b.tier3_max_lbs)},
+            tier3_default_price = ${num(b.tier3_default_price)},
+            tier4_label = ${(b.tier4_label || '').trim() || '8+ lb'},
+            tier4_min_lbs = ${num(b.tier4_min_lbs)},
+            tier4_max_lbs = ${num(b.tier4_max_lbs)},
+            tier4_default_price = ${num(b.tier4_default_price)},
+            updated_at = NOW(),
+            updated_by = ${who}
+        WHERE company_id = ${companyId}
+      `;
+      const config = await getOrCreateDockConfig(sql, companyId);
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.save_dock_config',
+        resource_type: 'dock_config', resource_id: companyId,
+        details: { dock_active: dockActive, by: who }
+      });
+      return res.json({ ok: true, config });
     }
 
     // ── GET get_payable ─────────────────────────────────────────────────

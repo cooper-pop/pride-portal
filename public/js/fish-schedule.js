@@ -24,8 +24,27 @@
     // Intake state (Phase B):
     loads: [],        // [{id, day_date, farmer_id, gross_lbs, ..., payable_total}]
     deliveries: [],   // Flat list of scheduled deliveries for the week (for "attach to schedule" dropdown)
+    // Dock price profile (lazy-loaded on first Intake render). Used to label
+    // size bands + price inputs everywhere they're displayed.
+    dockConfig: null,
     loading: false
   };
+
+  // Default dock config used when the API hasn't responded yet (e.g., initial
+  // render before the fetch completes). Matches the Excel-style 4-band setup.
+  var DEFAULT_DOCK_CONFIG = {
+    dock_active: true,
+    tier1_label: '0–4 lb',     tier1_min_lbs: 0, tier1_max_lbs: 4,    tier1_default_price: null,
+    tier2_label: '4–5.99 lb',  tier2_min_lbs: 4, tier2_max_lbs: 5.99, tier2_default_price: null,
+    tier3_label: '6–7.99 lb',  tier3_min_lbs: 6, tier3_max_lbs: 7.99, tier3_default_price: null,
+    tier4_label: '8+ lb',      tier4_min_lbs: 8, tier4_max_lbs: null, tier4_default_price: null
+  };
+  function dockConfig() { return _fsState.dockConfig || DEFAULT_DOCK_CONFIG; }
+  function loadDockConfig(cb) {
+    apiCall('GET', '/api/fish-schedule?action=get_dock_config')
+      .then(function (r) { _fsState.dockConfig = r && r.config ? r.config : DEFAULT_DOCK_CONFIG; if (cb) cb(); })
+      .catch(function () { _fsState.dockConfig = DEFAULT_DOCK_CONFIG; if (cb) cb(); });
+  }
 
   // Button / card styles (match other widgets)
   var BTN = 'padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:.78rem;font-weight:600';
@@ -401,11 +420,21 @@
   function fsLoadAndRenderIntake() {
     var panel = document.getElementById('widget-content');
     panel.innerHTML = '<div style="text-align:center;padding:30px;color:#64748b"><div class="spinner-wrap"><div class="spinner"></div></div>Loading intake…</div>';
-    apiCall('GET', '/api/fish-schedule?action=get_intake&week_start=' + _fsState.weekStart)
-      .then(function (r) {
+    // Two parallel fetches — get_intake and get_dock_config. Dock config
+    // drives the size-band labels + default prices; we don't render until
+    // both are in so labels stay consistent on first paint.
+    Promise.all([
+      apiCall('GET', '/api/fish-schedule?action=get_intake&week_start=' + _fsState.weekStart),
+      _fsState.dockConfig
+        ? Promise.resolve({ config: _fsState.dockConfig })
+        : apiCall('GET', '/api/fish-schedule?action=get_dock_config').catch(function () { return { config: DEFAULT_DOCK_CONFIG }; })
+    ]).then(function (results) {
+        var r = results[0];
+        var dc = results[1];
         _fsState.farmers = r.farmers || [];
         _fsState.deliveries = r.deliveries || [];
         _fsState.loads = r.loads || [];
+        if (dc && dc.config) _fsState.dockConfig = dc.config;
         fsRenderIntake();
       })
       .catch(function (err) {
@@ -446,14 +475,28 @@
 
     var html = '<div style="padding:14px;max-width:100%;margin:0 auto">';
 
-    // Header: nav + range + weekly summary chips
+    // Header: nav + range + dock-config button
+    var canEditDock = (typeof userCan === 'function') && userCan('fishschedule', 'edit');
     html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
       + '<button style="' + BTN_SUB + '" onclick="fsWeekNavIntake(-1)">← Prev</button>'
       + '<button style="' + BTN_SUB + '" onclick="fsGoTodayIntake()">This Week</button>'
       + '<button style="' + BTN_SUB + '" onclick="fsWeekNavIntake(1)">Next →</button>'
       + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:1rem;margin-left:12px">'
       + prettyRange(_fsState.weekStart) + '</div>'
+      + (canEditDock ? '<button style="' + BTN_SUB + '" onclick="fsOpenDockConfig()">⚙️ Dock Settings</button>' : '')
       + '</div>';
+
+    // DOCK OFF banner — when the dock is paused, the entire intake flow
+    // becomes a no-buy. Big visible warning so operators know not to set
+    // expectations with farmers.
+    var dc = dockConfig();
+    if (dc.dock_active === false) {
+      html += '<div style="background:#7f1d1d;color:#fff;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(127,29,29,.3)">'
+        + '<span style="font-size:1.4rem">⛔</span>'
+        + '<div style="flex:1"><div style="font-weight:800;letter-spacing:.04em">DOCK IS OFF</div>'
+        + '<div style="font-size:.78rem;opacity:.9">No fish are being purchased. Manager can re-enable in Dock Settings.</div></div>'
+        + '</div>';
+    }
 
     // Weekly summary strip
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px">'
@@ -533,11 +576,14 @@
   function sizeBandBar(sz04, sz46, sz68, sz8p) {
     var total = (sz04 || 0) + (sz46 || 0) + (sz68 || 0) + (sz8p || 0);
     if (total <= 0) return '<div style="color:#94a3b8;font-size:.74rem;font-style:italic">No size-grade data yet.</div>';
+    // Pull labels from dock config so the bar matches whatever Cooper has
+    // configured for today's tiers.
+    var dc = dockConfig();
     var bands = [
-      { label: '0–4 lb',     lbs: sz04 || 0, color: '#0369a1' },
-      { label: '4.01–5.99',  lbs: sz46 || 0, color: '#0891b2' },
-      { label: '6–7.99',     lbs: sz68 || 0, color: '#059669' },
-      { label: '8+ lb',      lbs: sz8p || 0, color: '#ca8a04' }
+      { label: dc.tier1_label, lbs: sz04 || 0, color: '#0369a1' },
+      { label: dc.tier2_label, lbs: sz46 || 0, color: '#0891b2' },
+      { label: dc.tier3_label, lbs: sz68 || 0, color: '#059669' },
+      { label: dc.tier4_label, lbs: sz8p || 0, color: '#ca8a04' }
     ];
     var bar = '<div style="display:flex;height:18px;border-radius:4px;overflow:hidden;background:#f1f5f9">';
     bands.forEach(function (b) {
@@ -749,17 +795,18 @@
       + '<input id="fs-l-diff" type="number" readonly placeholder="auto" style="' + INP + ';background:#fff;color:#475569"></div>'
       + '</div></div>'
 
-      // Size bands — represent PROCESSED fish (post-grading). All four bands
-      // are entered directly. The 0–4 ("Net") band auto-suggests the
-      // remainder of payable_lbs minus the three graded bands, but the user
-      // can override if they have a different small-fish count.
+      // Size bands — labels driven by company dock-price config so
+      // operators see "Small / Medium / Large / Extra" or whatever the
+      // current category names are. Schema columns are positional:
+      //   tier1 → size_0_4_lbs   tier2 → size_4_6_lbs
+      //   tier3 → size_6_8_lbs   tier4 → size_8_plus_lbs
       + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
       + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">📏 Size Bands <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(processed fish, lbs per band)</span></div>'
       + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'
-      + sizeInput('fs-l-sz46', '4–5.99 lb',   initial.size_4_6_lbs)
-      + sizeInput('fs-l-sz68', '6–7.99 lb',   initial.size_6_8_lbs)
-      + sizeInput('fs-l-sz8p', '8+ lb',       initial.size_8_plus_lbs)
-      + sizeInput('fs-l-sz04', 'Net / 0–4 lb',initial.size_0_4_lbs)
+      + sizeInput('fs-l-sz46', dockConfig().tier2_label, initial.size_4_6_lbs)
+      + sizeInput('fs-l-sz68', dockConfig().tier3_label, initial.size_6_8_lbs)
+      + sizeInput('fs-l-sz8p', dockConfig().tier4_label, initial.size_8_plus_lbs)
+      + sizeInput('fs-l-sz04', dockConfig().tier1_label, initial.size_0_4_lbs)
       + '</div>'
       + '<div id="fs-l-size-warn" style="font-size:.7rem;color:#92400e;margin-top:6px;display:none"></div>'
       + '</div>'
@@ -787,15 +834,23 @@
       // Pricing — four bands each with their own $/lb, matching FISH PAYABLE TOTAL.
       // "Dock Price" convenience field populates all bands; overrides are kept
       // if the user already set them individually.
-      + '<div style="background:#ecfdf5;border-radius:8px;padding:12px;margin-bottom:10px">'
-      + '<div style="font-size:.78rem;font-weight:700;color:#065f46;margin-bottom:8px">💰 Pricing <span style="color:#94a3b8;font-weight:400;font-size:.72rem">($/lb per band — dock price auto-fills all bands)</span></div>'
+      + '<div style="background:' + (dockConfig().dock_active === false ? '#fef2f2' : '#ecfdf5') + ';border-radius:8px;padding:12px;margin-bottom:10px">'
+      + '<div style="font-size:.78rem;font-weight:700;color:' + (dockConfig().dock_active === false ? '#991b1b' : '#065f46') + ';margin-bottom:8px">💰 Pricing '
+      + (dockConfig().dock_active === false
+          ? '<span style="font-weight:700;color:#991b1b">— DOCK OFF</span>'
+          : '<span style="color:#94a3b8;font-weight:400;font-size:.72rem">($/lb per band — fills from dock config defaults)</span>')
+      + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:8px">'
       + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Dock Price</label>'
       + '<input id="fs-l-price" type="number" min="0" step="0.01" placeholder="e.g., 1.35" value="' + (initial.dock_price_per_lb == null ? '' : initial.dock_price_per_lb) + '" oninput="fsLoadModalFillBandPrices();fsLoadModalRecalc()" style="' + INP + '"></div>'
-      + priceInput('fs-l-p46', '4–5.99 $/lb', initial.price_4_6_per_lb, initial.dock_price_per_lb)
-      + priceInput('fs-l-p68', '6–7.99 $/lb', initial.price_6_8_per_lb, initial.dock_price_per_lb)
-      + priceInput('fs-l-p8p', '8+ $/lb',     initial.price_8_plus_per_lb, initial.dock_price_per_lb)
-      + priceInput('fs-l-p04', 'Net $/lb',    initial.price_0_4_per_lb, initial.dock_price_per_lb)
+      // Per-tier price inputs. Default value falls back through:
+      //   load's saved per-band → dock config tier default → load's flat dock price
+      // Labels match the size-band labels exactly so it's obvious which
+      // price drives which band.
+      + priceInput('fs-l-p46', dockConfig().tier2_label + ' $/lb', initial.price_4_6_per_lb, initial.dock_price_per_lb, dockConfig().tier2_default_price)
+      + priceInput('fs-l-p68', dockConfig().tier3_label + ' $/lb', initial.price_6_8_per_lb, initial.dock_price_per_lb, dockConfig().tier3_default_price)
+      + priceInput('fs-l-p8p', dockConfig().tier4_label + ' $/lb', initial.price_8_plus_per_lb, initial.dock_price_per_lb, dockConfig().tier4_default_price)
+      + priceInput('fs-l-p04', dockConfig().tier1_label + ' $/lb', initial.price_0_4_per_lb, initial.dock_price_per_lb, dockConfig().tier1_default_price)
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
       + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Payable Lbs <span style="color:#94a3b8;font-weight:400">auto</span></label>'
@@ -836,11 +891,18 @@
       + '<input id="' + id + '" type="number" min="0" step="1" placeholder="0" value="' + val + '" oninput="fsLoadModalRecalc()" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:.82rem;width:100%;box-sizing:border-box"></div>';
   }
 
-  // Per-band price input. If the load already has a per-band price, use it;
-  // otherwise inherit from the dock price so the initial display is sensible
-  // (user can still override per band before saving).
-  function priceInput(id, label, bandPrice, dockPrice) {
-    var v = (bandPrice != null ? bandPrice : (dockPrice != null ? dockPrice : ''));
+  // Per-band price input. Default value cascades through:
+  //   1. The load's saved per-band price (when editing an existing load)
+  //   2. The load's flat dock_price_per_lb (legacy / convenience override)
+  //   3. The dock config's tier default (today's standing price for this band)
+  //   4. Empty
+  // Result: a fresh New Load opens pre-populated with whatever Cooper has
+  // set as today's per-band rates in Dock Settings.
+  function priceInput(id, label, bandPrice, dockPrice, configDefault) {
+    var v = '';
+    if (bandPrice != null && bandPrice !== '') v = bandPrice;
+    else if (dockPrice != null && dockPrice !== '') v = dockPrice;
+    else if (configDefault != null && configDefault !== '') v = configDefault;
     return '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">' + label + '</label>'
       + '<input id="' + id + '" type="number" min="0" step="0.01" placeholder="—" value="' + v + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>';
   }
@@ -1053,6 +1115,108 @@
       });
   }
 
+  // ═══ DOCK SETTINGS MODAL ═══════════════════════════════════════════════
+  // Manager+ edits the company's active dock price profile: the four tier
+  // labels, their min/max ranges, default $/lb, and the master dock on/off
+  // toggle. Saved config feeds the Intake modal labels + price defaults.
+  function fsOpenDockConfig() {
+    if (!userCan('fishschedule', 'edit')) {
+      toast('⚠️ Only managers can change dock settings');
+      return;
+    }
+    // Ensure we have current config (might not be loaded yet on first paint)
+    if (!_fsState.dockConfig) {
+      loadDockConfig(function () { fsOpenDockConfig(); });
+      return;
+    }
+    var c = _fsState.dockConfig;
+    var existing = document.getElementById('fs-dock-modal');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'fs-dock-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+
+    var tierRow = function (n, label, min, max, price) {
+      return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr;gap:8px;align-items:end;margin-bottom:8px">'
+        + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:3px">Tier ' + n + ' Label</label>'
+        + '<input id="fs-dc-t' + n + '-label" type="text" value="' + esc(label || '') + '" placeholder="e.g., 4–5.99 lb" style="' + INP + '"></div>'
+        + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:3px">Min Lbs</label>'
+        + '<input id="fs-dc-t' + n + '-min" type="number" step="0.01" value="' + (min == null ? '' : min) + '" style="' + INP + '"></div>'
+        + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:3px">Max Lbs <span style="color:#94a3b8;font-weight:400">(blank = no cap)</span></label>'
+        + '<input id="fs-dc-t' + n + '-max" type="number" step="0.01" value="' + (max == null ? '' : max) + '" style="' + INP + '"></div>'
+        + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:3px">Default $/lb</label>'
+        + '<input id="fs-dc-t' + n + '-price" type="number" step="0.001" min="0" value="' + (price == null ? '' : price) + '" placeholder="—" style="' + INP + '"></div>'
+        + '</div>';
+    };
+
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:22px;max-width:760px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 40px);overflow-y:auto">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+      + '<div style="font-weight:800;font-size:1.1rem;color:#1a3a6b">⚙️ Dock Price Settings</div>'
+      + '<div style="font-size:.7rem;color:#94a3b8">Last updated ' + (c.updated_at ? esc(String(c.updated_at).split('T')[0]) : 'never')
+      + (c.updated_by ? ' by ' + esc(c.updated_by) : '') + '</div>'
+      + '</div>'
+      + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:14px">'
+      + '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.88rem;font-weight:700;color:#1a3a6b">'
+      + '<input id="fs-dc-active" type="checkbox" ' + (c.dock_active === false ? '' : 'checked') + ' style="width:18px;height:18px;cursor:pointer">'
+      + '<span>Dock is active (buying fish)</span>'
+      + '</label>'
+      + '<div style="font-size:.72rem;color:#64748b;margin-left:28px;margin-top:4px">Uncheck to pause buying. A red banner shows on the Intake tab while off.</div>'
+      + '</div>'
+      + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">Tier Configuration</div>'
+      + '<div style="font-size:.72rem;color:#64748b;margin-bottom:10px">Edit each tier\'s label, size range, and default $/lb. Changes apply to all new loads. Existing loads keep whatever they were saved with.</div>'
+      + tierRow(1, c.tier1_label, c.tier1_min_lbs, c.tier1_max_lbs, c.tier1_default_price)
+      + tierRow(2, c.tier2_label, c.tier2_min_lbs, c.tier2_max_lbs, c.tier2_default_price)
+      + tierRow(3, c.tier3_label, c.tier3_min_lbs, c.tier3_max_lbs, c.tier3_default_price)
+      + tierRow(4, c.tier4_label, c.tier4_min_lbs, c.tier4_max_lbs, c.tier4_default_price)
+      + '<div id="fs-dc-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">'
+      + '<button onclick="document.getElementById(\'fs-dock-modal\').remove()" style="' + BTN_SUB + ';padding:8px 14px">Cancel</button>'
+      + '<button onclick="fsSaveDockConfig()" style="' + BTN_P + ';padding:8px 14px">Save Settings</button>'
+      + '</div>'
+      + '</div>';
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+  }
+
+  function fsSaveDockConfig() {
+    var v = function (id) {
+      var el = document.getElementById(id);
+      return el ? el.value : '';
+    };
+    var body = {
+      dock_active: document.getElementById('fs-dc-active').checked,
+      tier1_label: v('fs-dc-t1-label'),
+      tier1_min_lbs: v('fs-dc-t1-min'),
+      tier1_max_lbs: v('fs-dc-t1-max'),
+      tier1_default_price: v('fs-dc-t1-price'),
+      tier2_label: v('fs-dc-t2-label'),
+      tier2_min_lbs: v('fs-dc-t2-min'),
+      tier2_max_lbs: v('fs-dc-t2-max'),
+      tier2_default_price: v('fs-dc-t2-price'),
+      tier3_label: v('fs-dc-t3-label'),
+      tier3_min_lbs: v('fs-dc-t3-min'),
+      tier3_max_lbs: v('fs-dc-t3-max'),
+      tier3_default_price: v('fs-dc-t3-price'),
+      tier4_label: v('fs-dc-t4-label'),
+      tier4_min_lbs: v('fs-dc-t4-min'),
+      tier4_max_lbs: v('fs-dc-t4-max'),
+      tier4_default_price: v('fs-dc-t4-price')
+    };
+    var err = document.getElementById('fs-dc-err');
+    apiCall('POST', '/api/fish-schedule?action=save_dock_config', body)
+      .then(function (r) {
+        _fsState.dockConfig = r.config;
+        var m = document.getElementById('fs-dock-modal'); if (m) m.remove();
+        toast('Dock settings saved');
+        // Refresh the intake tab so labels + the on/off banner update
+        if (_fsState.tab === 'intake') fsLoadAndRenderIntake();
+      })
+      .catch(function (e) {
+        if (err) { err.textContent = e.message; err.style.display = 'block'; }
+      });
+  }
+
   function fsDeleteLoadFromModal(id) {
     if (!confirm('Delete this load record?')) return;
     apiCall('POST', '/api/fish-schedule?action=delete_load', { id: id })
@@ -1129,13 +1293,13 @@
       + '<th style="padding:8px 10px;text-align:center">Date</th>'
       + '<th style="padding:8px 10px;text-align:right">Gross Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right">Deduct</th>'
-      + '<th style="padding:8px 10px;text-align:right;background:#0891b2">4-5.99 Lbs</th>'
+      + '<th style="padding:8px 10px;text-align:right;background:#0891b2">' + esc(dockConfig().tier2_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#0891b2">Price</th>'
-      + '<th style="padding:8px 10px;text-align:right;background:#059669">6-7.99 Lbs</th>'
+      + '<th style="padding:8px 10px;text-align:right;background:#059669">' + esc(dockConfig().tier3_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#059669">Price</th>'
-      + '<th style="padding:8px 10px;text-align:right;background:#ca8a04">8+ Lbs</th>'
+      + '<th style="padding:8px 10px;text-align:right;background:#ca8a04">' + esc(dockConfig().tier4_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#ca8a04">Price</th>'
-      + '<th style="padding:8px 10px;text-align:right;background:#0369a1">Net Lbs</th>'
+      + '<th style="padding:8px 10px;text-align:right;background:#0369a1">' + esc(dockConfig().tier1_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#0369a1">Price</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#065f46">Amount</th>'
       + '</tr></thead><tbody>';
@@ -1250,13 +1414,14 @@
     var periodStr = prettyRange(_fsState.weekStart);
     var title = 'Fish Payable — ' + periodStr;
     var body = '<p style="margin-bottom:14px;color:#64748b">Period: <strong>' + esc(periodStr) + '</strong></p>';
+    var dc = dockConfig();
     body += '<table><thead><tr>'
       + '<th>Farmer</th><th>Invoice #</th><th>Date</th>'
       + '<th>Gross Lbs</th><th>Deduct</th>'
-      + '<th>4-5.99 Lbs</th><th>Price</th>'
-      + '<th>6-7.99 Lbs</th><th>Price</th>'
-      + '<th>8+ Lbs</th><th>Price</th>'
-      + '<th>Net Lbs</th><th>Price</th>'
+      + '<th>' + esc(dc.tier2_label) + ' Lbs</th><th>Price</th>'
+      + '<th>' + esc(dc.tier3_label) + ' Lbs</th><th>Price</th>'
+      + '<th>' + esc(dc.tier4_label) + ' Lbs</th><th>Price</th>'
+      + '<th>' + esc(dc.tier1_label) + ' Lbs</th><th>Price</th>'
       + '<th>Amount</th>'
       + '</tr></thead><tbody>';
     var t = { gross: 0, deduct: 0, net: 0, sz46: 0, sz68: 0, sz8p: 0, sz04: 0, amount: 0 };
@@ -1472,6 +1637,9 @@
   window.fsLoadModalRecalc = fsLoadModalRecalc;
   window.fsLoadModalRefreshDeliveries = fsLoadModalRefreshDeliveries;
   window.fsLoadModalFillBandPrices = fsLoadModalFillBandPrices;
+  // Dock config (manager+ only — backend enforces, frontend hides button)
+  window.fsOpenDockConfig = fsOpenDockConfig;
+  window.fsSaveDockConfig = fsSaveDockConfig;
   // Fish Payable (invoice rollup)
   window.fsWeekNavPayable = fsWeekNavPayable;
   window.fsGoTodayPayable = fsGoTodayPayable;
