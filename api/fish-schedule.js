@@ -147,6 +147,10 @@ async function ensureTables(sql) {
     await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_turtles_lbs NUMERIC DEFAULT 0`;
     await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_other_species_lbs NUMERIC DEFAULT 0`;
     await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS deduction_fingerlings_lbs NUMERIC DEFAULT 0`;
+    // Movement ticket number — the ticket from the farmer's farm-side scale
+    // when fish were loaded onto the truck. Not the same as our invoice_number;
+    // this is the farmer's reference number for reconciliation.
+    await sql`ALTER TABLE live_haul_loads ADD COLUMN IF NOT EXISTS movement_ticket_number TEXT`;
   } catch (e) { /* already present */ }
   await sql`CREATE INDEX IF NOT EXISTS live_haul_loads_invoice_idx
     ON live_haul_loads(invoice_number)`;
@@ -616,7 +620,7 @@ module.exports = async function handler(req, res) {
                deduction_other_species_lbs, deduction_fingerlings_lbs,
                dock_price_per_lb,
                price_4_6_per_lb, price_6_8_per_lb, price_8_plus_per_lb, price_0_4_per_lb,
-               payable_lbs, payable_total, invoice_number,
+               payable_lbs, payable_total, invoice_number, movement_ticket_number,
                notes, updated_at
         FROM live_haul_loads
         WHERE company_id = ${companyId}
@@ -742,6 +746,9 @@ module.exports = async function handler(req, res) {
       const arrivedAt = body.arrived_at || null;
       const pondRef = (body.pond_ref || '').trim() || null;
       const truckRef = (body.truck_ref || '').trim() || null;
+      // Movement ticket # — the farmer's reference from their farm-side scale
+      // weighing. Stored as text since farmers use varied formats.
+      const movementTicket = (body.movement_ticket_number || '').trim() || null;
 
       const gross = num(body.gross_lbs);
       const tare = num(body.tare_lbs);
@@ -849,6 +856,7 @@ module.exports = async function handler(req, res) {
               payable_lbs = ${payableLbs},
               payable_total = ${payableTotal},
               invoice_number = ${invoiceNumber},
+              movement_ticket_number = ${movementTicket},
               notes = ${notes}, updated_at = NOW()
           WHERE id = ${body.id} AND company_id = ${companyId}
           RETURNING id
@@ -869,7 +877,7 @@ module.exports = async function handler(req, res) {
                  deduction_other_species_lbs, deduction_fingerlings_lbs,
                  dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
                  price_8_plus_per_lb, price_0_4_per_lb,
-                 payable_lbs, payable_total, invoice_number, notes
+                 payable_lbs, payable_total, invoice_number, movement_ticket_number, notes
           FROM live_haul_loads WHERE id = ${body.id}
         `;
         await logAudit(sql, req, user, {
@@ -883,6 +891,7 @@ module.exports = async function handler(req, res) {
       const [created] = await sql`
         INSERT INTO live_haul_loads
           (company_id, day_date, arrived_at, farmer_id, pond_ref, truck_ref, delivery_id,
+           movement_ticket_number,
            gross_lbs, tare_lbs, net_lbs,
            size_0_4_lbs, size_4_6_lbs, size_6_8_lbs, size_8_plus_lbs,
            deduction_lbs, deduction_reason,
@@ -893,6 +902,7 @@ module.exports = async function handler(req, res) {
            payable_lbs, payable_total, notes)
         VALUES
           (${companyId}, ${dayDate}::date, ${arrivedAt}, ${farmerId}, ${pondRef}, ${truckRef}, ${deliveryId},
+           ${movementTicket},
            ${gross}, ${tare}, ${net},
            ${sz04 == null ? 0 : sz04}, ${sz46}, ${sz68}, ${sz8p},
            ${deduction}, ${deductionReason},
@@ -907,7 +917,7 @@ module.exports = async function handler(req, res) {
                   deduction_other_species_lbs, deduction_fingerlings_lbs,
                   dock_price_per_lb, price_4_6_per_lb, price_6_8_per_lb,
                   price_8_plus_per_lb, price_0_4_per_lb,
-                  payable_lbs, payable_total, notes
+                  payable_lbs, payable_total, movement_ticket_number, notes
       `;
       // Assign invoice number for the new load (seq = max in day + 1).
       await ensureInvoiceNumbersForDay(sql, companyId, dayDate);

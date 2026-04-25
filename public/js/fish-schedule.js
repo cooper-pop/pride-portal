@@ -574,10 +574,11 @@
 
     var html = '<div style="border:1px solid #e2e8f0;border-left:4px solid ' + color + ';border-radius:8px;margin:6px 0;padding:10px 12px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">';
 
-    // Left column: farmer + pond + truck + arrived
+    // Left column: farmer + pond + truck + arrived + movement ticket
     html += '<div style="flex:1;min-width:160px">'
       + '<div style="font-weight:700;color:#0f172a;font-size:.9rem">' + esc(farmerName) + '</div>'
       + (l.pond_ref ? '<div style="font-size:.72rem;color:#64748b">🏞️ ' + esc(l.pond_ref) + '</div>' : '')
+      + (l.movement_ticket_number ? '<div style="font-size:.72rem;color:#1e40af;font-weight:600">📋 mvmt #' + esc(l.movement_ticket_number) + '</div>' : '')
       + (l.truck_ref ? '<div style="font-size:.72rem;color:#64748b">🚚 ' + esc(l.truck_ref) + '</div>' : '')
       + (l.arrived_at ? '<div style="font-size:.7rem;color:#94a3b8">arr. ' + esc(formatArrivedShort(l.arrived_at)) + '</div>' : '')
       + (l.delivery_id ? '<div style="font-size:.68rem;color:#0369a1;margin-top:2px">🔗 scheduled</div>' : '')
@@ -703,6 +704,14 @@
       + (isEdit && initial.invoice_number
           ? '<div style="font-size:.78rem;color:#64748b">Invoice <strong style="color:#1a3a6b">#' + esc(initial.invoice_number) + '</strong></div>'
           : (!isEdit ? '<div style="font-size:.72rem;color:#94a3b8;font-style:italic">Invoice # auto-generated on save</div>' : ''))
+      + '</div>'
+
+      // Movement Ticket # — the farmer's reference number from their farm-side
+      // scale weighing. Distinct from our auto-generated Invoice #. Kept at
+      // the top so it's the first thing entered when the truck pulls in.
+      + '<div style="background:#f0f7ff;border-left:3px solid #1e40af;border-radius:6px;padding:10px 12px;margin-bottom:12px">'
+      + '<label style="display:block;font-size:.72rem;color:#1e40af;font-weight:700;margin-bottom:4px">📋 Movement Ticket # <span style="color:#94a3b8;font-weight:400">— from farmer\'s farm-side scale</span></label>'
+      + '<input id="fs-l-movticket" type="text" placeholder="e.g., 12345" value="' + esc(initial.movement_ticket_number || '') + '" style="' + INP + '">'
       + '</div>'
 
       // Row 1: date only (arrived time, truck/driver, scheduled delivery link
@@ -997,6 +1006,7 @@
       pond_ref: val('fs-l-pond') || null,
       truck_ref: preserved.truck_ref,
       delivery_id: preserved.delivery_id,
+      movement_ticket_number: val('fs-l-movticket') || null,
       // Schema mapping for Cooper's data model:
       //   Truck Weight  → gross_lbs (full truck on arrival)
       //   Plant Weight  → net_lbs   (fish weight at plant — used for payable
