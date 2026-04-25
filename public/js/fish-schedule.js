@@ -1415,14 +1415,18 @@
       // small N rows this is fine; would only matter at 100+ rows.
       var pondId = parseInt(r.farmer_id, 10) || null;
       var pondSelect = pondSelectOptions(pondId, r.pond);
+      // Tab-flow: Movement # → Farmer → Pond → Truck Wt → next row's Movement
+      // The X delete button has tabindex=-1 so Tab skips it. Farmer onchange
+      // does a targeted DOM swap of THIS row's pond <select> so focus stays
+      // on the natural Tab path (a full re-render would steal it).
       return '<tr style="border-bottom:1px solid #f1f5f9" data-row="' + idx + '">'
         + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.movement || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'movement\',this.value)" placeholder="Ticket #" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
         + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRowFarmer(' + idx + ',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">'
         + farmerSelect
         + '</select></td>'
-        + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRow(' + idx + ',\'pond\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">' + pondSelect + '</select></td>'
+        + '<td style="padding:6px 6px"><select data-pond-row="' + idx + '" onchange="fsBulkUpdRow(' + idx + ',\'pond\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">' + pondSelect + '</select></td>'
         + '<td style="padding:6px 6px"><input type="number" min="0" step="1" value="' + (r.truck || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'truck\',this.value)" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
-        + '<td style="padding:6px 4px;text-align:center"><button onclick="fsBulkRemoveRow(' + idx + ')" title="Remove row" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:.7rem;font-weight:700">×</button></td>'
+        + '<td style="padding:6px 4px;text-align:center"><button tabindex="-1" onclick="fsBulkRemoveRow(' + idx + ')" title="Remove row" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:.7rem;font-weight:700">×</button></td>'
         + '</tr>';
     }).join('');
 
@@ -1455,6 +1459,15 @@
   function fsBulkAddRow() {
     _wiz.newRows.push(bulkEmptyRow());
     fsBulkRender();
+    // Auto-focus the new row's Movement # input so the operator can keep
+    // typing without reaching for the mouse.
+    setTimeout(function () {
+      var rows = document.querySelectorAll('[data-row]');
+      var newRow = rows[rows.length - 1];
+      if (!newRow) return;
+      var first = newRow.querySelector('input, select');
+      if (first) first.focus();
+    }, 30);
   }
   function fsBulkRemoveRow(idx) {
     _wiz.newRows.splice(idx, 1);
@@ -1466,17 +1479,57 @@
     _wiz.newRows[idx][field] = value;
     // Don't re-render on every keystroke (would steal focus). Difference
     // recompute on blur via setTimeout would be nicer; for now skip.
+    //
+    // Convenience: if the operator just started filling the LAST row, add
+    // a fresh empty row at the bottom so they can keep tabbing into new
+    // entries without reaching for "+ Add Row". Only triggers once per
+    // last-row activation (we check the row was previously empty).
+    if (idx === _wiz.newRows.length - 1 && value && value !== '') {
+      var r = _wiz.newRows[idx];
+      // Only auto-extend when this row gains its first non-empty value
+      var fillCount = ['movement', 'farmer_id', 'pond', 'truck'].reduce(function (c, k) {
+        return c + (r[k] && r[k] !== '' ? 1 : 0);
+      }, 0);
+      if (fillCount === 1) {
+        _wiz.newRows.push(bulkEmptyRow());
+        fsBulkRender();
+        // Restore focus to the input the operator was just typing in.
+        // Match by row index + same field (the new row pushed our row up).
+        setTimeout(function () {
+          var rowEl = document.querySelector('[data-row="' + idx + '"]');
+          if (!rowEl) return;
+          var sel = (field === 'farmer_id')
+            ? 'select:nth-of-type(1)'
+            : (field === 'pond')
+              ? 'select[data-pond-row="' + idx + '"]'
+              : (field === 'movement')
+                ? 'input[type="text"]'
+                : 'input[type="number"]';
+          var el = rowEl.querySelector(sel);
+          if (el) {
+            el.focus();
+            // For text/number, restore caret to the end of value
+            if (el.setSelectionRange && el.value) {
+              try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+            }
+          }
+        }, 20);
+      }
+    }
   }
 
-  // When a row's farmer changes, the pond options change with it. Clear the
-  // pond selection and rebuild the table so the new pond list shows. The
-  // farmer dropdown was already changed, so focus loss isn't an issue —
-  // the operator's next click will be on the pond column.
+  // When a row's farmer changes, swap THIS row's pond <select> options in
+  // place — no full re-render. That preserves keyboard focus so Tab from
+  // Farmer → Pond just works. (A full re-render would steal focus and
+  // break the keyboard data-entry flow.)
   function fsBulkUpdRowFarmer(idx, value) {
     if (!_wiz.newRows[idx]) return;
     _wiz.newRows[idx].farmer_id = value;
     _wiz.newRows[idx].pond = ''; // reset pond — different farmer's list
-    fsBulkRender();
+    var pondSelect = document.querySelector('select[data-pond-row="' + idx + '"]');
+    if (pondSelect) {
+      pondSelect.innerHTML = pondSelectOptions(parseInt(value, 10) || null, '');
+    }
   }
 
   function fsBulkSaveStep1() {
