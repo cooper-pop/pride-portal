@@ -1286,7 +1286,10 @@
     fsBulkRender();
   }
   function bulkEmptyRow() {
-    return { movement: '', farmer_id: '', pond: '', truck: '', plant: '' };
+    // Plant weight is captured in Step 2 (separate operation: empty truck
+    // weighed AFTER unload, often hours later). Step 1 only carries the
+    // receiving-time fields.
+    return { movement: '', farmer_id: '', pond: '', truck: '' };
   }
   function fsBulkClose() {
     var m = document.getElementById('fs-wiz'); if (m) m.remove();
@@ -1320,6 +1323,7 @@
     if (_wiz.step === 1) content = bulkRenderStep1();
     else if (_wiz.step === 2) content = bulkRenderStep2();
     else if (_wiz.step === 3) content = bulkRenderStep3();
+    else if (_wiz.step === 4) content = bulkRenderStep4();
 
     overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:18px 20px;max-width:1100px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);margin-top:20px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap">'
@@ -1329,10 +1333,11 @@
       + '<input type="date" value="' + esc(_wiz.day) + '" onchange="fsBulkSetDay(this.value)" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:.84rem">'
       + '<button onclick="fsBulkClose()" style="background:#f1f5f9;color:#475569;border:none;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer">✕ Close</button>'
       + '</div></div>'
-      + '<div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:2px solid #e2e8f0;padding-bottom:12px">'
+      + '<div style="display:flex;gap:8px;margin-bottom:14px;border-bottom:2px solid #e2e8f0;padding-bottom:12px;flex-wrap:wrap">'
       + stepBtn(1, '1. Receiving')
-      + stepBtn(2, '2. Deductions')
-      + stepBtn(3, '3. Grading & Pricing')
+      + stepBtn(2, '2. Plant Weight')
+      + stepBtn(3, '3. Deductions')
+      + stepBtn(4, '4. Grading & Pricing')
       + '</div>'
       + content
       + '</div>';
@@ -1354,9 +1359,6 @@
       : '<span style="color:#0369a1;font-size:.78rem;font-weight:600">' + dayLoads.length + ' load' + (dayLoads.length === 1 ? '' : 's') + ' already saved for ' + prettyDate(_wiz.day) + '.</span>';
 
     var rows = _wiz.newRows.map(function (r, idx) {
-      var truck = parseFloat(r.truck) || 0;
-      var plant = parseFloat(r.plant) || 0;
-      var diff = (r.truck && r.plant) ? (truck - plant) : '';
       return '<tr style="border-bottom:1px solid #f1f5f9">'
         + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.movement || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'movement\',this.value)" placeholder="Ticket #" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
         + '<td style="padding:6px 6px"><select onchange="fsBulkUpdRow(' + idx + ',\'farmer_id\',this.value)" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box">'
@@ -1364,26 +1366,22 @@
         + '</select></td>'
         + '<td style="padding:6px 6px"><input type="text" value="' + esc(r.pond || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'pond\',this.value)" placeholder="Pond" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
         + '<td style="padding:6px 6px"><input type="number" min="0" step="1" value="' + (r.truck || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'truck\',this.value)" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
-        + '<td style="padding:6px 6px"><input type="number" min="0" step="1" value="' + (r.plant || '') + '" oninput="fsBulkUpdRow(' + idx + ',\'plant\',this.value)" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
-        + '<td style="padding:6px 6px;text-align:right;color:#475569;font-weight:600">' + (diff === '' ? '—' : Number(diff).toLocaleString()) + '</td>'
         + '<td style="padding:6px 4px;text-align:center"><button onclick="fsBulkRemoveRow(' + idx + ')" title="Remove row" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:.7rem;font-weight:700">×</button></td>'
         + '</tr>';
     }).join('');
 
     return ''
       + '<div style="background:#f0f7ff;border-left:3px solid #1e40af;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#1e40af">'
-      + '📋 <strong>Step 1:</strong> log every truck that arrived. Add a row per movement ticket. Bands and prices come later in Step 3.'
+      + '📋 <strong>Step 1 — Receiving:</strong> log every truck as it arrives. Just movement #, farmer, pond, and truck weight. Plant weight goes in Step 2 once unloaded.'
       + '</div>'
       + '<div style="margin-bottom:8px">' + summary + '</div>'
       + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto">'
-      + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:880px">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:720px">'
       + '<thead><tr style="background:#1a3a6b;color:#fff">'
       + '<th style="padding:8px 6px;text-align:left">Movement #</th>'
       + '<th style="padding:8px 6px;text-align:left">Farmer *</th>'
       + '<th style="padding:8px 6px;text-align:left">Pond</th>'
       + '<th style="padding:8px 6px;text-align:left">Truck Wt</th>'
-      + '<th style="padding:8px 6px;text-align:left">Plant Wt</th>'
-      + '<th style="padding:8px 6px;text-align:right">Difference</th>'
       + '<th style="padding:8px 6px;text-align:center"></th>'
       + '</tr></thead>'
       + '<tbody>' + rows + '</tbody>'
@@ -1417,7 +1415,7 @@
   function fsBulkSaveStep1() {
     var err = document.getElementById('fs-wiz-err');
     var validRows = _wiz.newRows.filter(function (r) {
-      return r.movement || r.farmer_id || r.pond || r.truck || r.plant;
+      return r.movement || r.farmer_id || r.pond || r.truck;
     });
     if (validRows.length === 0) {
       err.textContent = 'Nothing to save — fill at least one row.';
@@ -1433,15 +1431,15 @@
     err.style.display = 'none';
     var nowIso = new Date().toISOString();
     // Save sequentially so invoice numbers come out in row order. Parallel
-    // would race the per-day sequence backfill.
+    // would race the per-day sequence backfill. Plant weight (net_lbs) is
+    // intentionally omitted — that's Step 2.
     var idx = 0;
     function next() {
       if (idx >= validRows.length) {
         toast('✓ Saved ' + validRows.length + ' load' + (validRows.length === 1 ? '' : 's'));
-        // Refresh state then move to Step 2
         fsLoadAndRenderIntake();
         _wiz.newRows = [bulkEmptyRow()];
-        // Wait briefly for state refresh, then step 2
+        // Wait briefly for state refresh, then advance to Step 2
         setTimeout(function () { _wiz.step = 2; fsBulkRender(); }, 350);
         return;
       }
@@ -1452,8 +1450,7 @@
         farmer_id: parseInt(r.farmer_id, 10),
         pond_ref: r.pond || null,
         movement_ticket_number: r.movement || null,
-        gross_lbs: r.truck || null,
-        net_lbs: r.plant || null
+        gross_lbs: r.truck || null
       }).then(next).catch(function (e) {
         err.textContent = 'Save failed on row ' + idx + ': ' + (e.message || 'unknown');
         err.style.display = 'block';
@@ -1462,8 +1459,138 @@
     next();
   }
 
-  // ── STEP 2: Deductions (per-load 5-category inputs) ──────────────────
+  // ── STEP 2: Plant Weight (per-load) ──────────────────────────────────
+  // Trucks come in full, get weighed at the truck scale (Truck Weight, Step
+  // 1). Then they unload — the fish go onto the plant scale, OR the empty
+  // truck gets re-weighed. Either way the operator records the Plant Weight
+  // here, often hours after the receiving step. Difference auto-computes
+  // for sanity.
   function bulkRenderStep2() {
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    if (dayLoads.length === 0) {
+      return ''
+        + '<div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;padding:14px 18px;color:#92400e">'
+        + 'No loads saved for ' + prettyDate(_wiz.day) + '. Go back to <strong>Step 1</strong> and log the trucks first.'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
+        + '<button onclick="fsBulkSetStep(1)" style="' + BTN_SUB + '">← Back to Step 1</button>'
+        + '</div>';
+    }
+    var rows = dayLoads.map(function (l) {
+      var farmer = _fsState.farmers.find(function (f) { return f.id === l.farmer_id; });
+      var name = farmer ? farmer.name : '(unknown)';
+      var color = farmer ? farmer.color : '#1a3a6b';
+      var truckVal = l.gross_lbs == null ? '' : l.gross_lbs;
+      var plantVal = l.net_lbs == null ? '' : l.net_lbs;
+      // Live difference is rendered into a span that fsBulkRecalcStep2()
+      // updates on input — avoids re-rendering the whole table (would steal
+      // focus from whatever input the operator is typing in).
+      var diff = (l.gross_lbs != null && l.net_lbs != null) ? (Number(l.gross_lbs) - Number(l.net_lbs)) : null;
+      return '<tr style="border-bottom:1px solid #f1f5f9">'
+        + '<td style="padding:8px 8px;font-weight:700">'
+        + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(color) + ';margin-right:6px"></span>'
+        + esc(name) + (l.pond_ref ? ' <span style="color:#94a3b8;font-weight:400">› ' + esc(l.pond_ref) + '</span>' : '')
+        + (l.movement_ticket_number ? '<div style="font-size:.7rem;color:#1e40af;font-weight:600;margin-top:2px">📋 #' + esc(l.movement_ticket_number) + '</div>' : '')
+        + '</td>'
+        + '<td style="padding:6px 6px"><input id="fs-wiz-truck-' + l.id + '" type="number" min="0" step="1" value="' + truckVal + '" oninput="fsBulkRecalcStep2(\'' + l.id + '\')" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:6px 6px"><input id="fs-wiz-plant-' + l.id + '" type="number" min="0" step="1" value="' + plantVal + '" oninput="fsBulkRecalcStep2(\'' + l.id + '\')" placeholder="lbs" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.82rem;box-sizing:border-box"></td>'
+        + '<td style="padding:8px 8px;text-align:right;color:#475569;font-weight:600"><span id="fs-wiz-diff-' + l.id + '">' + (diff == null ? '—' : Number(diff).toLocaleString()) + '</span></td>'
+        + '</tr>';
+    }).join('');
+
+    return ''
+      + '<div style="background:#f0f7ff;border-left:3px solid #1e40af;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#1e40af">'
+      + '⚖️ <strong>Step 2 — Plant Weight:</strong> as each truck unloads, record the plant-scale weight. Truck Weight already came in from Step 1; you can adjust it here too if needed. Difference = Truck − Plant.'
+      + '</div>'
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:720px">'
+      + '<thead><tr style="background:#1a3a6b;color:#fff">'
+      + '<th style="padding:8px 8px;text-align:left">Farmer › Pond</th>'
+      + '<th style="padding:8px 8px;text-align:left">Truck Wt</th>'
+      + '<th style="padding:8px 8px;text-align:left">Plant Wt</th>'
+      + '<th style="padding:8px 8px;text-align:right">Difference</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
+      + '<button onclick="fsBulkSetStep(1)" style="' + BTN_SUB + '">← Back to Step 1</button>'
+      + '<button onclick="fsBulkSaveStep2()" style="' + BTN_P + ';padding:10px 18px">💾 Save Plant Weights & Continue to Step 3 →</button>'
+      + '</div>'
+      + '<div id="fs-wiz-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>';
+  }
+
+  // Live recompute the Difference cell for one row without redrawing the
+  // table (which would steal focus). Called on input from Truck/Plant.
+  function fsBulkRecalcStep2(loadId) {
+    var t = document.getElementById('fs-wiz-truck-' + loadId);
+    var p = document.getElementById('fs-wiz-plant-' + loadId);
+    var d = document.getElementById('fs-wiz-diff-' + loadId);
+    if (!t || !p || !d) return;
+    var tv = t.value === '' ? null : Number(t.value);
+    var pv = p.value === '' ? null : Number(p.value);
+    if (tv == null || pv == null || isNaN(tv) || isNaN(pv)) {
+      d.textContent = '—';
+      return;
+    }
+    d.textContent = Number(tv - pv).toLocaleString();
+  }
+
+  function fsBulkSaveStep2() {
+    var err = document.getElementById('fs-wiz-err');
+    var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
+    if (dayLoads.length === 0) return;
+    var num = function (id) {
+      var el = document.getElementById(id);
+      if (!el || !el.value) return null;
+      var n = Number(el.value);
+      return isNaN(n) ? null : n;
+    };
+    var idx = 0;
+    function next() {
+      if (idx >= dayLoads.length) {
+        toast('✓ Plant weights saved');
+        fsLoadAndRenderIntake();
+        setTimeout(function () { _wiz.step = 3; fsBulkRender(); }, 350);
+        return;
+      }
+      var l = dayLoads[idx++];
+      // Re-send the full load body so the backend doesn't null anything
+      // we're not editing here. Truck/Plant come from the inputs; everything
+      // else is whatever the load already had.
+      apiCall('POST', '/api/fish-schedule?action=save_load', {
+        id: l.id,
+        day_date: l.day_date,
+        arrived_at: l.arrived_at,
+        farmer_id: l.farmer_id,
+        pond_ref: l.pond_ref,
+        truck_ref: l.truck_ref,
+        delivery_id: l.delivery_id,
+        movement_ticket_number: l.movement_ticket_number,
+        gross_lbs: num('fs-wiz-truck-' + l.id),
+        tare_lbs: null,
+        net_lbs: num('fs-wiz-plant-' + l.id),
+        size_4_6_lbs: l.size_4_6_lbs,
+        size_6_8_lbs: l.size_6_8_lbs,
+        size_8_plus_lbs: l.size_8_plus_lbs,
+        size_0_4_lbs: l.size_0_4_lbs,
+        deduction_doa_lbs: l.deduction_doa_lbs,
+        deduction_shad_lbs: l.deduction_shad_lbs,
+        deduction_turtles_lbs: l.deduction_turtles_lbs,
+        deduction_other_species_lbs: l.deduction_other_species_lbs,
+        deduction_fingerlings_lbs: l.deduction_fingerlings_lbs,
+        price_4_6_per_lb: l.price_4_6_per_lb,
+        price_6_8_per_lb: l.price_6_8_per_lb,
+        price_8_plus_per_lb: l.price_8_plus_per_lb,
+        price_0_4_per_lb: l.price_0_4_per_lb,
+        notes: l.notes
+      }).then(next).catch(function (e) {
+        err.textContent = 'Save failed: ' + (e.message || 'unknown');
+        err.style.display = 'block';
+      });
+    }
+    next();
+  }
+
+  // ── STEP 3: Deductions (per-load 5-category inputs) ──────────────────
+  function bulkRenderStep3() {
     var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
     if (dayLoads.length === 0) {
       return ''
@@ -1496,7 +1623,7 @@
 
     return ''
       + '<div style="background:#fef2f2;border-left:3px solid #991b1b;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#991b1b">'
-      + '✂️ <strong>Step 2:</strong> per farmer, weigh out the bad fish by category. Leave blank if zero.'
+      + '✂️ <strong>Step 3 — Deductions:</strong> per farmer, weigh out the bad fish by category. Leave blank if zero.'
       + '</div>'
       + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow-x:auto">'
       + '<table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:920px">'
@@ -1510,13 +1637,13 @@
       + '<th style="padding:8px 6px;text-align:right">Fingerlings</th>'
       + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
-      + '<button onclick="fsBulkSetStep(1)" style="' + BTN_SUB + '">← Back to Step 1</button>'
-      + '<button onclick="fsBulkSaveStep2()" style="' + BTN_P + ';padding:10px 18px">💾 Save Deductions & Continue to Step 3 →</button>'
+      + '<button onclick="fsBulkSetStep(2)" style="' + BTN_SUB + '">← Back to Step 2</button>'
+      + '<button onclick="fsBulkSaveStep3()" style="' + BTN_P + ';padding:10px 18px">💾 Save Deductions & Continue to Step 4 →</button>'
       + '</div>'
       + '<div id="fs-wiz-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>';
   }
 
-  function fsBulkSaveStep2() {
+  function fsBulkSaveStep3() {
     var err = document.getElementById('fs-wiz-err');
     var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
     if (dayLoads.length === 0) return;
@@ -1531,7 +1658,7 @@
       if (idx >= dayLoads.length) {
         toast('✓ Deductions saved');
         fsLoadAndRenderIntake();
-        setTimeout(function () { _wiz.step = 3; fsBulkRender(); }, 350);
+        setTimeout(function () { _wiz.step = 4; fsBulkRender(); }, 350);
         return;
       }
       var l = dayLoads[idx++];
@@ -1572,12 +1699,12 @@
     next();
   }
 
-  // ── STEP 3: Grading & Pricing ────────────────────────────────────────
+  // ── STEP 4: Grading & Pricing ────────────────────────────────────────
   // Stacked cards (one per load) because each card has 8 numeric inputs +
   // 4 currency inputs + a notes field. Per-farmer pricing memory:
   // when a load doesn't have its own prices yet, look up the most recent
   // OTHER load by the same farmer (any day) with prices and use those.
-  function bulkRenderStep3() {
+  function bulkRenderStep4() {
     var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
     if (dayLoads.length === 0) {
       return ''
@@ -1585,7 +1712,7 @@
         + 'No loads saved for ' + prettyDate(_wiz.day) + '. Go back to Step 1 to log them first.'
         + '</div>'
         + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'
-        + '<button onclick="fsBulkSetStep(2)" style="' + BTN_SUB + '">← Back to Step 2</button>'
+        + '<button onclick="fsBulkSetStep(3)" style="' + BTN_SUB + '">← Back to Step 3</button>'
         + '</div>';
     }
     var dc = dockConfig();
@@ -1666,17 +1793,17 @@
 
     return ''
       + '<div style="background:#ecfdf5;border-left:3px solid #065f46;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:#065f46">'
-      + '📏 <strong>Step 3:</strong> grade each farmer\'s fish into bands and confirm $/lb. Per-farmer prior prices auto-fill when available.'
+      + '📏 <strong>Step 4 — Grading & Pricing:</strong> grade each farmer\'s fish into bands and confirm $/lb. Per-farmer prior prices auto-fill when available.'
       + '</div>'
       + cards
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">'
-      + '<button onclick="fsBulkSetStep(2)" style="' + BTN_SUB + '">← Back to Step 2</button>'
-      + '<button onclick="fsBulkSaveStep3()" style="' + BTN_P + ';padding:10px 18px">✓ Save All & Done</button>'
+      + '<button onclick="fsBulkSetStep(3)" style="' + BTN_SUB + '">← Back to Step 3</button>'
+      + '<button onclick="fsBulkSaveStep4()" style="' + BTN_P + ';padding:10px 18px">✓ Save All & Done</button>'
       + '</div>'
       + '<div id="fs-wiz-err" style="color:#ef4444;font-size:.78rem;margin-top:10px;display:none"></div>';
   }
 
-  function fsBulkSaveStep3() {
+  function fsBulkSaveStep4() {
     var err = document.getElementById('fs-wiz-err');
     var dayLoads = _fsState.loads.filter(function (l) { return l.day_date === _wiz.day; });
     if (dayLoads.length === 0) return;
@@ -2176,6 +2303,8 @@
   window.fsBulkSaveStep1 = fsBulkSaveStep1;
   window.fsBulkSaveStep2 = fsBulkSaveStep2;
   window.fsBulkSaveStep3 = fsBulkSaveStep3;
+  window.fsBulkSaveStep4 = fsBulkSaveStep4;
+  window.fsBulkRecalcStep2 = fsBulkRecalcStep2;
   // Fish Payable (invoice rollup)
   window.fsWeekNavPayable = fsWeekNavPayable;
   window.fsGoTodayPayable = fsGoTodayPayable;
