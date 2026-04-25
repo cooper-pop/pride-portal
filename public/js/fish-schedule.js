@@ -718,32 +718,39 @@
       + '<input id="fs-l-pond" type="text" placeholder="e.g., Pond 4" value="' + esc(initial.pond_ref || '') + '" style="' + INP + '"></div>'
       + '</div>'
 
-      // Weight section — renamed per Cooper: Truck Weight / Plant Weight /
-      // Difference (auto). Stored in gross_lbs / tare_lbs / net_lbs columns
-      // under the hood (Difference = Truck − Plant = the fish weight used
-      // for payable + invoice math).
+      // Weight section. Cooper's data model:
+      //   Truck Weight (gross_lbs)  — full truck on arrival
+      //   Plant Weight (net_lbs)    — fish weight at the plant scale.
+      //                               THIS is what payable + invoicing run on.
+      //   Difference                — Truck − Plant. Display only — represents
+      //                               transit/scale variance, not used in math.
+      //
+      // Note the schema mapping: Plant Weight maps to net_lbs (the existing
+      // "fish weight" column used by Production Report, Fish Payable, etc.).
+      // The legacy tare_lbs column is no longer written — historical loads
+      // keep whatever value they had.
       + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
       + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">⚖️ Weight</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
       + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Truck Weight (lbs)</label>'
-      + '<input id="fs-l-gross" type="number" min="0" step="1" placeholder="e.g., 42000" value="' + (initial.gross_lbs == null ? '' : initial.gross_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
+      + '<input id="fs-l-truck" type="number" min="0" step="1" placeholder="e.g., 42000" value="' + (initial.gross_lbs == null ? '' : initial.gross_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
       + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Plant Weight (lbs)</label>'
-      + '<input id="fs-l-tare" type="number" min="0" step="1" placeholder="e.g., 18000" value="' + (initial.tare_lbs == null ? '' : initial.tare_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
+      + '<input id="fs-l-plant" type="number" min="0" step="1" placeholder="e.g., 24000" value="' + (initial.net_lbs == null ? '' : initial.net_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + '"></div>'
       + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Difference (lbs) <span style="color:#94a3b8;font-weight:400">auto</span></label>'
-      + '<input id="fs-l-net" type="number" min="0" step="1" placeholder="auto" value="' + (initial.net_lbs == null ? '' : initial.net_lbs) + '" oninput="fsLoadModalRecalc()" style="' + INP + ';background:#fff"></div>'
+      + '<input id="fs-l-diff" type="number" readonly placeholder="auto" style="' + INP + ';background:#fff;color:#475569"></div>'
       + '</div></div>'
 
-      // Size bands — 0-4 is the remainder (auto-computed from net - higher bands),
-      // matching Excel LIVE FISH LOG-MON!C22. User enters the three graded bands
-      // directly; Net (0-4) fills in automatically.
+      // Size bands — represent PROCESSED fish (post-grading). All four bands
+      // are entered directly. The 0–4 ("Net") band auto-suggests the
+      // remainder of payable_lbs minus the three graded bands, but the user
+      // can override if they have a different small-fish count.
       + '<div style="background:#f8fafc;border-radius:8px;padding:12px;margin-bottom:10px">'
-      + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">📏 Size Bands <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(pounds per band)</span></div>'
+      + '<div style="font-size:.78rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">📏 Size Bands <span style="color:#94a3b8;font-weight:400;font-size:.72rem">(processed fish, lbs per band)</span></div>'
       + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'
       + sizeInput('fs-l-sz46', '4–5.99 lb',   initial.size_4_6_lbs)
       + sizeInput('fs-l-sz68', '6–7.99 lb',   initial.size_6_8_lbs)
       + sizeInput('fs-l-sz8p', '8+ lb',       initial.size_8_plus_lbs)
-      + '<div><label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:4px">Net / 0–4 lb <span style="color:#94a3b8;font-weight:400">auto</span></label>'
-      + '<input id="fs-l-sz04" type="number" readonly placeholder="auto" value="' + (initial.size_0_4_lbs == null ? '' : initial.size_0_4_lbs) + '" style="' + INP + ';background:#fff;color:#0f172a;font-weight:600"></div>'
+      + sizeInput('fs-l-sz04', 'Net / 0–4 lb',initial.size_0_4_lbs)
       + '</div>'
       + '<div id="fs-l-size-warn" style="font-size:.7rem;color:#92400e;margin-top:6px;display:none"></div>'
       + '</div>'
@@ -842,13 +849,15 @@
     });
   }
 
-  // Live recompute — mirrors Excel's LIVE FISH LOG calc exactly:
-  //   Net (0-4) = net_total - 4-5.99 - 6-7.99 - 8+
-  //   Amount    = Σ (band_lbs × band_price)   over all 4 bands
-  //   Payable Lbs = net - deductions
+  // Live recompute — Cooper's flow:
+  //   Difference   = Truck − Plant       (display only; transit/scale variance)
+  //   Deduction    = Σ five categories   (DOA + Shad + Turtles + Other + Fingerlings)
+  //   Payable Lbs  = Plant − Deductions  (the lbs farmer gets paid for)
+  //   Amount $     = Σ (band_lbs × band_price)  over all 4 bands
   //
-  // Runs on every input change. Warns (doesn't block) if the three graded
-  // bands overshoot net_total (in which case Net/0-4 would go negative).
+  // The Net / 0–4 band auto-suggests Payable − (4-5.99 + 6-7.99 + 8+) but
+  // user can override with a different number. All bands are PROCESSED fish
+  // (not deducts, not transit loss).
   function fsLoadModalRecalc() {
     var getNum = function (id) {
       var el = document.getElementById(id);
@@ -858,55 +867,48 @@
       var n = Number(v);
       return isNaN(n) ? null : n;
     };
-    var gross = getNum('fs-l-gross');   // Truck Weight
-    var tare = getNum('fs-l-tare');     // Plant Weight
-    var netField = document.getElementById('fs-l-net');
+    var truck = getNum('fs-l-truck');     // Truck Weight (gross_lbs on save)
+    var plant = getNum('fs-l-plant');     // Plant Weight (net_lbs on save) — fish weight
+    var diffField = document.getElementById('fs-l-diff');
 
-    // Difference is ALWAYS truck − plant when both are entered. Earlier
-    // version tried to honor a manual value in the Difference field, but
-    // that broke recalcs: once the field was auto-filled, future edits to
-    // Truck or Plant left the stale value locked in. Now we overwrite on
-    // every keystroke. Manual entry only kicks in if Truck or Plant is
-    // blank (a fallback for someone who only knows the fish weight).
-    var net;
-    if (gross != null && tare != null) {
-      net = gross - tare;
-      if (netField) netField.value = net;
-    } else {
-      net = getNum('fs-l-net');
-    }
+    // Difference: pure display, always Truck − Plant when both present.
+    var diff = (truck != null && plant != null) ? (truck - plant) : null;
+    if (diffField) diffField.value = diff == null ? '' : diff;
 
-    // Sum the 5 deduction categories. The legacy single-field input
-    // (fs-l-deduct) is still fallback-supported for anything that might
-    // prefill it, but in the new UI we read the 5 category inputs directly.
+    // Sum the 5 deduction categories.
     var dedDoa = getNum('fs-l-dedDoa') || 0;
     var dedShad = getNum('fs-l-dedShad') || 0;
     var dedTurtles = getNum('fs-l-dedTurtles') || 0;
     var dedOther = getNum('fs-l-dedOtherSpecies') || 0;
     var dedFinger = getNum('fs-l-dedFingerlings') || 0;
     var deduct = dedDoa + dedShad + dedTurtles + dedOther + dedFinger;
-    // Echo the running total to the little "Total: N lbs" display in the
-    // deductions header.
     var dedTotalEl = document.getElementById('fs-l-deduct-total');
     if (dedTotalEl) dedTotalEl.textContent = Number(deduct).toLocaleString();
+
+    // Payable Lbs = Plant Weight − Deductions. This is what the farmer
+    // gets paid for and the basis for the size-band remainder.
+    var payLbs = (plant == null) ? null : Math.max(0, plant - deduct);
 
     var sz46 = getNum('fs-l-sz46') || 0;
     var sz68 = getNum('fs-l-sz68') || 0;
     var sz8p = getNum('fs-l-sz8p') || 0;
 
-    // Net / 0-4 band = remainder after graded bands
-    var sz04 = null;
-    if (net != null) {
-      sz04 = Math.max(0, net - sz46 - sz68 - sz8p);
-    }
+    // Net / 0–4 band: auto-suggest Payable − graded bands. If user typed a
+    // value (it's a regular input now), respect that; otherwise auto-fill.
     var sz04El = document.getElementById('fs-l-sz04');
-    if (sz04El) sz04El.value = sz04 == null ? '' : sz04;
+    var sz04Manual = getNum('fs-l-sz04');
+    var sz04Auto = (payLbs == null) ? null : Math.max(0, payLbs - sz46 - sz68 - sz8p);
+    var sz04 = sz04Manual != null ? sz04Manual : sz04Auto;
+    if (sz04El && sz04Manual == null && sz04Auto != null) {
+      sz04El.value = sz04Auto;
+    }
 
     var p46 = getNum('fs-l-p46');
     var p68 = getNum('fs-l-p68');
     var p8p = getNum('fs-l-p8p');
     var p04 = getNum('fs-l-p04');
 
+    // Amount = Σ (band_lbs × band_price) over all 4 bands.
     var amount = 0;
     var hasAny = false;
     if (p46 != null && sz46 > 0) { amount += sz46 * p46; hasAny = true; }
@@ -915,23 +917,20 @@
     if (p04 != null && sz04 != null && sz04 > 0) { amount += sz04 * p04; hasAny = true; }
     var payTot = hasAny ? Math.round(amount * 100) / 100 : null;
 
-    var payLbs = (net == null) ? null : (net - deduct);
-
     var paylbsEl = document.getElementById('fs-l-paylbs');
     var paytotEl = document.getElementById('fs-l-paytotal');
     if (paylbsEl) paylbsEl.value = payLbs == null ? '' : Number(payLbs).toLocaleString('en-US', { maximumFractionDigits: 2 });
     if (paytotEl) paytotEl.value = payTot == null ? '' : '$' + Number(payTot).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    // Size-band reconciliation (graded bands vs net)
-    var bandSum = sz46 + sz68 + sz8p;
+    // Size-band reconciliation: bands should add up to Payable Lbs (within
+    // tolerance — small rounding noise is fine).
+    var bandSum = sz46 + sz68 + sz8p + (sz04 || 0);
     var warn = document.getElementById('fs-l-size-warn');
     if (warn) {
-      if (bandSum > 0 && net != null && Math.abs(bandSum - net) > Math.max(50, net * 0.02)) {
-        // Only warn if off by more than 50 lbs AND more than 2% (so small
-        // rounding noise doesn't trigger it)
+      if (bandSum > 0 && payLbs != null && Math.abs(bandSum - payLbs) > Math.max(50, payLbs * 0.02)) {
         warn.style.display = 'block';
-        warn.textContent = '⚠️ Size bands sum to ' + Number(bandSum).toLocaleString() + ' lbs but net is '
-          + Number(net).toLocaleString() + ' lbs (' + (bandSum > net ? '+' : '') + Number(bandSum - net).toLocaleString() + ').';
+        warn.textContent = '⚠️ Size bands sum to ' + Number(bandSum).toLocaleString() + ' lbs but payable is '
+          + Number(payLbs).toLocaleString() + ' lbs (' + (bandSum > payLbs ? '+' : '') + Number(bandSum - payLbs).toLocaleString() + ').';
       } else {
         warn.style.display = 'none';
       }
@@ -998,9 +997,15 @@
       pond_ref: val('fs-l-pond') || null,
       truck_ref: preserved.truck_ref,
       delivery_id: preserved.delivery_id,
-      gross_lbs: val('fs-l-gross') || null,
-      tare_lbs: val('fs-l-tare') || null,
-      net_lbs: val('fs-l-net') || null,
+      // Schema mapping for Cooper's data model:
+      //   Truck Weight  → gross_lbs (full truck on arrival)
+      //   Plant Weight  → net_lbs   (fish weight at plant — used for payable
+      //                              + invoice math everywhere downstream)
+      // The legacy tare_lbs column is left null on new entries; existing
+      // historical loads keep their old values untouched.
+      gross_lbs: val('fs-l-truck') || null,
+      tare_lbs: null,
+      net_lbs: val('fs-l-plant') || null,
       // size_0_4_lbs is auto-computed server-side (net - graded bands);
       // we still send the readonly display value for debug/inspection.
       size_0_4_lbs: val('fs-l-sz04') || null,

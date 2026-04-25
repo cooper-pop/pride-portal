@@ -773,21 +773,30 @@ module.exports = async function handler(req, res) {
       const price04 = num(body.price_0_4_per_lb) ?? dockPrice;
       const notes = (body.notes || '').trim() || null;
 
-      // Derived. If gross & tare provided, net = gross - tare; otherwise
-      // net can be entered directly (body.net_lbs override).
+      // Net = Plant Weight (the fish weight at the plant scale). The form
+      // sends it directly. The legacy "net = gross - tare" fallback is kept
+      // only for old programmatic callers that still send tare instead of
+      // net — modern saves always send body.net_lbs explicitly.
       let net = num(body.net_lbs);
       if (net == null && gross != null && tare != null) net = gross - tare;
+      // Payable Lbs = Plant Weight - Deductions. Cooper's correction:
+      // payable runs off Plant Weight, not Difference (truck − plant).
+      // Since net IS Plant Weight in the new model, the formula here is
+      // unchanged but the semantics are clearer now.
 
-      // "0–4 / Net" band is the remainder after subtracting graded bands
-      // from net (matches Excel LIVE FISH LOG-MON!C22 = D20 - C23 - C24 - C25).
-      // Floor at 0 — operators sometimes slightly over-enter band lbs vs
-      // net, which would produce a negative remainder.
-      let sz04 = null;
-      if (net != null) {
-        sz04 = Math.max(0, net - sz46 - sz68 - sz8p);
+      // Payable Lbs = Plant Weight − Deductions. Compute first because the
+      // 0-4 size band falls back to a remainder of payable, not raw net.
+      const payableLbs = (net == null) ? null : Math.max(0, net - deduction);
+
+      // 0–4 ("Net") size band: prefer whatever the form sent (the user can
+      // override). Otherwise fall back to the remainder of Payable minus the
+      // three graded bands. Matches Cooper's clarification: bands represent
+      // PROCESSED fish, so the remainder is what's left of payable after
+      // grading the 4-5.99 / 6-7.99 / 8+ buckets.
+      let sz04 = num(body.size_0_4_lbs);
+      if (sz04 == null && payableLbs != null) {
+        sz04 = Math.max(0, payableLbs - sz46 - sz68 - sz8p);
       }
-
-      const payableLbs = (net == null) ? null : (net - deduction);
 
       // Amount = Σ(band_lbs × band_price). Each band contributes only if
       // both lbs > 0 and a price is set. Matches FISH PAYABLE TOTAL D27 = E26.
