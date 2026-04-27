@@ -248,17 +248,21 @@
 
   function renderDailyRow(r, writable) {
     var readonlyAttr = writable ? '' : ' readonly';
+    // Each input fires prRecalcBalance() on every keystroke for instant
+    // visual feedback (Balance cell + per-pool totals), and prSaveCell()
+    // on blur to actually persist. Save is deferred to blur so we don't
+    // hammer the API on every digit typed.
     var producedInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.produced_lbs) || '') + '" '
-      + 'data-sku="' + r.sku_id + '" data-field="produced_lbs" onblur="prSaveCell(this)" '
+      + 'data-sku="' + r.sku_id + '" data-field="produced_lbs" oninput="prRecalcBalance(this)" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#eff6ff' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     // Last Week freezer: poundage frozen TODAY but counted toward LAST
     // week's yield. Same arithmetic as produced_lbs for inventory; the
     // distinction is yield-attribution only.
     var lwInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.produced_last_week_lbs) || '') + '" '
-      + 'data-sku="' + r.sku_id + '" data-field="produced_last_week_lbs" onblur="prSaveCell(this)" '
+      + 'data-sku="' + r.sku_id + '" data-field="produced_last_week_lbs" oninput="prRecalcBalance(this)" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#f5f3ff' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     var shippedInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.shipped_lbs) || '') + '" '
-      + 'data-sku="' + r.sku_id + '" data-field="shipped_lbs" onblur="prSaveCell(this)" '
+      + 'data-sku="' + r.sku_id + '" data-field="shipped_lbs" oninput="prRecalcBalance(this)" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#fef2f2' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     var adjCell;
     // Adjust column: values are already in cases end-to-end. Just format.
@@ -291,45 +295,110 @@
       + '</tr>';
   }
 
-  function prSaveCell(input) {
+  // Live balance recompute. Called on every keystroke (oninput) for any of
+  // the three editable cells (Freezer / Last Week / Shipped). Reads current
+  // values straight from the DOM so it reflects unsaved typing too. Updates:
+  //   - this row's Balance cell
+  //   - the pool's subtotal/grand-total rows at the bottom of the table
+  // Pure DOM update — no save fires from here. Save happens on blur via
+  // prSaveCell.
+  function prRecalcBalance(input) {
     var skuId = parseInt(input.getAttribute('data-sku'), 10);
-    var field = input.getAttribute('data-field');
-    var value = input.value === '' ? 0 : Number(input.value);
-    if (isNaN(value) || value < 0) { toast('⚠️ Enter a non-negative number'); input.focus(); return; }
-
-    // Pull sibling fields to submit a full row save (API upserts the full row)
     var row = (_ps.day.rows || []).find(function (r) { return r.sku_id === skuId; });
     if (!row) return;
-    var produced = field === 'produced_lbs' ? value : Number(row.produced_lbs || 0);
-    var producedLW = field === 'produced_last_week_lbs' ? value : Number(row.produced_last_week_lbs || 0);
-    var shipped = field === 'shipped_lbs' ? value : Number(row.shipped_lbs || 0);
-
-    // Optimistically update local state so balance displays instantly. Both
-    // freezer columns add to balance equally — they only differ in which
-    // week's yield they attribute to.
+    var tr = input.closest('tr');
+    if (!tr) return;
+    var v = function (sel) {
+      var el = tr.querySelector(sel);
+      if (!el || el.value === '') return 0;
+      var n = Number(el.value);
+      return isNaN(n) ? 0 : n;
+    };
+    var produced = v('input[data-field="produced_lbs"]');
+    var producedLW = v('input[data-field="produced_last_week_lbs"]');
+    var shipped = v('input[data-field="shipped_lbs"]');
+    // Mutate local state so prSaveCell + totals see the live values.
     row.produced_lbs = produced;
     row.produced_last_week_lbs = producedLW;
     row.shipped_lbs = shipped;
     row.balance_lbs = Number(row.begin_lbs || 0)
       + produced + producedLW + Number(row.adjust_lbs || 0) - shipped;
 
+    // Balance cell — column index 8 in the new layout
+    // (Item | Lbs/Case | SKU | Begin | Freezer | Last Week | Adjust | Shipped | Balance)
+    var cells = tr.querySelectorAll('td');
+    if (cells && cells.length >= 9) {
+      cells[8].textContent = fmtLbs(row.balance_lbs);
+      cells[8].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
+    }
+
+    // Refresh the totals rows at the bottom of the table so subtotals +
+    // grand total reflect the current edits without a full re-render.
+    prRecalcPoolTotals();
+  }
+
+  // Recompute pool subtotals + grand total and update the matching <tr>s
+  // at the bottom of the active pool table. Mirrors the math in renderDaily.
+  function prRecalcPoolTotals() {
+    if (!_ps.day || !_ps.day.rows) return;
+    var poolRows = _ps.day.rows.filter(function (r) { return r.pool === _ps.activePool; });
+    var cat = { produced: 0, lw: 0, shipped: 0, balance: 0 };
+    var hush = { produced: 0, lw: 0, shipped: 0, balance: 0 };
+    var hasHush = false;
+    poolRows.forEach(function (r) {
+      var t = (r.category === 'HUSHPUPPIES') ? hush : cat;
+      t.produced += Number(r.produced_lbs || 0);
+      t.lw       += Number(r.produced_last_week_lbs || 0);
+      t.shipped  += Number(r.shipped_lbs || 0);
+      t.balance  += Number(r.balance_lbs || 0);
+      if (r.category === 'HUSHPUPPIES') hasHush = true;
+    });
+    var total = {
+      produced: cat.produced + hush.produced,
+      lw:       cat.lw       + hush.lw,
+      shipped:  cat.shipped  + hush.shipped,
+      balance:  cat.balance  + hush.balance
+    };
+    // Walk each totals row by its background color (set in totalsRow()).
+    // colspan=4 label cell + 5 numeric cells = produced/lw/(blank)/shipped/balance.
+    var trs = document.querySelectorAll('table.pr-grid-table tr[style*="font-weight:700"]');
+    trs.forEach(function (tr) {
+      var tds = tr.querySelectorAll('td');
+      if (tds.length < 6) return;
+      // label, produced, lw, blank, shipped, balance
+      var label = (tds[0].textContent || '').trim();
+      var t = null;
+      if (label.indexOf('Catfish Subtotal') === 0) t = cat;
+      else if (label.indexOf('Hushpuppies') === 0) t = hush;
+      else if (label.indexOf('TOTAL ') === 0) t = total;
+      if (!t) return;
+      tds[1].textContent = fmtLbs(t.produced);
+      tds[2].textContent = t.lw ? fmtLbs(t.lw) : '—';
+      tds[4].textContent = fmtLbs(t.shipped);
+      tds[5].textContent = fmtLbs(t.balance);
+    });
+  }
+
+  function prSaveCell(input) {
+    var skuId = parseInt(input.getAttribute('data-sku'), 10);
+    var value = input.value === '' ? 0 : Number(input.value);
+    if (isNaN(value) || value < 0) { toast('⚠️ Enter a non-negative number'); input.focus(); return; }
+
+    // Make sure local state + DOM are in sync (live recalc may have already
+    // run via oninput, but blur without typing wouldn't have fired it).
+    prRecalcBalance(input);
+
+    var row = (_ps.day.rows || []).find(function (r) { return r.sku_id === skuId; });
+    if (!row) return;
+
     apiCall('POST', '/api/production?action=save_entry', {
       sku_id: skuId, entry_date: _ps.entryDate,
-      produced_lbs: produced,
-      produced_last_week_lbs: producedLW,
-      shipped_lbs: shipped
-    }).then(function () {
-      // Re-render just the row's balance cell rather than full reload.
-      // Row shape now: Item | Lbs/Case | SKU | Begin | Freezer | Last Week | Adjust | Shipped | Balance
-      // (9 cells; Balance is index 8).
-      var cells = input.closest('tr').querySelectorAll('td');
-      if (cells && cells.length >= 9) {
-        cells[8].textContent = fmtLbs(row.balance_lbs);
-        cells[8].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
-      }
+      produced_lbs: Number(row.produced_lbs || 0),
+      produced_last_week_lbs: Number(row.produced_last_week_lbs || 0),
+      shipped_lbs: Number(row.shipped_lbs || 0)
     }).catch(function (err) {
       toast('⚠️ Save failed: ' + err.message);
-      loadDaily(); // full reload on failure
+      loadDaily(); // full reload reverts the optimistic in-memory state
     });
   }
 
@@ -893,6 +962,7 @@
   window.prToday = prToday;
   window.prSelectPool = prSelectPool;
   window.prSaveCell = prSaveCell;
+  window.prRecalcBalance = prRecalcBalance;
   window.prOpenAdjust = prOpenAdjust;
   window.prAdjTab = prAdjTab;
   window.prAdjUpdateCasesHint = prAdjUpdateCasesHint;
