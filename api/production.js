@@ -286,6 +286,7 @@ async function ensureTables(sql) {
     entry_date DATE NOT NULL,
     sku_id INTEGER NOT NULL REFERENCES prod_skus(id) ON DELETE CASCADE,
     produced_lbs NUMERIC DEFAULT 0,
+    produced_last_week_lbs NUMERIC DEFAULT 0,
     shipped_lbs NUMERIC DEFAULT 0,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -294,6 +295,16 @@ async function ensureTables(sql) {
   )`;
   await sql`CREATE INDEX IF NOT EXISTS prod_daily_entries_date_idx
     ON prod_daily_entries(company_id, entry_date)`;
+  // Cooper's "Last Week" workflow:
+  //   Sometimes fish are killed Friday (week N) but not frozen until
+  //   Monday (week N+1). The Monday entry uses produced_last_week_lbs to
+  //   attribute that frozen poundage to week N's yield calculation, while
+  //   still adding it to the running inventory balance like normal
+  //   produced_lbs would.
+  try {
+    await sql`ALTER TABLE prod_daily_entries
+      ADD COLUMN IF NOT EXISTS produced_last_week_lbs NUMERIC DEFAULT 0`;
+  } catch (e) { /* already present */ }
 
   // Adjustments — can be positive or negative. transfer_pair_id groups two
   // rows that form a cross-pool transfer (one negative in source SKU,
@@ -332,9 +343,17 @@ async function computeBalancesAt(sql, companyId, asOfDate) {
   `;
   initRows.forEach(r => bal.set(r.id, Number(r.bal)));
 
-  // Daily entries before the as-of date
+  // Daily entries before the as-of date. produced_last_week_lbs counts the
+  // same as produced_lbs for inventory purposes — it adds to the running
+  // balance on the entry's day. The "last week" attribution only matters
+  // for yield rollups (handled separately in the weekly endpoints).
   const entrySum = await sql`
-    SELECT sku_id, COALESCE(SUM(produced_lbs - shipped_lbs), 0)::float AS bal
+    SELECT sku_id,
+           COALESCE(SUM(
+             COALESCE(produced_lbs, 0)
+             + COALESCE(produced_last_week_lbs, 0)
+             - COALESCE(shipped_lbs, 0)
+           ), 0)::float AS bal
     FROM prod_daily_entries
     WHERE company_id = ${companyId} AND entry_date < ${asOfDate}::date
     GROUP BY sku_id
@@ -442,7 +461,9 @@ module.exports = async function handler(req, res) {
         `;
 
       const entries = await sql`
-        SELECT sku_id, produced_lbs::float, shipped_lbs::float, notes
+        SELECT sku_id, produced_lbs::float,
+               COALESCE(produced_last_week_lbs, 0)::float AS produced_last_week_lbs,
+               shipped_lbs::float, notes
         FROM prod_daily_entries
         WHERE company_id = ${companyId} AND entry_date = ${entryDate}::date
       `;
@@ -469,12 +490,19 @@ module.exports = async function handler(req, res) {
       const lwBalances = await computeBalancesAt(sql, companyId, lwPlusOne.toISOString().split('T')[0]);
 
       const rows = skus.map(s => {
-        const e = entryMap.get(s.id) || { produced_lbs: 0, shipped_lbs: 0, notes: '' };
+        const e = entryMap.get(s.id) || { produced_lbs: 0, produced_last_week_lbs: 0, shipped_lbs: 0, notes: '' };
         const adjs = adjMap.get(s.id) || [];
         const adjTotal = adjs.reduce((sum, a) => sum + Number(a.delta || 0), 0);
         const begin = beginBalances.get(s.id) || 0;
         const lw = lwBalances.get(s.id) || 0;
-        const balance = begin + Number(e.produced_lbs || 0) + adjTotal - Number(e.shipped_lbs || 0);
+        // Balance includes BOTH freezer columns. produced_last_week_lbs is
+        // attribution metadata (which week's yield it counts toward) — it
+        // still moves real inventory in or out.
+        const balance = begin
+          + Number(e.produced_lbs || 0)
+          + Number(e.produced_last_week_lbs || 0)
+          + adjTotal
+          - Number(e.shipped_lbs || 0);
         return {
           sku_id: s.id,
           sku: s.sku,
@@ -488,6 +516,7 @@ module.exports = async function handler(req, res) {
           begin_lbs: Number(begin.toFixed(2)),
           lw_lbs: Number(lw.toFixed(2)),
           produced_lbs: Number(e.produced_lbs || 0),
+          produced_last_week_lbs: Number(e.produced_last_week_lbs || 0),
           shipped_lbs: Number(e.shipped_lbs || 0),
           adjust_lbs: Number(adjTotal.toFixed(2)),
           adjust_count: adjs.length,
@@ -507,16 +536,21 @@ module.exports = async function handler(req, res) {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const weekStart = (url.searchParams.get('week_start') || '').trim();
       if (!weekStart) return res.status(400).json({ error: 'week_start required (Monday YYYY-MM-DD)' });
-      // Auto-migration removed: it conflicted with the "24# MISCUTS" /
-      // "4# FILETS" naming convention seeded from Cooper's 4/23/2026 PDF.
 
-      // 8-day range: Mon of this week through Tue of next week (Mon2 + Tue2)
+      // 8-day range: Mon of this week through Tue of next week (Mon2 + Tue2).
       const days = [];
       for (let i = 0; i < 8; i++) {
         const d = new Date(weekStart + 'T00:00:00');
         d.setDate(d.getDate() + i);
         days.push(d.toISOString().split('T')[0]);
       }
+      // Yield carry-over window: pull the FOLLOWING week's entries too,
+      // because an entry made next week with produced_last_week_lbs > 0
+      // attributes to THIS week's yield. We pull a generous next-week
+      // window (Mon..Sat after Mon2/Tue2) so late freezes still land here.
+      const nextWeekEnd = new Date(weekStart + 'T00:00:00');
+      nextWeekEnd.setDate(nextWeekEnd.getDate() + 14);
+      const nextWeekEndIso = nextWeekEnd.toISOString().split('T')[0];
 
       const skus = await sql`
         SELECT id, sku, item_name, category, pool, lbs_per_case, display_order
@@ -525,22 +559,53 @@ module.exports = async function handler(req, res) {
         ORDER BY pool, display_order, item_name
       `;
 
+      // Pull THIS week's entries (produced_lbs counted normally) and the
+      // forward window's entries (produced_last_week_lbs counted as
+      // belonging to whatever week they reference back to).
       const entries = await sql`
-        SELECT sku_id, entry_date, produced_lbs::float
+        SELECT sku_id, entry_date,
+               COALESCE(produced_lbs, 0)::float           AS produced_lbs,
+               COALESCE(produced_last_week_lbs, 0)::float AS produced_last_week_lbs
         FROM prod_daily_entries
         WHERE company_id = ${companyId}
           AND entry_date >= ${days[0]}::date
-          AND entry_date <= ${days[7]}::date
+          AND entry_date <= ${nextWeekEndIso}::date
       `;
 
-      // Build sku_id -> { date -> produced_lbs } map
+      // Build sku_id -> { date -> produced_lbs } map.
+      // For dates within THIS week's days[]: use produced_lbs directly.
+      // For dates AFTER days[7]: use produced_last_week_lbs and attribute
+      // it to days[7] (last bucket of this week's view) so it shows in the
+      // "next week's catch-up" total.
+      //
+      // Simpler model used here: any entry with produced_last_week_lbs > 0
+      // and entry_date AFTER days[7] gets folded into days[7]'s daily
+      // bucket. Any entry IN this week with produced_lbs > 0 stays where
+      // it is. Any entry IN this week with produced_last_week_lbs > 0 is
+      // already attributed to the previous week (NOT counted here).
       const byDate = new Map();
+      const dayInRange = new Set(days);
       entries.forEach(e => {
         const key = (e.entry_date instanceof Date)
           ? e.entry_date.toISOString().split('T')[0]
           : String(e.entry_date).slice(0, 10);
         if (!byDate.has(e.sku_id)) byDate.set(e.sku_id, {});
-        byDate.get(e.sku_id)[key] = Number(e.produced_lbs || 0);
+        const m = byDate.get(e.sku_id);
+        if (dayInRange.has(key)) {
+          // Entries within the displayed week — only the regular freezer
+          // column counts toward this week's yield. produced_last_week_lbs
+          // entered THIS week attributes back to last week (handled by a
+          // PRIOR week's get_week call).
+          m[key] = (m[key] || 0) + Number(e.produced_lbs || 0);
+        } else if (key > days[7]) {
+          // Entry is in a future week. Its produced_last_week_lbs counts
+          // toward THIS week's yield (caught up after this week ended).
+          // Stash it at the last bucket so totals are correct; UI can
+          // separately surface it as a "carry-back" annotation.
+          if (e.produced_last_week_lbs > 0) {
+            m[days[7]] = (m[days[7]] || 0) + Number(e.produced_last_week_lbs);
+          }
+        }
       });
 
       const rows = skus.map(s => {
@@ -562,18 +627,24 @@ module.exports = async function handler(req, res) {
     }
 
     // ── POST save_entry ────────────────────────────────────────────────
-    // Upsert the produced/shipped cells for one SKU on one date.
+    // Upsert the produced/last-week-produced/shipped cells for one SKU on
+    // one date. produced_last_week_lbs is poundage frozen on this date but
+    // attributed to the PREVIOUS yield-week (Cooper's "kill Friday, freeze
+    // Monday" workflow).
     if (req.method === 'POST' && action === 'save_entry') {
       const b = req.body || {};
       const skuId = parseInt(b.sku_id, 10);
       const entryDate = String(b.entry_date || '').trim();
       const produced = b.produced_lbs === '' || b.produced_lbs == null ? 0 : Number(b.produced_lbs);
+      const producedLW = b.produced_last_week_lbs === '' || b.produced_last_week_lbs == null
+        ? 0 : Number(b.produced_last_week_lbs);
       const shipped = b.shipped_lbs === '' || b.shipped_lbs == null ? 0 : Number(b.shipped_lbs);
       const notes = b.notes || null;
 
       if (!skuId || isNaN(skuId)) return res.status(400).json({ error: 'sku_id required' });
       if (!entryDate) return res.status(400).json({ error: 'entry_date required' });
       if (isNaN(produced) || produced < 0) return res.status(400).json({ error: 'produced_lbs must be non-negative' });
+      if (isNaN(producedLW) || producedLW < 0) return res.status(400).json({ error: 'produced_last_week_lbs must be non-negative' });
       if (isNaN(shipped) || shipped < 0) return res.status(400).json({ error: 'shipped_lbs must be non-negative' });
 
       // Determine if this is create vs edit (existing row present?)
@@ -587,17 +658,27 @@ module.exports = async function handler(req, res) {
       }
 
       await sql`
-        INSERT INTO prod_daily_entries (company_id, entry_date, sku_id, produced_lbs, shipped_lbs, notes, updated_at)
-        VALUES (${companyId}, ${entryDate}::date, ${skuId}, ${produced}, ${shipped}, ${notes}, NOW())
+        INSERT INTO prod_daily_entries
+          (company_id, entry_date, sku_id, produced_lbs, produced_last_week_lbs, shipped_lbs, notes, updated_at)
+        VALUES (${companyId}, ${entryDate}::date, ${skuId}, ${produced}, ${producedLW}, ${shipped}, ${notes}, NOW())
         ON CONFLICT (company_id, entry_date, sku_id)
-        DO UPDATE SET produced_lbs = ${produced}, shipped_lbs = ${shipped}, notes = ${notes}, updated_at = NOW()
+        DO UPDATE SET produced_lbs = ${produced},
+                      produced_last_week_lbs = ${producedLW},
+                      shipped_lbs = ${shipped},
+                      notes = ${notes},
+                      updated_at = NOW()
       `;
 
       await logAudit(sql, req, user, {
         action: 'production.save_entry',
         resource_type: 'entry',
         resource_id: String(skuId) + '@' + entryDate,
-        details: { sku_id: skuId, entry_date: entryDate, produced_lbs: produced, shipped_lbs: shipped, updated: isEdit }
+        details: {
+          sku_id: skuId, entry_date: entryDate,
+          produced_lbs: produced,
+          produced_last_week_lbs: producedLW,
+          shipped_lbs: shipped, updated: isEdit
+        }
       });
       return res.json({ ok: true });
     }

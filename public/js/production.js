@@ -132,7 +132,7 @@
       + '<div style="flex:1"></div>'
       + '<label style="font-size:.74rem;color:#64748b;display:flex;align-items:center;gap:5px;cursor:pointer" title="Toggle inactive/archived items">'
       + '<input type="checkbox"' + (_ps.showArchived ? ' checked' : '') + ' onchange="prToggleArchived(this.checked)"> Show inactive</label>'
-      + '<div style="font-size:.72rem;color:#64748b">LW = balance at end of ' + esc(_ps.day.lw_date) + '</div>'
+      + '<div style="font-size:.72rem;color:#64748b">End LW = balance at end of ' + esc(_ps.day.lw_date) + ' · Last Week column = freezer attributed to prior week\'s yield</div>'
       + '</div>';
 
     // Pool pills
@@ -168,18 +168,20 @@
     // (the JALAPENO / REGULAR 1# and 10# packs). They don't combine
     // meaningfully: one is by the case of catfish, the other is a
     // separate hushpuppy product line in its own packaging.
-    var catfishTotals = { produced: 0, shipped: 0, balance: 0 };
-    var hushTotals    = { produced: 0, shipped: 0, balance: 0 };
+    var catfishTotals = { produced: 0, lw: 0, shipped: 0, balance: 0 };
+    var hushTotals    = { produced: 0, lw: 0, shipped: 0, balance: 0 };
     var hasHush = false;
     poolRows.forEach(function (r) {
       var t = (r.category === 'HUSHPUPPIES') ? hushTotals : catfishTotals;
       t.produced += Number(r.produced_lbs || 0);
+      t.lw       += Number(r.produced_last_week_lbs || 0);
       t.shipped  += Number(r.shipped_lbs || 0);
       t.balance  += Number(r.balance_lbs || 0);
       if (r.category === 'HUSHPUPPIES') hasHush = true;
     });
     var poolTotals = {
       produced: catfishTotals.produced + hushTotals.produced,
+      lw:       catfishTotals.lw       + hushTotals.lw,
       shipped:  catfishTotals.shipped  + hushTotals.shipped,
       balance:  catfishTotals.balance  + hushTotals.balance
     };
@@ -195,8 +197,9 @@
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:60px;font-size:.68rem;opacity:.85">Lbs/Case</th>'
       + '<th style="padding:8px 6px;text-align:left;font-weight:600;width:80px;font-size:.68rem;opacity:.85">SKU</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">Begin</th>'
-      + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">LW</th>'
+      + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px" title="Balance at end of last Saturday">End LW</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:90px;background:#1e40af">Freezer</th>'
+      + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:90px;background:#7c3aed" title="Freezer counted toward LAST week\'s yield (still adds to today\'s inventory)">Last Week</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:80px">Adjust</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:80px">Shipped</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:80px;background:#0f766e">Balance</th>'
@@ -218,11 +221,14 @@
       var numColor = opts.numColor || '#0f172a';
       var balColor = opts.balColor || '#065f46';
       var prodColor = opts.prodColor || '#1e40af';
+      var lwColor = '#7c3aed'; // matches the LW Freezer header background
       var topBorder = opts.grand ? 'border-top:3px double #1a3a6b;' : '';
       var fontSize = opts.grand ? 'font-size:.86rem;' : '';
+      // Columns: Item | Lbs/Case | SKU | Begin | End LW | Freezer | Last Week | Adjust | Shipped | Balance
       return '<tr style="background:' + bg + ';font-weight:700;color:' + labelColor + ';' + topBorder + fontSize + '">'
         + '<td style="padding:9px 10px;' + topBorder + '" colspan="5">' + opts.label + '</td>'
         + '<td style="padding:9px 6px;text-align:right;color:' + prodColor + ';' + topBorder + '">' + fmtLbs(opts.t.produced) + '</td>'
+        + '<td style="padding:9px 6px;text-align:right;color:' + lwColor + ';' + topBorder + '">' + (opts.t.lw ? fmtLbs(opts.t.lw) : '—') + '</td>'
         + '<td style="' + topBorder + '"></td>'
         + '<td style="padding:9px 6px;text-align:right;color:' + numColor + ';' + topBorder + '">' + fmtLbs(opts.t.shipped) + '</td>'
         + '<td style="padding:9px 6px;text-align:right;color:' + balColor + ';' + topBorder + '">' + fmtLbs(opts.t.balance) + '</td>'
@@ -246,6 +252,12 @@
     var producedInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.produced_lbs) || '') + '" '
       + 'data-sku="' + r.sku_id + '" data-field="produced_lbs" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#eff6ff' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
+    // Last Week freezer: poundage frozen TODAY but counted toward LAST
+    // week's yield. Same arithmetic as produced_lbs for inventory; the
+    // distinction is yield-attribution only.
+    var lwInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.produced_last_week_lbs) || '') + '" '
+      + 'data-sku="' + r.sku_id + '" data-field="produced_last_week_lbs" onblur="prSaveCell(this)" '
+      + 'style="' + CELL_INP + ';background:' + (writable ? '#f5f3ff' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     var shippedInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.shipped_lbs) || '') + '" '
       + 'data-sku="' + r.sku_id + '" data-field="shipped_lbs" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#fef2f2' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
@@ -274,6 +286,7 @@
       + '<td style="padding:5px 6px;text-align:right;color:#64748b">' + (r.begin_lbs === 0 ? '—' : fmtLbs(r.begin_lbs)) + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#94a3b8;font-size:.72rem">' + (r.lw_lbs === 0 ? '—' : fmtLbs(r.lw_lbs)) + '</td>'
       + '<td style="padding:3px 4px">' + producedInput + '</td>'
+      + '<td style="padding:3px 4px">' + lwInput + '</td>'
       + '<td style="padding:3px 4px">' + adjCell + '</td>'
       + '<td style="padding:3px 4px">' + shippedInput + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:' + (r.balance_lbs === 0 ? '#cbd5e1' : '#0f766e') + ';font-weight:700">' + fmtLbs(r.balance_lbs) + '</td>'
@@ -286,28 +299,36 @@
     var value = input.value === '' ? 0 : Number(input.value);
     if (isNaN(value) || value < 0) { toast('⚠️ Enter a non-negative number'); input.focus(); return; }
 
-    // Pull sibling field to submit a full row save (API expects both)
+    // Pull sibling fields to submit a full row save (API upserts the full row)
     var row = (_ps.day.rows || []).find(function (r) { return r.sku_id === skuId; });
     if (!row) return;
     var produced = field === 'produced_lbs' ? value : Number(row.produced_lbs || 0);
+    var producedLW = field === 'produced_last_week_lbs' ? value : Number(row.produced_last_week_lbs || 0);
     var shipped = field === 'shipped_lbs' ? value : Number(row.shipped_lbs || 0);
 
-    // Optimistically update local state so balance displays instantly
+    // Optimistically update local state so balance displays instantly. Both
+    // freezer columns add to balance equally — they only differ in which
+    // week's yield they attribute to.
     row.produced_lbs = produced;
+    row.produced_last_week_lbs = producedLW;
     row.shipped_lbs = shipped;
-    row.balance_lbs = Number(row.begin_lbs || 0) + produced + Number(row.adjust_lbs || 0) - shipped;
+    row.balance_lbs = Number(row.begin_lbs || 0)
+      + produced + producedLW + Number(row.adjust_lbs || 0) - shipped;
 
     apiCall('POST', '/api/production?action=save_entry', {
       sku_id: skuId, entry_date: _ps.entryDate,
-      produced_lbs: produced, shipped_lbs: shipped
+      produced_lbs: produced,
+      produced_last_week_lbs: producedLW,
+      shipped_lbs: shipped
     }).then(function () {
       // Re-render just the row's balance cell rather than full reload.
-      // Row shape now: Item | SKU | Lbs/Case | Begin | LW | Freezer | Adjust | Shipped | Balance
-      // (9 cells; Balance is index 8).
+      // Row shape now: Item | Lbs/Case | SKU | Begin | End LW | Freezer | LW Freezer | Adjust | Shipped | Balance
+      // (10 cells; Balance is index 9).
       var cells = input.closest('tr').querySelectorAll('td');
-      if (cells && cells.length >= 9) {
-        cells[8].textContent = fmtLbs(row.balance_lbs);
-        cells[8].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
+      if (cells && cells.length >= 10) {
+        // Balance is the LAST cell now (index 9 — added LW Freezer column)
+        cells[9].textContent = fmtLbs(row.balance_lbs);
+        cells[9].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
       }
     }).catch(function (err) {
       toast('⚠️ Save failed: ' + err.message);
