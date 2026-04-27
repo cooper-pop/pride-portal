@@ -467,20 +467,20 @@
       return;
     }
 
-    html += '<div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
-      + '<div style="font-size:.88rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">🐟 Daily Fish Intake (lbs)</div>'
-      + '<canvas id="prs-chart-intake" height="80"></canvas>'
-      + '</div>';
-
-    html += '<div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
-      + '<div style="font-size:.88rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">📦 Daily Production (finished lbs)</div>'
-      + '<canvas id="prs-chart-prod" height="80"></canvas>'
-      + '</div>';
-
-    html += '<div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
-      + '<div style="font-size:.88rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">💵 Daily Payments ($)</div>'
-      + '<canvas id="prs-chart-pay" height="80"></canvas>'
-      + '</div>';
+    // Each canvas is wrapped in a position:relative + fixed-height div so
+    // Chart.js (responsive=true, maintainAspectRatio=false) has a stable
+    // container to size into. Without the fixed height the canvas would
+    // grow a few pixels on every redraw and the page kept getting bigger.
+    var chartBox = function (id, title) {
+      return '<div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
+        + '<div style="font-size:.88rem;font-weight:700;color:#1a3a6b;margin-bottom:8px">' + title + '</div>'
+        + '<div style="position:relative;height:240px;width:100%">'
+        + '<canvas id="' + id + '"></canvas>'
+        + '</div></div>';
+    };
+    html += chartBox('prs-chart-intake', '🐟 Daily Fish Intake (lbs)');
+    html += chartBox('prs-chart-prod',   '📦 Daily Production (finished lbs)');
+    html += chartBox('prs-chart-pay',    '💵 Daily Payments ($)');
 
     panel.innerHTML = html;
 
