@@ -252,16 +252,19 @@
     // visual feedback (Balance cell + per-pool totals), and prSaveCell()
     // on blur to actually persist. Save is deferred to blur so we don't
     // hammer the API on every digit typed.
-    var producedInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.produced_lbs) || '') + '" '
+    // step=1 — production is tracked in whole cases. The browser's spinner
+    // controls + keyboard arrow keys all advance by 1 now (was 0.1, which
+    // produced fractional cases on a single click).
+    var producedInput = '<input type="number" step="1" min="0" value="' + (Number(r.produced_lbs) || '') + '" '
       + 'data-sku="' + r.sku_id + '" data-field="produced_lbs" oninput="prRecalcBalance(this)" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#eff6ff' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     // Last Week freezer: poundage frozen TODAY but counted toward LAST
     // week's yield. Same arithmetic as produced_lbs for inventory; the
     // distinction is yield-attribution only.
-    var lwInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.produced_last_week_lbs) || '') + '" '
+    var lwInput = '<input type="number" step="1" min="0" value="' + (Number(r.produced_last_week_lbs) || '') + '" '
       + 'data-sku="' + r.sku_id + '" data-field="produced_last_week_lbs" oninput="prRecalcBalance(this)" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#f5f3ff' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
-    var shippedInput = '<input type="number" step="0.1" min="0" value="' + (Number(r.shipped_lbs) || '') + '" '
+    var shippedInput = '<input type="number" step="1" min="0" value="' + (Number(r.shipped_lbs) || '') + '" '
       + 'data-sku="' + r.sku_id + '" data-field="shipped_lbs" oninput="prRecalcBalance(this)" onblur="prSaveCell(this)" '
       + 'style="' + CELL_INP + ';background:' + (writable ? '#fef2f2' : 'transparent') + '"' + readonlyAttr + ' placeholder="0">';
     var adjCell;
@@ -473,7 +476,7 @@
       + '<div id="pr-adj-pane-simple">'
       + '<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">Add or subtract <strong>cases</strong> for this SKU. E.g. <code>-1</code> for a miscount, <code>+2</code> for a late-found pallet.</div>'
       + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:6px 0 4px">Cases (±)</label>'
-      + '<input id="pr-adj-cases" type="number" step="0.1" placeholder="e.g., -1 or +2" oninput="prAdjUpdateCasesHint()" style="' + INP + '">'
+      + '<input id="pr-adj-cases" type="number" step="1" placeholder="e.g., -1 or +2" oninput="prAdjUpdateCasesHint()" style="' + INP + '">'
       + '<div id="pr-adj-cases-hint" style="font-size:.72rem;color:#64748b;margin-top:4px;min-height:1.1em">&nbsp;</div>'
       + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Note <span style="font-weight:400;color:#94a3b8">(why)</span></label>'
       + '<input id="pr-adj-note" type="text" placeholder="e.g., recounted, miscount" style="' + INP + '">'
@@ -488,7 +491,7 @@
       + '<div style="font-size:.7rem;color:#991b1b;font-weight:700;margin-bottom:6px">FROM (this SKU) — removed</div>'
       + '<div style="font-size:.86rem;color:#0f172a;margin-bottom:6px">' + esc(row.item_name) + (rowLbsPerCase ? ' · ' + rowLbsPerCase + '# case' : '') + '</div>'
       + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:4px 0 4px">Cases to remove</label>'
-      + '<input id="pr-adj-from-cases" type="number" step="0.1" min="0" placeholder="e.g., 100" oninput="prAdjUpdateTransferHint()" style="' + INP + '">'
+      + '<input id="pr-adj-from-cases" type="number" step="1" min="0" placeholder="e.g., 100" oninput="prAdjUpdateTransferHint()" style="' + INP + '">'
       + '<div id="pr-adj-from-hint" style="font-size:.72rem;color:#991b1b;margin-top:4px;min-height:1.1em">&nbsp;</div>'
       + '</div>'
 
@@ -497,7 +500,7 @@
       + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:0 0 4px">Move to SKU</label>'
       + '<select id="pr-adj-to-sku" onchange="prAdjUpdateTransferHint()" style="' + INP + '">' + transferOpts + '</select>'
       + '<label style="display:block;font-size:.72rem;color:#475569;font-weight:600;margin:8px 0 4px">Cases to add</label>'
-      + '<input id="pr-adj-to-cases" type="number" step="0.1" min="0" placeholder="e.g., 150" oninput="prAdjUpdateTransferHint()" style="' + INP + '">'
+      + '<input id="pr-adj-to-cases" type="number" step="1" min="0" placeholder="e.g., 150" oninput="prAdjUpdateTransferHint()" style="' + INP + '">'
       + '<div id="pr-adj-to-hint" style="font-size:.72rem;color:#065f46;margin-top:4px;min-height:1.1em">&nbsp;</div>'
       + '</div>'
 
