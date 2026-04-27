@@ -2316,9 +2316,14 @@
     } else {
       html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
       _fsState.farmers.forEach(function (f, i) {
-        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;' + (i > 0 ? 'border-top:1px solid #f1f5f9' : '') + '">'
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap;' + (i > 0 ? 'border-top:1px solid #f1f5f9' : '') + '">'
           + '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + esc(f.color || '#1a3a6b') + ';flex-shrink:0"></span>'
-          + '<div style="flex:1;font-weight:600;color:#0f172a;font-size:.88rem">' + esc(f.name) + '</div>'
+          + '<div style="font-weight:600;color:#0f172a;font-size:.88rem">' + esc(f.name) + '</div>'
+          // Producer-agreement pill: green "📄 Agreement" if attached (click to
+          // view in new tab), grey "📎 Attach Agreement" placeholder otherwise.
+          // Manager+ gets a small Replace/Remove menu when an agreement exists.
+          + agreementPill(f, canEdit)
+          + '<div style="flex:1"></div>'
           + (f.notes ? '<div style="font-size:.74rem;color:#64748b;margin-right:8px">' + esc(f.notes) + '</div>' : '')
           + (canEdit ? '<button style="' + BTN_SUB + ';padding:4px 10px;font-size:.74rem" onclick="fsEditFarmer(' + f.id + ')">Edit</button>' : '')
           + (canDelete ? '<button style="' + BTN_D + ';margin-left:4px" onclick="fsDeleteFarmer(' + f.id + ',\'' + esc(f.name).replace(/'/g, '') + '\')">Remove</button>' : '')
@@ -2329,6 +2334,118 @@
 
     html += '</div>';
     panel.innerHTML = html;
+  }
+
+  // Render the producer-agreement pill that sits next to the farmer name.
+  // Three states:
+  //   1. Agreement present + edit perm    → green "📄 Agreement" + small "↻ Replace"/"✕"
+  //   2. Agreement present, no edit perm  → green "📄 Agreement" (view-only)
+  //   3. No agreement + edit perm         → grey dashed "📎 Attach Agreement"
+  //   4. No agreement, no edit perm       → grey "—" (display only)
+  function agreementPill(f, canEdit) {
+    var has = !!(f.agreement_file_url);
+    if (has) {
+      var fname = f.agreement_filename || 'agreement';
+      var when = f.agreement_uploaded_at ? String(f.agreement_uploaded_at).split('T')[0] : '';
+      var tip = 'Producer Agreement' + (when ? ' · uploaded ' + when : '')
+        + (f.agreement_uploaded_by ? ' by ' + f.agreement_uploaded_by : '');
+      var html = '<a href="' + esc(f.agreement_file_url) + '" target="_blank" rel="noopener"'
+        + ' title="' + esc(tip + ' (' + fname + ') — click to open')
+        + '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:14px;background:#dcfce7;color:#166534;font-size:.72rem;font-weight:700;text-decoration:none;border:1px solid #86efac">'
+        + '📄 Agreement</a>';
+      if (canEdit) {
+        html += '<button title="Replace agreement" onclick="fsAttachAgreement(' + f.id + ')" style="background:#f1f5f9;color:#475569;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700;margin-left:2px">↻</button>'
+          + '<button title="Remove agreement" onclick="fsDeleteAgreement(' + f.id + ')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700;margin-left:2px">✕</button>';
+      }
+      return html;
+    }
+    if (canEdit) {
+      return '<button onclick="fsAttachAgreement(' + f.id + ')" title="Attach producer agreement (PDF)" style="background:#f8fafc;color:#475569;border:1px dashed #cbd5e1;border-radius:14px;padding:3px 10px;font-size:.72rem;font-weight:600;cursor:pointer">📎 Attach Agreement</button>';
+    }
+    return '<span style="color:#cbd5e1;font-size:.72rem;font-style:italic">no agreement</span>';
+  }
+
+  // Open a file picker, upload to Cloudinary, save URL on the farmer record.
+  // Single agreement per farmer — uploading replaces the previous one.
+  function fsAttachAgreement(farmerId) {
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'application/pdf,image/*,.docx,.doc';
+    inp.style.display = 'none';
+    inp.onchange = function () {
+      var file = inp.files && inp.files[0];
+      if (!file) return;
+      // 25 MB cap matches what Cloudinary's free tier handles cleanly. Most
+      // signed agreements are PDFs under 5 MB.
+      if (file.size > 25 * 1024 * 1024) {
+        toast('⚠️ File too large (max 25 MB)');
+        return;
+      }
+      fsUploadAgreement(farmerId, file);
+    };
+    document.body.appendChild(inp);
+    inp.click();
+    setTimeout(function () { inp.remove(); }, 60000);
+  }
+
+  function fsUploadAgreement(farmerId, file) {
+    var farmer = _fsState.farmers.find(function (x) { return x.id === farmerId; });
+    var name = farmer ? farmer.name : 'farmer';
+    toast('📤 Uploading ' + file.name + '…');
+    apiCall('GET', '/api/fish-schedule?action=get_agreement_upload_signature')
+      .then(function (sig) {
+        var fd = new FormData();
+        fd.append('file', file);
+        fd.append('api_key', sig.api_key);
+        fd.append('timestamp', String(sig.timestamp));
+        fd.append('signature', sig.signature);
+        fd.append('folder', sig.folder);
+        // PDFs go to Cloudinary's "raw" resource type — image/* uses "image".
+        // Use "auto" to let Cloudinary pick the right one.
+        var url = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/auto/upload';
+        return new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest();
+          xhr.onload = function () {
+            try {
+              var r = JSON.parse(xhr.responseText);
+              if (xhr.status >= 200 && xhr.status < 300) resolve(r);
+              else reject(new Error((r && r.error && r.error.message) || ('Upload failed (' + xhr.status + ')')));
+            } catch (e) { reject(e); }
+          };
+          xhr.onerror = function () { reject(new Error('Network error during upload')); };
+          xhr.open('POST', url);
+          xhr.send(fd);
+        });
+      })
+      .then(function (result) {
+        return apiCall('POST', '/api/fish-schedule?action=save_agreement', {
+          farmer_id: farmerId,
+          file_url: result.secure_url,
+          cloudinary_public_id: result.public_id,
+          filename: result.original_filename || file.name
+        });
+      })
+      .then(function () {
+        toast('✓ Agreement attached for ' + name);
+        fsLoadAndRenderFarmers();
+      })
+      .catch(function (err) {
+        toast('⚠️ Upload failed: ' + (err && err.message ? err.message : 'unknown'));
+      });
+  }
+
+  function fsDeleteAgreement(farmerId) {
+    var farmer = _fsState.farmers.find(function (x) { return x.id === farmerId; });
+    var name = farmer ? farmer.name : 'farmer';
+    if (!confirm('Remove the producer agreement on file for ' + name + '?\n\nThe document stays in storage but the farmer record will no longer reference it.')) return;
+    apiCall('POST', '/api/fish-schedule?action=delete_agreement', { farmer_id: farmerId })
+      .then(function () {
+        toast('Agreement removed for ' + name);
+        fsLoadAndRenderFarmers();
+      })
+      .catch(function (err) {
+        toast('⚠️ ' + (err && err.message ? err.message : 'failed'));
+      });
   }
 
   function fsEditFarmer(id) {
@@ -2466,6 +2583,9 @@
   window.fsBulkSaveStep3 = fsBulkSaveStep3;
   window.fsBulkSaveStep4 = fsBulkSaveStep4;
   window.fsBulkRecalcStep2 = fsBulkRecalcStep2;
+  // Producer-agreement upload (Cloudinary direct + URL save)
+  window.fsAttachAgreement = fsAttachAgreement;
+  window.fsDeleteAgreement = fsDeleteAgreement;
   // Fish Payable (invoice rollup)
   window.fsWeekNavPayable = fsWeekNavPayable;
   window.fsGoTodayPayable = fsGoTodayPayable;

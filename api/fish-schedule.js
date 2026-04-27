@@ -19,8 +19,23 @@
 // fish_deliveries) are left alone for reference.
 
 const { neon } = require('@neondatabase/serverless');
+const cloudinary = require('cloudinary').v2;
 const perms = require('./_permissions');
 const { logAudit } = require('./_audit');
+
+// Lazy Cloudinary config — sets up the global SDK once per cold start.
+// Used for producer-agreement uploads (signed direct-from-browser POSTs).
+let _cloudinaryConfigured = false;
+function configureCloudinary() {
+  if (_cloudinaryConfigured) return;
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  });
+  _cloudinaryConfigured = true;
+}
 
 async function ensureTables(sql) {
   // Farmers / live haulers that send us fish. Soft-deleted via active=false
@@ -38,6 +53,17 @@ async function ensureTables(sql) {
   )`;
   await sql`CREATE INDEX IF NOT EXISTS live_haul_farmers_company_idx
     ON live_haul_farmers(company_id, active)`;
+  // Producer agreement attachment — one PDF per farmer, stored in Cloudinary.
+  // Same column conventions as bid_documents / parts_manuals: file_url for
+  // display/download, cloudinary_public_id for future deletion + signed
+  // operations. Filename + uploader/timestamp captured for audit.
+  try {
+    await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_file_url TEXT`;
+    await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_cloudinary_id TEXT`;
+    await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_filename TEXT`;
+    await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_uploaded_at TIMESTAMPTZ`;
+    await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_uploaded_by TEXT`;
+  } catch (e) { /* already present */ }
 
   // Per-day overrides. Every queried day doesn't need a row — only days with
   // No-Kill flagged or notes attached. Missing row = normal workday with no
@@ -313,7 +339,9 @@ module.exports = async function handler(req, res) {
       const weekEnd = days[6];
 
       const farmers = await sql`
-        SELECT id, name, color, active, notes
+        SELECT id, name, color, active, notes,
+               agreement_file_url, agreement_cloudinary_id,
+               agreement_filename, agreement_uploaded_at, agreement_uploaded_by
         FROM live_haul_farmers
         WHERE company_id = ${companyId} AND active = true
         ORDER BY name
@@ -644,7 +672,9 @@ module.exports = async function handler(req, res) {
       const weekEnd = days[6];
 
       const farmers = await sql`
-        SELECT id, name, color, active, notes
+        SELECT id, name, color, active, notes,
+               agreement_file_url, agreement_cloudinary_id,
+               agreement_filename, agreement_uploaded_at, agreement_uploaded_by
         FROM live_haul_farmers
         WHERE company_id = ${companyId} AND active = true
         ORDER BY name
@@ -729,6 +759,96 @@ module.exports = async function handler(req, res) {
         loads: loads.map(norm),
         farmer_ponds
       });
+    }
+
+    // ── GET get_agreement_upload_signature ───────────────────────────────
+    // Returns a signed payload the browser uses to POST a producer-agreement
+    // PDF directly to Cloudinary. Manager+ only — supervisors don't sign
+    // agreements. Mirrors the bids / manuals widget upload flow.
+    if (req.method === 'GET' && action === 'get_agreement_upload_signature') {
+      if (!perms.canPerform(user, 'fishschedule', 'edit')) {
+        return perms.deny(res, user, 'fishschedule', 'edit');
+      }
+      configureCloudinary();
+      const folder = 'producer-agreements';
+      const timestamp = Math.round(Date.now() / 1000);
+      const paramsToSign = { timestamp, folder };
+      const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET);
+      return res.json({
+        signature, timestamp, folder,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME
+      });
+    }
+
+    // ── POST save_agreement ──────────────────────────────────────────────
+    // Persists the Cloudinary URL + metadata onto the farmer record after
+    // the browser finishes uploading. Manager+ only.
+    if (req.method === 'POST' && action === 'save_agreement') {
+      if (!perms.canPerform(user, 'fishschedule', 'edit')) {
+        return perms.deny(res, user, 'fishschedule', 'edit');
+      }
+      const b = req.body || {};
+      const farmerId = parseInt(b.farmer_id, 10);
+      const fileUrl = String(b.file_url || '').trim();
+      const cloudId = String(b.cloudinary_public_id || '').trim() || null;
+      const filename = String(b.filename || '').trim() || null;
+      if (!farmerId) return res.status(400).json({ error: 'farmer_id required' });
+      if (!fileUrl) return res.status(400).json({ error: 'file_url required' });
+      const who = user.full_name || user.username || ('user#' + user.user_id);
+      const [updated] = await sql`
+        UPDATE live_haul_farmers
+        SET agreement_file_url = ${fileUrl},
+            agreement_cloudinary_id = ${cloudId},
+            agreement_filename = ${filename},
+            agreement_uploaded_at = NOW(),
+            agreement_uploaded_by = ${who},
+            updated_at = NOW()
+        WHERE id = ${farmerId} AND company_id = ${companyId}
+        RETURNING id, name, agreement_file_url, agreement_cloudinary_id,
+                  agreement_filename, agreement_uploaded_at, agreement_uploaded_by
+      `;
+      if (!updated) return res.status(404).json({ error: 'Farmer not found' });
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.save_agreement',
+        resource_type: 'live_haul_farmer', resource_id: String(farmerId),
+        details: { filename: filename, by: who }
+      });
+      return res.json({ ok: true, farmer: updated });
+    }
+
+    // ── POST delete_agreement ────────────────────────────────────────────
+    // Removes the agreement reference on the farmer. We don't delete the
+    // Cloudinary asset itself (audit trail) — just clear the columns.
+    if (req.method === 'POST' && action === 'delete_agreement') {
+      if (!perms.canPerform(user, 'fishschedule', 'edit')) {
+        return perms.deny(res, user, 'fishschedule', 'edit');
+      }
+      const farmerId = parseInt(req.body && req.body.farmer_id, 10);
+      if (!farmerId) return res.status(400).json({ error: 'farmer_id required' });
+      const [prior] = await sql`
+        SELECT agreement_cloudinary_id, agreement_filename
+        FROM live_haul_farmers
+        WHERE id = ${farmerId} AND company_id = ${companyId}
+      `;
+      const [updated] = await sql`
+        UPDATE live_haul_farmers
+        SET agreement_file_url = NULL,
+            agreement_cloudinary_id = NULL,
+            agreement_filename = NULL,
+            agreement_uploaded_at = NULL,
+            agreement_uploaded_by = NULL,
+            updated_at = NOW()
+        WHERE id = ${farmerId} AND company_id = ${companyId}
+        RETURNING id, name
+      `;
+      if (!updated) return res.status(404).json({ error: 'Farmer not found' });
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.delete_agreement',
+        resource_type: 'live_haul_farmer', resource_id: String(farmerId),
+        details: prior || {}
+      });
+      return res.json({ ok: true, farmer: updated });
     }
 
     // ── GET get_dock_config ──────────────────────────────────────────────
