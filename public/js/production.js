@@ -132,7 +132,7 @@
       + '<div style="flex:1"></div>'
       + '<label style="font-size:.74rem;color:#64748b;display:flex;align-items:center;gap:5px;cursor:pointer" title="Toggle inactive/archived items">'
       + '<input type="checkbox"' + (_ps.showArchived ? ' checked' : '') + ' onchange="prToggleArchived(this.checked)"> Show inactive</label>'
-      + '<div style="font-size:.72rem;color:#64748b">End LW = balance at end of ' + esc(_ps.day.lw_date) + ' · Last Week column = freezer attributed to prior week\'s yield</div>'
+      + '<div style="font-size:.72rem;color:#64748b">Last Week column = freezer attributed to prior week\'s yield (still adds to today\'s inventory)</div>'
       + '</div>';
 
     // Pool pills
@@ -197,7 +197,6 @@
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:60px;font-size:.68rem;opacity:.85">Lbs/Case</th>'
       + '<th style="padding:8px 6px;text-align:left;font-weight:600;width:80px;font-size:.68rem;opacity:.85">SKU</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px">Begin</th>'
-      + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:70px" title="Balance at end of last Saturday">End LW</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:90px;background:#1e40af">Freezer</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:90px;background:#7c3aed" title="Freezer counted toward LAST week\'s yield (still adds to today\'s inventory)">Last Week</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:80px">Adjust</th>'
@@ -224,9 +223,9 @@
       var lwColor = '#7c3aed'; // matches the LW Freezer header background
       var topBorder = opts.grand ? 'border-top:3px double #1a3a6b;' : '';
       var fontSize = opts.grand ? 'font-size:.86rem;' : '';
-      // Columns: Item | Lbs/Case | SKU | Begin | End LW | Freezer | Last Week | Adjust | Shipped | Balance
+      // Columns: Item | Lbs/Case | SKU | Begin | Freezer | Last Week | Adjust | Shipped | Balance
       return '<tr style="background:' + bg + ';font-weight:700;color:' + labelColor + ';' + topBorder + fontSize + '">'
-        + '<td style="padding:9px 10px;' + topBorder + '" colspan="5">' + opts.label + '</td>'
+        + '<td style="padding:9px 10px;' + topBorder + '" colspan="4">' + opts.label + '</td>'
         + '<td style="padding:9px 6px;text-align:right;color:' + prodColor + ';' + topBorder + '">' + fmtLbs(opts.t.produced) + '</td>'
         + '<td style="padding:9px 6px;text-align:right;color:' + lwColor + ';' + topBorder + '">' + (opts.t.lw ? fmtLbs(opts.t.lw) : '—') + '</td>'
         + '<td style="' + topBorder + '"></td>'
@@ -284,7 +283,6 @@
       + '<td style="padding:5px 6px;text-align:right;color:#64748b;font-size:.74rem">' + casesCell + '</td>'
       + '<td style="padding:5px 6px;color:#64748b;font-family:ui-monospace,monospace;font-size:.68rem">' + esc(r.sku || '') + '</td>'
       + '<td style="padding:5px 6px;text-align:right;color:#64748b">' + (r.begin_lbs === 0 ? '—' : fmtLbs(r.begin_lbs)) + '</td>'
-      + '<td style="padding:5px 6px;text-align:right;color:#94a3b8;font-size:.72rem">' + (r.lw_lbs === 0 ? '—' : fmtLbs(r.lw_lbs)) + '</td>'
       + '<td style="padding:3px 4px">' + producedInput + '</td>'
       + '<td style="padding:3px 4px">' + lwInput + '</td>'
       + '<td style="padding:3px 4px">' + adjCell + '</td>'
@@ -322,13 +320,12 @@
       shipped_lbs: shipped
     }).then(function () {
       // Re-render just the row's balance cell rather than full reload.
-      // Row shape now: Item | Lbs/Case | SKU | Begin | End LW | Freezer | LW Freezer | Adjust | Shipped | Balance
-      // (10 cells; Balance is index 9).
+      // Row shape now: Item | Lbs/Case | SKU | Begin | Freezer | Last Week | Adjust | Shipped | Balance
+      // (9 cells; Balance is index 8).
       var cells = input.closest('tr').querySelectorAll('td');
-      if (cells && cells.length >= 10) {
-        // Balance is the LAST cell now (index 9 — added LW Freezer column)
-        cells[9].textContent = fmtLbs(row.balance_lbs);
-        cells[9].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
+      if (cells && cells.length >= 9) {
+        cells[8].textContent = fmtLbs(row.balance_lbs);
+        cells[8].style.color = row.balance_lbs === 0 ? '#cbd5e1' : '#0f766e';
       }
     }).catch(function (err) {
       toast('⚠️ Save failed: ' + err.message);
