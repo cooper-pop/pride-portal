@@ -385,13 +385,12 @@ function lastSaturdayBefore(asOfIso) {
   return d.toISOString().split('T')[0];
 }
 
-// Week = Monday through Saturday (the production week in the spreadsheet).
-// Given any ISO date, returns that week's Monday.
-function mondayOf(iso) {
+// Week = Sunday through Saturday (calendar standard). Given any ISO date,
+// returns that week's Sunday. The legacy export name `mondayOf` is kept
+// below for any callers that still import it — same semantics now.
+function sundayOf(iso) {
   const d = new Date(iso + 'T00:00:00');
-  const dow = d.getDay(); // 0=Sun, 1=Mon
-  const back = dow === 0 ? 6 : dow - 1;
-  d.setDate(d.getDate() - back);
+  d.setDate(d.getDate() - d.getDay()); // getDay Sun=0 → 0 back; Sat=6 → 6 back
   return d.toISOString().split('T')[0];
 }
 
@@ -530,19 +529,19 @@ module.exports = async function handler(req, res) {
     }
 
     // ── GET get_week ───────────────────────────────────────────────────
-    // Weekly roll: Mon-Sat as columns, one row per SKU. The old MON2/TUE2
-    // columns were retired — instead, any entry made AFTER this week with
-    // produced_last_week_lbs > 0 carries back as a single "LW Carry"
-    // bucket on the previous week's row so the prior week's yield stays
-    // accurate even when the freeze happened a few days later.
+    // Weekly roll: Sun-Sat as columns, one row per SKU. Calendar-standard
+    // 7-day week starting Sunday. Late freezes attributed to a prior week
+    // (entries made later with produced_last_week_lbs > 0) carry back as
+    // a single "LW Carry" bucket on the previous week's row so the prior
+    // week's yield stays accurate.
     if (req.method === 'GET' && action === 'get_week') {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const weekStart = (url.searchParams.get('week_start') || '').trim();
-      if (!weekStart) return res.status(400).json({ error: 'week_start required (Monday YYYY-MM-DD)' });
+      if (!weekStart) return res.status(400).json({ error: 'week_start required (Sunday YYYY-MM-DD)' });
 
-      // 6-day range: Mon-Sat of the displayed week.
+      // 7-day range: Sun-Sat of the displayed week.
       const days = [];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 7; i++) {
         const d = new Date(weekStart + 'T00:00:00');
         d.setDate(d.getDate() + i);
         days.push(d.toISOString().split('T')[0]);
@@ -550,7 +549,7 @@ module.exports = async function handler(req, res) {
       // Carry-back window: scan the next 14 days for any entry with
       // produced_last_week_lbs > 0 — those attribute back to THIS week.
       const nextWeekEnd = new Date(weekStart + 'T00:00:00');
-      nextWeekEnd.setDate(nextWeekEnd.getDate() + 6 + 14);
+      nextWeekEnd.setDate(nextWeekEnd.getDate() + 7 + 14);
       const nextWeekEndIso = nextWeekEnd.toISOString().split('T')[0];
 
       const skus = await sql`
@@ -592,7 +591,7 @@ module.exports = async function handler(req, res) {
           // produced_last_week_lbs entered THIS week is for the PRIOR
           // week's totals (and shows as carry on prior week's view).
           m[key] = (m[key] || 0) + Number(e.produced_lbs || 0);
-        } else if (key > days[5]) {
+        } else if (key > days[6]) {
           // Entry is in a future week. Its produced_last_week_lbs is a
           // late freeze attributed back to this week. Track in a separate
           // carry bucket — does NOT show in any daily cell, but adds to
@@ -984,5 +983,7 @@ module.exports = async function handler(req, res) {
 };
 
 // Exported for testing / weekly-roll-aligned Monday lookup
-module.exports.mondayOf = mondayOf;
+module.exports.sundayOf = sundayOf;
+// Back-compat alias — same semantics now (week starts Sunday).
+module.exports.mondayOf = sundayOf;
 module.exports.lastSaturdayBefore = lastSaturdayBefore;

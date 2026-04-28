@@ -46,11 +46,11 @@
     return (v === 0 ? '0' : v.toLocaleString('en-US', { maximumFractionDigits: 1 }));
   }
   function todayIso() { return new Date().toISOString().split('T')[0]; }
-  function mondayOf(iso) {
+  // Sunday-of-week: standard US calendar week starts Sunday. Given any
+  // ISO date, returns that week's Sunday.
+  function sundayOf(iso) {
     var d = new Date((iso || todayIso()) + 'T00:00:00');
-    var dow = d.getDay();
-    var back = dow === 0 ? 6 : dow - 1;
-    d.setDate(d.getDate() - back);
+    d.setDate(d.getDate() - d.getDay()); // getDay: Sun=0 → 0 back; Sat=6 → 6 back
     return d.toISOString().split('T')[0];
   }
   function addDays(iso, n) {
@@ -78,7 +78,7 @@
     }).join('');
 
     if (!_ps.entryDate) _ps.entryDate = todayIso();
-    if (!_ps.weekStart) _ps.weekStart = mondayOf();
+    if (!_ps.weekStart) _ps.weekStart = sundayOf();
     prShowTab('daily');
   }
 
@@ -789,7 +789,7 @@
   }
 
   function prWeekStep(delta) { _ps.weekStart = addDays(_ps.weekStart, delta * 7); loadWeekly(); }
-  function prThisWeek() { _ps.weekStart = mondayOf(); loadWeekly(); }
+  function prThisWeek() { _ps.weekStart = sundayOf(); loadWeekly(); }
   function prSelectPoolWeek(p) { _ps.activePool = p; renderWeekly(); }
 
   // ═══ SKU TAB ═══════════════════════════════════════════════════════════
