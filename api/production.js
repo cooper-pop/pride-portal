@@ -610,7 +610,12 @@ module.exports = async function handler(req, res) {
 
       const rows = skus.map(s => {
         const daily = days.map(d => byDate.get(s.id) ? (byDate.get(s.id)[d] || 0) : 0);
-        const totalLbs = daily.reduce((a, b) => a + b, 0);
+        // produced_lbs (the column name) actually stores CASE COUNTS — see
+        // production.js header comments. The sum across days is the total
+        // cases for the week. Total pounds = cases × lbs/case from the SKU.
+        const totalCases = daily.reduce((a, b) => a + b, 0);
+        const lbsPerCase = Number(s.lbs_per_case || 0);
+        const totalLbs = lbsPerCase > 0 ? totalCases * lbsPerCase : 0;
         return {
           sku_id: s.id,
           sku: s.sku,
@@ -618,8 +623,8 @@ module.exports = async function handler(req, res) {
           category: s.category,
           pool: s.pool,
           daily,
-          total_lbs: Number(totalLbs.toFixed(2)),
-          total_cases: s.lbs_per_case ? Number((totalLbs / Number(s.lbs_per_case)).toFixed(2)) : null
+          total_cases: Number(totalCases.toFixed(2)),
+          total_lbs: Number(totalLbs.toFixed(2))
         };
       });
 
