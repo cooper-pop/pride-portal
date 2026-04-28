@@ -2100,14 +2100,15 @@
       + '<th style="padding:8px 10px;text-align:center">Date</th>'
       + '<th style="padding:8px 10px;text-align:right">Gross Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right">Deduct</th>'
+      // Sequential order smallest → largest: tier1 (0–4) · tier2 · tier3 · tier4
+      + '<th style="padding:8px 10px;text-align:right;background:#0369a1">' + esc(dockConfig().tier1_label) + ' Lbs</th>'
+      + '<th style="padding:8px 10px;text-align:right;background:#0369a1">Price</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#0891b2">' + esc(dockConfig().tier2_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#0891b2">Price</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#059669">' + esc(dockConfig().tier3_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#059669">Price</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#ca8a04">' + esc(dockConfig().tier4_label) + ' Lbs</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#ca8a04">Price</th>'
-      + '<th style="padding:8px 10px;text-align:right;background:#0369a1">' + esc(dockConfig().tier1_label) + ' Lbs</th>'
-      + '<th style="padding:8px 10px;text-align:right;background:#0369a1">Price</th>'
       + '<th style="padding:8px 10px;text-align:right;background:#065f46">Amount</th>'
       + '</tr></thead><tbody>';
 
@@ -2146,14 +2147,15 @@
         + '<td style="padding:7px 10px;text-align:center;color:#64748b">' + dateCell + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + fmtN(gross) + '</td>'
         + '<td style="padding:7px 10px;text-align:right;color:#991b1b">' + (deduct > 0 ? fmtN(deduct) : '—') + '</td>'
+        // Tiers in size order: 0–4 → 4–5.99 → 6–7.99 → 8+
+        + '<td style="padding:7px 10px;text-align:right">' + (sz04 > 0 ? fmtN(sz04) : '—') + '</td>'
+        + '<td style="padding:7px 10px;text-align:right">' + (isFinite(p04) && !isNaN(p04) ? fmt$(p04) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + (sz46 > 0 ? fmtN(sz46) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + (isFinite(p46) && !isNaN(p46) ? fmt$(p46) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + (sz68 > 0 ? fmtN(sz68) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + (isFinite(p68) && !isNaN(p68) ? fmt$(p68) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + (sz8p > 0 ? fmtN(sz8p) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right">' + (isFinite(p8p) && !isNaN(p8p) ? fmt$(p8p) : '—') + '</td>'
-        + '<td style="padding:7px 10px;text-align:right">' + (sz04 > 0 ? fmtN(sz04) : '—') + '</td>'
-        + '<td style="padding:7px 10px;text-align:right">' + (isFinite(p04) && !isNaN(p04) ? fmt$(p04) : '—') + '</td>'
         + '<td style="padding:7px 10px;text-align:right;color:#065f46;font-weight:700">' + (amt > 0 ? fmtMoney(amt) : '—') + '</td>'
         + '</tr>';
     });
@@ -2167,14 +2169,15 @@
       + '<td style="padding:9px 10px;color:#1a3a6b" colspan="3">WEEKLY TOTAL (' + rows.length + ' load' + (rows.length === 1 ? '' : 's') + ')</td>'
       + '<td style="padding:9px 10px;text-align:right;color:#1a3a6b">' + fmtN(totals.gross) + '</td>'
       + '<td style="padding:9px 10px;text-align:right;color:#991b1b">' + fmtN(totals.deduct) + '</td>'
+      // Tiers in size order: 0–4 → 4–5.99 → 6–7.99 → 8+
+      + '<td style="padding:9px 10px;text-align:right">' + fmtN(totals.sz04) + '</td>'
+      + '<td style="padding:9px 10px;text-align:right;font-weight:500;color:#475569">' + (wp04 != null ? fmt$(wp04) : '—') + '</td>'
       + '<td style="padding:9px 10px;text-align:right">' + fmtN(totals.sz46) + '</td>'
       + '<td style="padding:9px 10px;text-align:right;font-weight:500;color:#475569">' + (wp46 != null ? fmt$(wp46) : '—') + '</td>'
       + '<td style="padding:9px 10px;text-align:right">' + fmtN(totals.sz68) + '</td>'
       + '<td style="padding:9px 10px;text-align:right;font-weight:500;color:#475569">' + (wp68 != null ? fmt$(wp68) : '—') + '</td>'
       + '<td style="padding:9px 10px;text-align:right">' + fmtN(totals.sz8p) + '</td>'
       + '<td style="padding:9px 10px;text-align:right;font-weight:500;color:#475569">' + (wp8p != null ? fmt$(wp8p) : '—') + '</td>'
-      + '<td style="padding:9px 10px;text-align:right">' + fmtN(totals.sz04) + '</td>'
-      + '<td style="padding:9px 10px;text-align:right;font-weight:500;color:#475569">' + (wp04 != null ? fmt$(wp04) : '—') + '</td>'
       + '<td style="padding:9px 10px;text-align:right;color:#065f46;font-size:.92rem">' + fmtMoney(totals.amount) + '</td>'
       + '</tr>';
 
@@ -2225,10 +2228,11 @@
     body += '<table><thead><tr>'
       + '<th>Farmer</th><th>Invoice #</th><th>Date</th>'
       + '<th>Gross Lbs</th><th>Deduct</th>'
+      // Sequential 0–4 → 4–5.99 → 6–7.99 → 8+
+      + '<th>' + esc(dc.tier1_label) + ' Lbs</th><th>Price</th>'
       + '<th>' + esc(dc.tier2_label) + ' Lbs</th><th>Price</th>'
       + '<th>' + esc(dc.tier3_label) + ' Lbs</th><th>Price</th>'
       + '<th>' + esc(dc.tier4_label) + ' Lbs</th><th>Price</th>'
-      + '<th>' + esc(dc.tier1_label) + ' Lbs</th><th>Price</th>'
       + '<th>Amount</th>'
       + '</tr></thead><tbody>';
     var t = { gross: 0, deduct: 0, net: 0, sz46: 0, sz68: 0, sz8p: 0, sz04: 0, amount: 0 };
@@ -2254,23 +2258,24 @@
         + '<td>' + (r.day_date ? prettyDate(r.day_date) : '—') + '</td>'
         + '<td>' + fmtN(gross) + '</td>'
         + '<td>' + (deduct > 0 ? fmtN(deduct) : '—') + '</td>'
+        // Sequential 0–4 → 4–5.99 → 6–7.99 → 8+
+        + '<td>' + (sz04 > 0 ? fmtN(sz04) : '—') + '</td>'
+        + '<td>' + (!isNaN(p04) ? fmt$(p04) : '—') + '</td>'
         + '<td>' + (sz46 > 0 ? fmtN(sz46) : '—') + '</td>'
         + '<td>' + (!isNaN(p46) ? fmt$(p46) : '—') + '</td>'
         + '<td>' + (sz68 > 0 ? fmtN(sz68) : '—') + '</td>'
         + '<td>' + (!isNaN(p68) ? fmt$(p68) : '—') + '</td>'
         + '<td>' + (sz8p > 0 ? fmtN(sz8p) : '—') + '</td>'
         + '<td>' + (!isNaN(p8p) ? fmt$(p8p) : '—') + '</td>'
-        + '<td>' + (sz04 > 0 ? fmtN(sz04) : '—') + '</td>'
-        + '<td>' + (!isNaN(p04) ? fmt$(p04) : '—') + '</td>'
         + '<td>' + (amt > 0 ? fmtMoney(amt) : '—') + '</td>'
         + '</tr>';
     });
     body += '<tr style="background:#e0e7ff;font-weight:700"><td colspan="3">WEEKLY TOTAL</td>'
       + '<td>' + fmtN(t.gross) + '</td><td>' + fmtN(t.deduct) + '</td>'
+      + '<td>' + fmtN(t.sz04) + '</td><td>—</td>'
       + '<td>' + fmtN(t.sz46) + '</td><td>—</td>'
       + '<td>' + fmtN(t.sz68) + '</td><td>—</td>'
       + '<td>' + fmtN(t.sz8p) + '</td><td>—</td>'
-      + '<td>' + fmtN(t.sz04) + '</td><td>—</td>'
       + '<td>' + fmtMoney(t.amount) + '</td></tr>';
     body += '</tbody></table>';
     if (typeof printReport === 'function') {
