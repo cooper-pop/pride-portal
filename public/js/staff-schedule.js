@@ -13,9 +13,9 @@
 (function () {
   var _ss = {
     tab: 'schedule',
-    viewMode: 'month',     // 'month' | 'week'
+    viewMode: 'roll',      // 'roll' (rolling 4-week) | 'week' (single Sun-Sat row)
     weekStart: '',         // ISO YYYY-MM-DD (Sunday) — used for week view
-    monthStart: '',        // ISO YYYY-MM-01 — used for month view
+    rollStart: '',         // ISO YYYY-MM-DD (Sunday) — start of rolling 4-week window
     teams: [],
     shifts: [],            // [{id, day_date, label, start_time, end_time, notes, position, teams:[{team_id}]}]
     vacations: [],         // [{id, employee_name, team_id, start_date, end_date, reason, notes, status}]
@@ -55,28 +55,30 @@
     var fmt = function (d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
     return fmt(s) + ' – ' + fmt(e) + ', ' + e.getFullYear();
   }
-  function prettyMonth(iso) {
-    var d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  // Rolling 4-week window: anchor is the Sunday of the chosen reference
+  // week. Window covers anchor → anchor + 27 days (4 weeks). Default
+  // anchor is the Sunday of THIS week, so the window naturally rolls
+  // forward as time passes — clicking "Today" snaps back to the current
+  // week, prev/next moves 7 days at a time.
+  function rollStartOf(iso) {
+    return weekStartOf(iso);
   }
-  // First day of the month containing the given ISO date (or today)
-  function monthStartOf(iso) {
-    var d = new Date((iso || isoDate(new Date())) + 'T00:00:00');
-    d.setDate(1);
-    return isoDate(d);
+  function rollGridBounds(rollStart) {
+    return {
+      start: rollStart,
+      end: addDaysIso(rollStart, 27),  // 4 weeks × 7 days − 1
+      // No "in-month" concept here; every cell is part of the rolling window.
+      windowStart: rollStart,
+      windowEnd: addDaysIso(rollStart, 27)
+    };
   }
-  // Sunday-to-Saturday grid bounds for the month grid: starts at the
-  // Sunday of the week that contains the 1st, ends at the Saturday of
-  // the week that contains the last day. Always 5-6 rows of 7 days.
-  function monthGridBounds(monthStart) {
-    var first = new Date(monthStart + 'T00:00:00');
-    // Last day of month
-    var last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-    var gridStart = new Date(first);
-    gridStart.setDate(gridStart.getDate() - gridStart.getDay()); // back to Sunday
-    var gridEnd = new Date(last);
-    gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay())); // forward to Saturday
-    return { start: isoDate(gridStart), end: isoDate(gridEnd), monthStart: isoDate(first), monthEnd: isoDate(last) };
+  // Pretty range for the rolling header: "Apr 27 – May 24, 2026"
+  function prettyRollRange(iso) {
+    if (!iso) return '';
+    var s = new Date(iso + 'T00:00:00');
+    var e = new Date(s); e.setDate(e.getDate() + 27);
+    var fmt = function (d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+    return fmt(s) + ' – ' + fmt(e) + ', ' + e.getFullYear();
   }
   // Walk through every day in [start, end] inclusive, calling cb(iso, dayIdx)
   function eachDay(start, end, cb) {
@@ -121,7 +123,7 @@
     }).join('');
 
     if (!_ss.weekStart) _ss.weekStart = weekStartOf();
-    if (!_ss.monthStart) _ss.monthStart = monthStartOf();
+    if (!_ss.rollStart) _ss.rollStart = rollStartOf();
     ssShowTab(_ss.tab);
   }
 
@@ -185,13 +187,13 @@
   }
 
   // Compute the current calendar range based on view mode.
-  //   month: full month-grid range (Sun-Sat extended)
-  //   week:  Sun-Sat of the chosen week
+  //   roll: 4-week rolling window (28 days from rollStart Sunday)
+  //   week: Sun-Sat of the chosen week
   function ssCurrentRange() {
     if (_ss.viewMode === 'week') {
       return { start: _ss.weekStart, end: addDaysIso(_ss.weekStart, 6) };
     }
-    var b = monthGridBounds(_ss.monthStart);
+    var b = rollGridBounds(_ss.rollStart);
     return { start: b.start, end: b.end };
   }
 
@@ -219,10 +221,10 @@
       todayHandler = 'ssGoThisWeek()';
       nextHandler = 'ssWeekNav(1)';
     } else {
-      navLabel = prettyMonth(_ss.monthStart);
-      prevHandler = 'ssMonthNav(-1)';
-      todayHandler = 'ssGoThisMonth()';
-      nextHandler = 'ssMonthNav(1)';
+      navLabel = prettyRollRange(_ss.rollStart);
+      prevHandler = 'ssRollNav(-1)';
+      todayHandler = 'ssGoThisRoll()';
+      nextHandler = 'ssRollNav(1)';
     }
 
     var modeBtn = function (m, label) {
@@ -233,12 +235,12 @@
     };
 
     html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.08)">'
-      + '<button style="' + BTN_SUB + '" onclick="' + prevHandler + '">←</button>'
-      + '<button style="' + BTN_SUB + '" onclick="' + todayHandler + '">Today</button>'
-      + '<button style="' + BTN_SUB + '" onclick="' + nextHandler + '">→</button>'
+      + '<button title="Roll back one week" style="' + BTN_SUB + '" onclick="' + prevHandler + '">←</button>'
+      + '<button title="Snap to this week" style="' + BTN_SUB + '" onclick="' + todayHandler + '">Today</button>'
+      + '<button title="Roll forward one week" style="' + BTN_SUB + '" onclick="' + nextHandler + '">→</button>'
       + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:1.05rem;margin-left:12px">' + navLabel + '</div>'
       + '<div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1">'
-      + modeBtn('month', 'Month')
+      + modeBtn('roll', '4 Weeks')
       + modeBtn('week', 'Week')
       + '</div>'
       + '</div>';
@@ -260,7 +262,7 @@
     if (_ss.viewMode === 'week') {
       html += renderWeekGrid(byDay, canEdit);
     } else {
-      html += renderMonthGrid(byDay, canEdit);
+      html += renderRollGrid(byDay, canEdit);
     }
 
     html += '<div style="font-size:.74rem;color:#94a3b8;margin-top:10px;font-style:italic">'
@@ -286,8 +288,13 @@
     return html;
   }
 
-  function renderMonthGrid(byDay, canEdit) {
-    var b = monthGridBounds(_ss.monthStart);
+  // Rolling 4-week grid: 28 days starting at _ss.rollStart Sunday. Every
+  // cell is in-window (no dimming) since we're showing exactly 4 weeks
+  // every time. Past days (before today) get a subtle grey overlay so
+  // they read as historical, today highlights navy.
+  function renderRollGrid(byDay, canEdit) {
+    var b = rollGridBounds(_ss.rollStart);
+    var todayIso = isoDate(new Date());
     var html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;min-width:0">';
     eachDay(b.start, b.end, function (iso) {
       var dayShifts = (byDay[iso] || []).slice().sort(function (a, b2) {
@@ -295,9 +302,11 @@
       });
       var dayVacs = _ss.vacations.filter(function (v) { return vacationCoversDay(v, iso); });
       var d = new Date(iso + 'T00:00:00');
-      var isToday = (iso === isoDate(new Date()));
-      var inMonth = (iso >= b.monthStart && iso <= b.monthEnd);
-      html += dayCard(iso, d.getDay(), dayShifts, dayVacs, isToday, canEdit, /*compact=*/ true, inMonth);
+      var isToday = (iso === todayIso);
+      var isPast = (iso < todayIso);
+      // inMonth=true so cells stay full-opacity. Past days get a subtle
+      // greyed treatment via dayCard's isPast branch.
+      html += dayCard(iso, d.getDay(), dayShifts, dayVacs, isToday, canEdit, /*compact=*/ true, /*inMonth=*/ !isPast);
     });
     html += '</div>';
     return html;
@@ -410,21 +419,20 @@
     _ss.weekStart = weekStartOf();
     ssLoadAndRender();
   }
-  function ssMonthNav(delta) {
-    var d = new Date(_ss.monthStart + 'T00:00:00');
-    d.setMonth(d.getMonth() + delta, 1);
-    _ss.monthStart = isoDate(d);
+  // Roll the 4-week window forward/back by 7 days at a time. delta=±1.
+  function ssRollNav(delta) {
+    _ss.rollStart = addDaysIso(_ss.rollStart, delta * 7);
     ssLoadAndRender();
   }
-  function ssGoThisMonth() {
-    _ss.monthStart = monthStartOf();
+  // Snap the rolling window back to the current week (this Sunday → 27d)
+  function ssGoThisRoll() {
+    _ss.rollStart = rollStartOf();
     ssLoadAndRender();
   }
   function ssSetViewMode(mode) {
-    _ss.viewMode = mode === 'week' ? 'week' : 'month';
-    // When switching to week view, default the week to one containing today
-    // (or the first week of the currently-viewed month)
+    _ss.viewMode = mode === 'week' ? 'week' : 'roll';
     if (mode === 'week' && !_ss.weekStart) _ss.weekStart = weekStartOf();
+    if (mode !== 'week' && !_ss.rollStart) _ss.rollStart = rollStartOf();
     ssLoadAndRender();
   }
 
@@ -932,8 +940,8 @@
   window.ssShowTab = ssShowTab;
   window.ssWeekNav = ssWeekNav;
   window.ssGoThisWeek = ssGoThisWeek;
-  window.ssMonthNav = ssMonthNav;
-  window.ssGoThisMonth = ssGoThisMonth;
+  window.ssRollNav = ssRollNav;
+  window.ssGoThisRoll = ssGoThisRoll;
   window.ssSetViewMode = ssSetViewMode;
   window.ssOpenDay = ssOpenDay;
   window.ssAddShift = ssAddShift;
