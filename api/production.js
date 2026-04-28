@@ -385,12 +385,13 @@ function lastSaturdayBefore(asOfIso) {
   return d.toISOString().split('T')[0];
 }
 
-// Week = Sunday through Saturday (calendar standard). Given any ISO date,
-// returns that week's Sunday. The legacy export name `mondayOf` is kept
-// below for any callers that still import it — same semantics now.
-function sundayOf(iso) {
+// Week = Monday through Sunday (Cooper's operational work week).
+// Given any ISO date, returns that week's Monday.
+function mondayOf(iso) {
   const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() - d.getDay()); // getDay Sun=0 → 0 back; Sat=6 → 6 back
+  const dow = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const back = dow === 0 ? 6 : dow - 1; // Sun→6, Mon→0, Sat→5
+  d.setDate(d.getDate() - back);
   return d.toISOString().split('T')[0];
 }
 
@@ -529,17 +530,18 @@ module.exports = async function handler(req, res) {
     }
 
     // ── GET get_week ───────────────────────────────────────────────────
-    // Weekly roll: Sun-Sat as columns, one row per SKU. Calendar-standard
-    // 7-day week starting Sunday. Late freezes attributed to a prior week
-    // (entries made later with produced_last_week_lbs > 0) carry back as
-    // a single "LW Carry" bucket on the previous week's row so the prior
-    // week's yield stays accurate.
+    // Weekly roll: Mon-Sun as columns, one row per SKU. Cooper's operational
+    // work week runs Mon → Sun (kill days first, Sunday catches any late
+    // weekend activity). Late freezes attributed to a prior week (entries
+    // made later with produced_last_week_lbs > 0) carry back as a single
+    // "LW Carry" bucket on the previous week's row so the prior week's
+    // yield stays accurate.
     if (req.method === 'GET' && action === 'get_week') {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const weekStart = (url.searchParams.get('week_start') || '').trim();
-      if (!weekStart) return res.status(400).json({ error: 'week_start required (Sunday YYYY-MM-DD)' });
+      if (!weekStart) return res.status(400).json({ error: 'week_start required (Monday YYYY-MM-DD)' });
 
-      // 7-day range: Sun-Sat of the displayed week.
+      // 7-day range: Mon-Sun of the displayed week.
       const days = [];
       for (let i = 0; i < 7; i++) {
         const d = new Date(weekStart + 'T00:00:00');
@@ -983,7 +985,5 @@ module.exports = async function handler(req, res) {
 };
 
 // Exported for testing / weekly-roll-aligned Monday lookup
-module.exports.sundayOf = sundayOf;
-// Back-compat alias — same semantics now (week starts Sunday).
-module.exports.mondayOf = sundayOf;
+module.exports.mondayOf = mondayOf;
 module.exports.lastSaturdayBefore = lastSaturdayBefore;
