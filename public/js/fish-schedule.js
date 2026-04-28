@@ -2316,15 +2316,15 @@
     } else {
       html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">';
       _fsState.farmers.forEach(function (f, i) {
-        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap;' + (i > 0 ? 'border-top:1px solid #f1f5f9' : '') + '">'
+        // Fixed-width name slot + fixed-width agreement slot so the
+        // agreement pills line up in their own column down the table,
+        // regardless of how long each farmer's name is.
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;' + (i > 0 ? 'border-top:1px solid #f1f5f9' : '') + '">'
           + '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + esc(f.color || '#1a3a6b') + ';flex-shrink:0"></span>'
-          + '<div style="font-weight:600;color:#0f172a;font-size:.88rem">' + esc(f.name) + '</div>'
-          // Producer-agreement pill: green "📄 Agreement" if attached (click to
-          // view in new tab), grey "📎 Attach Agreement" placeholder otherwise.
-          // Manager+ gets a small Replace/Remove menu when an agreement exists.
-          + agreementPill(f, canEdit)
+          + '<div style="flex:0 0 220px;font-weight:600;color:#0f172a;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(f.name) + '">' + esc(f.name) + '</div>'
+          + '<div style="flex:0 0 200px;display:flex;align-items:center;gap:4px">' + agreementPill(f, canEdit) + '</div>'
           + '<div style="flex:1"></div>'
-          + (f.notes ? '<div style="font-size:.74rem;color:#64748b;margin-right:8px">' + esc(f.notes) + '</div>' : '')
+          + (f.notes ? '<div style="font-size:.74rem;color:#64748b;margin-right:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(f.notes) + '">' + esc(f.notes) + '</div>' : '')
           + (canEdit ? '<button style="' + BTN_SUB + ';padding:4px 10px;font-size:.74rem" onclick="fsEditFarmer(' + f.id + ')">Edit</button>' : '')
           + (canDelete ? '<button style="' + BTN_D + ';margin-left:4px" onclick="fsDeleteFarmer(' + f.id + ',\'' + esc(f.name).replace(/'/g, '') + '\')">Remove</button>' : '')
           + '</div>';
@@ -2337,12 +2337,21 @@
   }
 
   // Render the producer-agreement pill that sits next to the farmer name.
-  // Three states:
-  //   1. Agreement present + edit perm    → green "📄 Agreement" + small "↻ Replace"/"✕"
+  // All three states share the same pill geometry so they line up visually
+  // in a column down the farmers list:
+  //   width:140px · padding:4px 12px · border-radius:14px · centered text
+  //
+  //   1. Agreement present + edit perm    → green "📄 Agreement" + ↻/✕ controls
   //   2. Agreement present, no edit perm  → green "📄 Agreement" (view-only)
-  //   3. No agreement + edit perm         → grey dashed "📎 Attach Agreement"
-  //   4. No agreement, no edit perm       → grey "—" (display only)
+  //   3. No agreement + edit perm         → blue dashed "📎 Attach Agreement"
+  //   4. No agreement, no edit perm       → grey "— no agreement —" pill
   function agreementPill(f, canEdit) {
+    // Common pill style — gives every variant the same width + height + shape
+    // so the column stays clean even when farmer names differ in length.
+    var pillBase = 'display:inline-flex;align-items:center;justify-content:center;gap:4px;'
+      + 'width:140px;padding:4px 12px;border-radius:14px;'
+      + 'font-size:.72rem;font-weight:700;text-decoration:none;'
+      + 'box-sizing:border-box;white-space:nowrap;line-height:1.3';
     var has = !!(f.agreement_file_url);
     if (has) {
       var fname = f.agreement_filename || 'agreement';
@@ -2351,18 +2360,20 @@
         + (f.agreement_uploaded_by ? ' by ' + f.agreement_uploaded_by : '');
       var html = '<a href="' + esc(f.agreement_file_url) + '" target="_blank" rel="noopener"'
         + ' title="' + esc(tip + ' (' + fname + ') — click to open')
-        + '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:14px;background:#dcfce7;color:#166534;font-size:.72rem;font-weight:700;text-decoration:none;border:1px solid #86efac">'
+        + '" style="' + pillBase + ';background:#dcfce7;color:#166534;border:1px solid #86efac">'
         + '📄 Agreement</a>';
       if (canEdit) {
-        html += '<button title="Replace agreement" onclick="fsAttachAgreement(' + f.id + ')" style="background:#f1f5f9;color:#475569;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700;margin-left:2px">↻</button>'
-          + '<button title="Remove agreement" onclick="fsDeleteAgreement(' + f.id + ')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700;margin-left:2px">✕</button>';
+        html += '<button title="Replace agreement" onclick="fsAttachAgreement(' + f.id + ')" style="background:#f1f5f9;color:#475569;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700">↻</button>'
+          + '<button title="Remove agreement" onclick="fsDeleteAgreement(' + f.id + ')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700">✕</button>';
       }
       return html;
     }
     if (canEdit) {
-      return '<button onclick="fsAttachAgreement(' + f.id + ')" title="Attach producer agreement (PDF)" style="background:#f8fafc;color:#475569;border:1px dashed #cbd5e1;border-radius:14px;padding:3px 10px;font-size:.72rem;font-weight:600;cursor:pointer">📎 Attach Agreement</button>';
+      return '<button onclick="fsAttachAgreement(' + f.id + ')" title="Attach producer agreement (PDF)" '
+        + 'style="' + pillBase + ';background:#eff6ff;color:#1e40af;border:1px dashed #93c5fd;cursor:pointer">'
+        + '📎 Attach Agreement</button>';
     }
-    return '<span style="color:#cbd5e1;font-size:.72rem;font-style:italic">no agreement</span>';
+    return '<span style="' + pillBase + ';background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0;font-style:italic">no agreement</span>';
   }
 
   // Open a file picker, upload to Cloudinary, save URL on the farmer record.
