@@ -44,6 +44,7 @@ function buildDash() {
       { id:'fishschedule', label:'Live Fish',      icon:'🐟', color:'#0369a1', category:'production' },
       { id:'production',   label:'Production',     icon:'📊', color:'#065f46', category:'production' },
       { id:'productionreport', label:'Prod Report',icon:'📈', color:'#1e40af', category:'production' },
+      { id:'staffschedule',label:'Schedule',      icon:'🗓️', color:'#7c3aed', category:'production' },
       { id:'todo',         label:'To-Do List',     icon:'📋', color:'#1a3a6b', category:'maintenance' },
       { id:'parts',        label:'Parts',          icon:'⚙️', color:'#7c3aed', category:'maintenance' },
       { id:'ai',           label:'AI Analysis',    icon:'🤖', color:'#8e44ad', category:'tools' },
@@ -124,6 +125,7 @@ function openWidget(id, label) {
   else if (id === 'fishschedule') buildFishScheduleWidget();
   else if (id === 'production') buildProductionWidget();
   else if (id === 'productionreport') buildProductionReportWidget();
+  else if (id === 'staffschedule') buildStaffScheduleWidget();
   else if (id === 'contracts') buildContractsWidget();
   else document.getElementById('widget-content').innerHTML = '<div class="log-empty">🚧 Coming soon for Battle Fish North.</div>';
 }

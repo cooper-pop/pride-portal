@@ -43,6 +43,10 @@ const WIDGET_PERMS = {
   flavor:        { view:'supervisor', create:'supervisor', edit:'manager', delete:'manager' },
   fishschedule:  { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
   production:    { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
+  // Employee Scheduling — supervisors view, managers edit teams/shifts.
+  // Production workers see the schedule via the read-only TV kiosk
+  // (Phase 1B), which uses a separate token-scoped API and bypasses perms.
+  staffschedule: { view:'supervisor', create:'manager',    edit:'manager', delete:'manager' },
   // Production Report (Phase C) — read-only dashboard. Manager+ only because
   // it surfaces farmer pricing + payables supervisors shouldn't see.
   productionreport: { view:'manager' },
@@ -69,6 +73,7 @@ const WIDGET_CATEGORIES = {
   fishschedule: 'production',
   production:   'production',
   productionreport: 'production',
+  staffschedule: 'production',
   parts:        'maintenance',
   todo:      'maintenance',
   ai:        'tools',
