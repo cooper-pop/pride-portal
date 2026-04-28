@@ -700,16 +700,18 @@
     });
     html += '</div>';
 
-    // Table. Column order: Item | Lbs/Case | MON..SAT + MON2 + TUE2 | CASES | LBS
+    // Table. Column order: Item | Lbs/Case | MON..SAT | LW Carry | CASES | LBS
+    // LW Carry shows freezer activity attributed back to THIS week from
+    // entries made in the next week's "Last Week" column.
     html += '<div style="background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:auto">';
     html += '<table class="pr-grid-table" style="width:100%;border-collapse:collapse;font-size:.76rem"><thead><tr style="background:#1a3a6b;color:#fff">'
       + '<th style="padding:8px 10px;text-align:left;font-weight:600;min-width:160px;position:sticky;left:0;background:#1a3a6b;z-index:2">Item</th>'
       + '<th style="padding:8px 6px;text-align:right;font-weight:600;width:66px;font-size:.68rem;opacity:.85">Lbs/Case</th>';
-    days.forEach(function (d, i) {
-      var label = (i === 7) ? 'TUE2' : (i === 6 ? 'MON2' : dayAbbr(d));
-      html += '<th style="padding:8px 6px;text-align:right;font-weight:600;min-width:70px">' + label + '<br><span style="font-size:.62rem;opacity:.75;font-weight:400">' + d.slice(5) + '</span></th>';
+    days.forEach(function (d) {
+      html += '<th style="padding:8px 6px;text-align:right;font-weight:600;min-width:70px">' + dayAbbr(d) + '<br><span style="font-size:.62rem;opacity:.75;font-weight:400">' + d.slice(5) + '</span></th>';
     });
-    html += '<th style="padding:8px 10px;text-align:right;font-weight:600">Cases</th>'
+    html += '<th style="padding:8px 6px;text-align:right;font-weight:600;min-width:70px;background:#5b21b6" title="Late freezes from next week attributed back here">LW Carry</th>'
+      + '<th style="padding:8px 10px;text-align:right;font-weight:600">Cases</th>'
       + '<th style="padding:8px 10px;text-align:right;font-weight:600;background:#0f766e">LBS</th>';
     html += '</tr></thead><tbody>';
 
@@ -718,10 +720,11 @@
     var poolTotalDays = new Array(days.length).fill(0);
     var poolTotalLbs = 0;
     var poolTotalCases = 0;
+    var poolTotalLw = 0;
     var catfishDays = new Array(days.length).fill(0);
-    var catfishLbs = 0, catfishCases = 0;
+    var catfishLbs = 0, catfishCases = 0, catfishLw = 0;
     var hushDays = new Array(days.length).fill(0);
-    var hushLbs = 0, hushCases = 0;
+    var hushLbs = 0, hushCases = 0, hushLw = 0;
     var hasHushW = false;
 
     rows.forEach(function (r) {
@@ -737,12 +740,15 @@
         if (isHush) hushDays[i] += n; else catfishDays[i] += n;
         html += '<td style="padding:5px 6px;text-align:right;color:' + (v > 0 ? '#0f172a' : '#cbd5e1') + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
       });
+      var rowLw = Number(r.lw_carry || 0);
       var rowLbs = Number(r.total_lbs || 0);
       var rowCases = r.total_cases != null ? Number(r.total_cases) : 0;
       poolTotalLbs += rowLbs;
       poolTotalCases += rowCases;
-      if (isHush) { hushLbs += rowLbs; hushCases += rowCases; }
-      else        { catfishLbs += rowLbs; catfishCases += rowCases; }
+      poolTotalLw += rowLw;
+      if (isHush) { hushLbs += rowLbs; hushCases += rowCases; hushLw += rowLw; }
+      else        { catfishLbs += rowLbs; catfishCases += rowCases; catfishLw += rowLw; }
+      html += '<td style="padding:5px 6px;text-align:right;color:' + (rowLw > 0 ? '#5b21b6' : '#cbd5e1') + ';font-weight:' + (rowLw > 0 ? '700' : '400') + '">' + (rowLw > 0 ? fmtLbs(rowLw) : '—') + '</td>';
       html += '<td style="padding:5px 10px;text-align:right;color:#334155">' + (rowCases > 0 ? rowCases.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
       html += '<td style="padding:5px 10px;text-align:right;color:#0f766e;font-weight:700">' + (rowLbs > 0 ? fmtLbs(rowLbs) : '—') + '</td></tr>';
     });
@@ -763,16 +769,19 @@
       opts.days.forEach(function (v) {
         tr += '<td style="padding:10px 6px;text-align:right;color:#0f172a;' + topBorder + '">' + (v > 0 ? fmtLbs(v) : '—') + '</td>';
       });
+      // LW Carry total — purple to match the column header
+      var lwTotal = Number(opts.lw || 0);
+      tr += '<td style="padding:10px 6px;text-align:right;color:' + (lwTotal > 0 ? '#5b21b6' : '#0f172a') + ';' + topBorder + '">' + (lwTotal > 0 ? fmtLbs(lwTotal) : '—') + '</td>';
       tr += '<td style="padding:10px;text-align:right;color:#0f172a;' + topBorder + '">' + (opts.cases > 0 ? Number(opts.cases).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—') + '</td>';
       tr += '<td style="padding:10px;text-align:right;color:' + balColor + ';' + topBorder + '">' + (opts.lbs > 0 ? fmtLbs(opts.lbs) : '—') + '</td></tr>';
       return tr;
     }
     if (hasHushW) {
-      html += wkTotalsRow({ label: 'Catfish Subtotal',     days: catfishDays, cases: catfishCases, lbs: catfishLbs, bg: '#f1f5f9' });
-      html += wkTotalsRow({ label: 'Hushpuppies Subtotal', days: hushDays,    cases: hushCases,    lbs: hushLbs,    bg: '#fef3c7', labelColor: '#9a3412' });
-      html += wkTotalsRow({ label: 'TOTAL ' + _ps.activePool, days: poolTotalDays, cases: poolTotalCases, lbs: poolTotalLbs, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
+      html += wkTotalsRow({ label: 'Catfish Subtotal',     days: catfishDays, lw: catfishLw, cases: catfishCases, lbs: catfishLbs, bg: '#f1f5f9' });
+      html += wkTotalsRow({ label: 'Hushpuppies Subtotal', days: hushDays,    lw: hushLw,    cases: hushCases,    lbs: hushLbs,    bg: '#fef3c7', labelColor: '#9a3412' });
+      html += wkTotalsRow({ label: 'TOTAL ' + _ps.activePool, days: poolTotalDays, lw: poolTotalLw, cases: poolTotalCases, lbs: poolTotalLbs, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
     } else {
-      html += wkTotalsRow({ label: 'TOTAL ' + _ps.activePool, days: poolTotalDays, cases: poolTotalCases, lbs: poolTotalLbs, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
+      html += wkTotalsRow({ label: 'TOTAL ' + _ps.activePool, days: poolTotalDays, lw: poolTotalLw, cases: poolTotalCases, lbs: poolTotalLbs, bg: '#e0e7ff', labelColor: '#1a3a6b', grand: true });
     }
 
     html += '</tbody></table></div></div>';

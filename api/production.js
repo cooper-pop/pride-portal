@@ -530,26 +530,27 @@ module.exports = async function handler(req, res) {
     }
 
     // ── GET get_week ───────────────────────────────────────────────────
-    // Weekly roll: Mon-Sat + Mon2 + Tue2 as columns, one row per SKU.
-    // Used by the "Weekly Roll" tab.
+    // Weekly roll: Mon-Sat as columns, one row per SKU. The old MON2/TUE2
+    // columns were retired — instead, any entry made AFTER this week with
+    // produced_last_week_lbs > 0 carries back as a single "LW Carry"
+    // bucket on the previous week's row so the prior week's yield stays
+    // accurate even when the freeze happened a few days later.
     if (req.method === 'GET' && action === 'get_week') {
       if (!perms.canPerform(user, 'production', 'view')) return perms.deny(res, user, 'production', 'view');
       const weekStart = (url.searchParams.get('week_start') || '').trim();
       if (!weekStart) return res.status(400).json({ error: 'week_start required (Monday YYYY-MM-DD)' });
 
-      // 8-day range: Mon of this week through Tue of next week (Mon2 + Tue2).
+      // 6-day range: Mon-Sat of the displayed week.
       const days = [];
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 6; i++) {
         const d = new Date(weekStart + 'T00:00:00');
         d.setDate(d.getDate() + i);
         days.push(d.toISOString().split('T')[0]);
       }
-      // Yield carry-over window: pull the FOLLOWING week's entries too,
-      // because an entry made next week with produced_last_week_lbs > 0
-      // attributes to THIS week's yield. We pull a generous next-week
-      // window (Mon..Sat after Mon2/Tue2) so late freezes still land here.
+      // Carry-back window: scan the next 14 days for any entry with
+      // produced_last_week_lbs > 0 — those attribute back to THIS week.
       const nextWeekEnd = new Date(weekStart + 'T00:00:00');
-      nextWeekEnd.setDate(nextWeekEnd.getDate() + 14);
+      nextWeekEnd.setDate(nextWeekEnd.getDate() + 6 + 14);
       const nextWeekEndIso = nextWeekEnd.toISOString().split('T')[0];
 
       const skus = await sql`
@@ -572,18 +573,13 @@ module.exports = async function handler(req, res) {
           AND entry_date <= ${nextWeekEndIso}::date
       `;
 
-      // Build sku_id -> { date -> produced_lbs } map.
-      // For dates within THIS week's days[]: use produced_lbs directly.
-      // For dates AFTER days[7]: use produced_last_week_lbs and attribute
-      // it to days[7] (last bucket of this week's view) so it shows in the
-      // "next week's catch-up" total.
-      //
-      // Simpler model used here: any entry with produced_last_week_lbs > 0
-      // and entry_date AFTER days[7] gets folded into days[7]'s daily
-      // bucket. Any entry IN this week with produced_lbs > 0 stays where
-      // it is. Any entry IN this week with produced_last_week_lbs > 0 is
-      // already attributed to the previous week (NOT counted here).
+      // Build two maps per SKU:
+      //   byDate[skuId][date] = produced_lbs   (cases on this date in week)
+      //   byCarry[skuId]      = sum of produced_last_week_lbs for entries
+      //                          in dates AFTER this week (so they belong
+      //                          back HERE for yield purposes)
       const byDate = new Map();
+      const byCarry = new Map();
       const dayInRange = new Set(days);
       entries.forEach(e => {
         const key = (e.entry_date instanceof Date)
@@ -592,28 +588,29 @@ module.exports = async function handler(req, res) {
         if (!byDate.has(e.sku_id)) byDate.set(e.sku_id, {});
         const m = byDate.get(e.sku_id);
         if (dayInRange.has(key)) {
-          // Entries within the displayed week — only the regular freezer
-          // column counts toward this week's yield. produced_last_week_lbs
-          // entered THIS week attributes back to last week (handled by a
-          // PRIOR week's get_week call).
+          // Entries within the displayed week — produced_lbs counts here.
+          // produced_last_week_lbs entered THIS week is for the PRIOR
+          // week's totals (and shows as carry on prior week's view).
           m[key] = (m[key] || 0) + Number(e.produced_lbs || 0);
-        } else if (key > days[7]) {
-          // Entry is in a future week. Its produced_last_week_lbs counts
-          // toward THIS week's yield (caught up after this week ended).
-          // Stash it at the last bucket so totals are correct; UI can
-          // separately surface it as a "carry-back" annotation.
+        } else if (key > days[5]) {
+          // Entry is in a future week. Its produced_last_week_lbs is a
+          // late freeze attributed back to this week. Track in a separate
+          // carry bucket — does NOT show in any daily cell, but adds to
+          // total_cases / total_lbs / yield.
           if (e.produced_last_week_lbs > 0) {
-            m[days[7]] = (m[days[7]] || 0) + Number(e.produced_last_week_lbs);
+            byCarry.set(e.sku_id, (byCarry.get(e.sku_id) || 0) + Number(e.produced_last_week_lbs));
           }
         }
       });
 
       const rows = skus.map(s => {
         const daily = days.map(d => byDate.get(s.id) ? (byDate.get(s.id)[d] || 0) : 0);
-        // produced_lbs (the column name) actually stores CASE COUNTS — see
-        // production.js header comments. The sum across days is the total
-        // cases for the week. Total pounds = cases × lbs/case from the SKU.
-        const totalCases = daily.reduce((a, b) => a + b, 0);
+        // produced_lbs (legacy column name) actually stores CASE COUNTS.
+        // Daily sum + carry-back = total cases for the week. Pounds is
+        // cases × lbs/case.
+        const dailyCases = daily.reduce((a, b) => a + b, 0);
+        const lwCarryCases = Number(byCarry.get(s.id) || 0);
+        const totalCases = dailyCases + lwCarryCases;
         const lbsPerCase = Number(s.lbs_per_case || 0);
         const totalLbs = lbsPerCase > 0 ? totalCases * lbsPerCase : 0;
         return {
@@ -623,6 +620,7 @@ module.exports = async function handler(req, res) {
           category: s.category,
           pool: s.pool,
           daily,
+          lw_carry: Number(lwCarryCases.toFixed(2)),
           total_cases: Number(totalCases.toFixed(2)),
           total_lbs: Number(totalLbs.toFixed(2))
         };
