@@ -548,10 +548,13 @@ module.exports = async function handler(req, res) {
         d.setDate(d.getDate() + i);
         days.push(d.toISOString().split('T')[0]);
       }
-      // Carry-back window: scan the next 14 days for any entry with
-      // produced_last_week_lbs > 0 — those attribute back to THIS week.
+      // Carry-back window: scan the next 7 days (Mon-Sun of next week)
+      // for any entry with produced_last_week_lbs > 0 — those attribute
+      // back to THIS week's FRIDAY cell only (Cooper's rule: LW entries
+      // always feed the most-recent prior Friday, since that's the kill
+      // day they belong to).
       const nextWeekEnd = new Date(weekStart + 'T00:00:00');
-      nextWeekEnd.setDate(nextWeekEnd.getDate() + 7 + 14);
+      nextWeekEnd.setDate(nextWeekEnd.getDate() + 7 + 6);  // Sun of next week
       const nextWeekEndIso = nextWeekEnd.toISOString().split('T')[0];
 
       const skus = await sql`
@@ -574,13 +577,16 @@ module.exports = async function handler(req, res) {
           AND entry_date <= ${nextWeekEndIso}::date
       `;
 
-      // Build two maps per SKU:
-      //   byDate[skuId][date] = produced_lbs   (cases on this date in week)
-      //   byCarry[skuId]      = sum of produced_last_week_lbs for entries
-      //                          in dates AFTER this week (so they belong
-      //                          back HERE for yield purposes)
+      // Build sku_id -> { date -> produced_lbs } map.
+      //   - Entries WITHIN the displayed week: produced_lbs goes to its
+      //     own day cell.
+      //   - Entries in week W+1 (Mon-Sun of next week) with
+      //     produced_last_week_lbs > 0: fold into days[4] (Friday) of THIS
+      //     week. Cooper's rule — late freezes always attribute to the
+      //     most-recent prior Friday (the actual kill day).
+      const FRIDAY_IDX = 4;  // days[4] = Friday in the Mon-Sun layout
+      const fridayIso = days[FRIDAY_IDX];
       const byDate = new Map();
-      const byCarry = new Map();
       const dayInRange = new Set(days);
       entries.forEach(e => {
         const key = (e.entry_date instanceof Date)
@@ -589,17 +595,16 @@ module.exports = async function handler(req, res) {
         if (!byDate.has(e.sku_id)) byDate.set(e.sku_id, {});
         const m = byDate.get(e.sku_id);
         if (dayInRange.has(key)) {
-          // Entries within the displayed week — produced_lbs counts here.
-          // produced_last_week_lbs entered THIS week is for the PRIOR
-          // week's totals (and shows as carry on prior week's view).
+          // Entries within the displayed week — produced_lbs counts on
+          // its own day. produced_last_week_lbs entered THIS week is
+          // for the PRIOR week's Friday (handled when prior week is
+          // displayed).
           m[key] = (m[key] || 0) + Number(e.produced_lbs || 0);
-        } else if (key > days[6]) {
-          // Entry is in a future week. Its produced_last_week_lbs is a
-          // late freeze attributed back to this week. Track in a separate
-          // carry bucket — does NOT show in any daily cell, but adds to
-          // total_cases / total_lbs / yield.
+        } else if (key > days[6] && key <= nextWeekEndIso) {
+          // Entry is in week W+1 (the immediately following Mon-Sun).
+          // Its produced_last_week_lbs feeds back to THIS week's FRIDAY.
           if (e.produced_last_week_lbs > 0) {
-            byCarry.set(e.sku_id, (byCarry.get(e.sku_id) || 0) + Number(e.produced_last_week_lbs));
+            m[fridayIso] = (m[fridayIso] || 0) + Number(e.produced_last_week_lbs);
           }
         }
       });
@@ -607,11 +612,9 @@ module.exports = async function handler(req, res) {
       const rows = skus.map(s => {
         const daily = days.map(d => byDate.get(s.id) ? (byDate.get(s.id)[d] || 0) : 0);
         // produced_lbs (legacy column name) actually stores CASE COUNTS.
-        // Daily sum + carry-back = total cases for the week. Pounds is
-        // cases × lbs/case.
-        const dailyCases = daily.reduce((a, b) => a + b, 0);
-        const lwCarryCases = Number(byCarry.get(s.id) || 0);
-        const totalCases = dailyCases + lwCarryCases;
+        // Total cases = daily sum (Friday already includes carry-back).
+        // Total pounds = cases × lbs/case.
+        const totalCases = daily.reduce((a, b) => a + b, 0);
         const lbsPerCase = Number(s.lbs_per_case || 0);
         const totalLbs = lbsPerCase > 0 ? totalCases * lbsPerCase : 0;
         return {
@@ -621,7 +624,6 @@ module.exports = async function handler(req, res) {
           category: s.category,
           pool: s.pool,
           daily,
-          lw_carry: Number(lwCarryCases.toFixed(2)),
           total_cases: Number(totalCases.toFixed(2)),
           total_lbs: Number(totalLbs.toFixed(2))
         };
