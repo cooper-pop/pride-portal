@@ -2327,7 +2327,7 @@
         html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;' + (i > 0 ? 'border-top:1px solid #f1f5f9' : '') + '">'
           + '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + esc(f.color || '#1a3a6b') + ';flex-shrink:0"></span>'
           + '<div style="flex:0 0 220px;font-weight:600;color:#0f172a;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(f.name) + '">' + esc(f.name) + '</div>'
-          + '<div style="flex:0 0 200px;display:flex;align-items:center;gap:4px">' + agreementPill(f, canEdit) + '</div>'
+          + '<div style="flex:0 0 240px;display:flex;align-items:center;gap:4px">' + agreementPill(f, canEdit) + '</div>'
           + '<div style="flex:1"></div>'
           + (f.notes ? '<div style="font-size:.74rem;color:#64748b;margin-right:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(f.notes) + '">' + esc(f.notes) + '</div>' : '')
           + (canEdit ? '<button style="' + BTN_SUB + ';padding:4px 10px;font-size:.74rem" onclick="fsEditFarmer(' + f.id + ')">Edit</button>' : '')
@@ -2341,18 +2341,36 @@
     panel.innerHTML = html;
   }
 
+  // Compute days until an agreement expires (1 year from effective_date).
+  // Returns null if no effective date is set. Negative when expired.
+  function agreementDaysLeft(f) {
+    if (!f.agreement_effective_date) return null;
+    var eff = new Date(f.agreement_effective_date + 'T00:00:00');
+    if (isNaN(eff.getTime())) return null;
+    var exp = new Date(eff);
+    exp.setFullYear(exp.getFullYear() + 1);
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.ceil((exp - today) / 86400000);
+  }
+  // Compute the expiration date (YYYY-MM-DD) — used for tooltip display.
+  function agreementExpDate(f) {
+    if (!f.agreement_effective_date) return null;
+    var eff = new Date(f.agreement_effective_date + 'T00:00:00');
+    if (isNaN(eff.getTime())) return null;
+    var exp = new Date(eff);
+    exp.setFullYear(exp.getFullYear() + 1);
+    return exp.toISOString().split('T')[0];
+  }
+
   // Render the producer-agreement pill that sits next to the farmer name.
-  // All three states share the same pill geometry so they line up visually
-  // in a column down the farmers list:
-  //   width:140px · padding:4px 12px · border-radius:14px · centered text
-  //
-  //   1. Agreement present + edit perm    → green "📄 Agreement" + ↻/✕ controls
-  //   2. Agreement present, no edit perm  → green "📄 Agreement" (view-only)
-  //   3. No agreement + edit perm         → blue dashed "📎 Attach Agreement"
-  //   4. No agreement, no edit perm       → grey "— no agreement —" pill
+  // All states share the same pill geometry so they line up in a column.
+  // Color encodes expiration status when an agreement is on file:
+  //   ≥ 31 days left   → green
+  //   1 – 30 days left → amber  (renew soon)
+  //   ≤ 0 days         → red    (expired)
+  //   no effective_date set → blue (needs setup) — manager+ can fix via ✎
   function agreementPill(f, canEdit) {
-    // Common pill style — gives every variant the same width + height + shape
-    // so the column stays clean even when farmer names differ in length.
     var pillBase = 'display:inline-flex;align-items:center;justify-content:center;gap:4px;'
       + 'width:140px;padding:4px 12px;border-radius:14px;'
       + 'font-size:.72rem;font-weight:700;text-decoration:none;'
@@ -2360,54 +2378,124 @@
     var has = !!(f.agreement_file_url);
     if (has) {
       var fname = f.agreement_filename || 'agreement';
-      var when = f.agreement_uploaded_at ? String(f.agreement_uploaded_at).split('T')[0] : '';
-      var tip = 'Producer Agreement' + (when ? ' · uploaded ' + when : '')
-        + (f.agreement_uploaded_by ? ' by ' + f.agreement_uploaded_by : '');
+      var uploadedWhen = f.agreement_uploaded_at ? String(f.agreement_uploaded_at).split('T')[0] : '';
+      var effDate = f.agreement_effective_date || null;
+      var expDate = agreementExpDate(f);
+      var daysLeft = agreementDaysLeft(f);
+
+      var bg, fg, border, label;
+      if (daysLeft == null) {
+        // No effective date set — blue placeholder, manager+ should fix
+        bg = '#eff6ff'; fg = '#1e40af'; border = '#93c5fd';
+        label = '📄 Set Date';
+      } else if (daysLeft <= 0) {
+        bg = '#fee2e2'; fg = '#991b1b'; border = '#fca5a5';
+        var expiredAgo = Math.abs(daysLeft);
+        label = '❌ EXPIRED' + (expiredAgo > 0 ? ' ' + expiredAgo + 'd' : '');
+      } else if (daysLeft <= 30) {
+        bg = '#fef3c7'; fg = '#92400e'; border = '#fcd34d';
+        label = '⚠️ ' + daysLeft + 'd left';
+      } else {
+        bg = '#dcfce7'; fg = '#166534'; border = '#86efac';
+        label = '📄 ' + daysLeft + 'd left';
+      }
+
+      var tipParts = ['Producer Agreement (' + fname + ')'];
+      if (effDate) tipParts.push('Effective: ' + effDate);
+      if (expDate) tipParts.push('Expires: ' + expDate);
+      if (uploadedWhen) tipParts.push('Uploaded: ' + uploadedWhen + (f.agreement_uploaded_by ? ' by ' + f.agreement_uploaded_by : ''));
+      tipParts.push('— click to open');
+      var tip = tipParts.join(' · ');
+
       var html = '<a href="' + esc(f.agreement_file_url) + '" target="_blank" rel="noopener"'
-        + ' title="' + esc(tip + ' (' + fname + ') — click to open')
-        + '" style="' + pillBase + ';background:#dcfce7;color:#166534;border:1px solid #86efac">'
-        + '📄 Agreement</a>';
+        + ' title="' + esc(tip)
+        + '" style="' + pillBase + ';background:' + bg + ';color:' + fg + ';border:1px solid ' + border + '">'
+        + label + '</a>';
       if (canEdit) {
-        html += '<button title="Replace agreement" onclick="fsAttachAgreement(' + f.id + ')" style="background:#f1f5f9;color:#475569;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700">↻</button>'
+        // ✎ edit-date — fix the effective date without re-uploading
+        html += '<button title="Edit effective date" onclick="fsEditAgreementDate(' + f.id + ')" style="background:#f1f5f9;color:#475569;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700">✎</button>'
+          + '<button title="Replace agreement (new file + date)" onclick="fsAttachAgreement(' + f.id + ')" style="background:#f1f5f9;color:#475569;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700">↻</button>'
           + '<button title="Remove agreement" onclick="fsDeleteAgreement(' + f.id + ')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:.7rem;font-weight:700">✕</button>';
       }
       return html;
     }
     if (canEdit) {
-      return '<button onclick="fsAttachAgreement(' + f.id + ')" title="Attach producer agreement (PDF)" '
+      return '<button onclick="fsAttachAgreement(' + f.id + ')" title="Attach producer agreement (PDF + effective date)" '
         + 'style="' + pillBase + ';background:#eff6ff;color:#1e40af;border:1px dashed #93c5fd;cursor:pointer">'
         + '📎 Attach Agreement</button>';
     }
     return '<span style="' + pillBase + ';background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0;font-style:italic">no agreement</span>';
   }
 
-  // Open a file picker, upload to Cloudinary, save URL on the farmer record.
-  // Single agreement per farmer — uploading replaces the previous one.
+  // Open the attach-agreement modal: prompts for the signing/effective
+  // date and lets the user pick a PDF in one screen. Default effective
+  // date is today; if replacing an existing agreement, defaults to the
+  // current effective date so the operator can keep it.
   function fsAttachAgreement(farmerId) {
-    var inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = 'application/pdf,image/*,.docx,.doc';
-    inp.style.display = 'none';
-    inp.onchange = function () {
-      var file = inp.files && inp.files[0];
-      if (!file) return;
-      // 25 MB cap matches what Cloudinary's free tier handles cleanly. Most
-      // signed agreements are PDFs under 5 MB.
-      if (file.size > 25 * 1024 * 1024) {
-        toast('⚠️ File too large (max 25 MB)');
-        return;
-      }
-      fsUploadAgreement(farmerId, file);
-    };
-    document.body.appendChild(inp);
-    inp.click();
-    setTimeout(function () { inp.remove(); }, 60000);
+    var farmer = _fsState.farmers.find(function (x) { return x.id === farmerId; });
+    if (!farmer) { toast('⚠️ Farmer not found'); return; }
+    var existing = document.getElementById('fs-agr-modal');
+    if (existing) existing.remove();
+    var todayIso = new Date().toISOString().split('T')[0];
+    var defaultDate = farmer.agreement_effective_date || todayIso;
+    var isReplace = !!farmer.agreement_file_url;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'fs-agr-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:22px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+      + '<div style="font-weight:800;color:#1a3a6b;font-size:1.05rem;margin-bottom:6px">'
+      + (isReplace ? '↻ Replace Producer Agreement' : '📎 Attach Producer Agreement')
+      + '</div>'
+      + '<div style="font-size:.78rem;color:#64748b;margin-bottom:14px">' + esc(farmer.name) + '</div>'
+      + '<label style="display:block;font-size:.74rem;color:#475569;font-weight:700;margin-bottom:4px">Effective Date <span style="color:#94a3b8;font-weight:400">(when both parties signed)</span></label>'
+      + '<input id="fs-agr-eff" type="date" value="' + esc(defaultDate) + '" style="' + INP + '">'
+      + '<div style="font-size:.7rem;color:#94a3b8;margin-top:3px">Agreement is binding for 1 year from this date.</div>'
+      + '<label style="display:block;font-size:.74rem;color:#475569;font-weight:700;margin:12px 0 4px">Document</label>'
+      + '<input id="fs-agr-file" type="file" accept="application/pdf,image/*,.docx,.doc" style="' + INP + '">'
+      + '<div style="font-size:.7rem;color:#94a3b8;margin-top:3px">PDF / image / Word doc, max 25 MB.</div>'
+      + '<div id="fs-agr-progress" style="display:none;margin-top:12px;padding:10px;background:#f0f7ff;border-radius:6px;font-size:.78rem;color:#1e40af">📤 Uploading…</div>'
+      + '<div id="fs-agr-err" style="color:#ef4444;font-size:.78rem;margin-top:8px;display:none"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">'
+      + '<button onclick="document.getElementById(\'fs-agr-modal\').remove()" style="' + BTN_SUB + ';padding:8px 14px">Cancel</button>'
+      + '<button onclick="fsAgreementSave(' + farmerId + ')" style="' + BTN_P + ';padding:8px 14px">Upload &amp; Save</button>'
+      + '</div>'
+      + '</div>';
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    setTimeout(function () { var el = document.getElementById('fs-agr-eff'); if (el) el.focus(); }, 50);
   }
 
-  function fsUploadAgreement(farmerId, file) {
+  // Modal save: validate inputs, upload to Cloudinary, then save_agreement
+  // with the URL + effective_date. Mirrors the bids widget upload flow.
+  function fsAgreementSave(farmerId) {
+    var err = document.getElementById('fs-agr-err');
+    var prog = document.getElementById('fs-agr-progress');
+    var effEl = document.getElementById('fs-agr-eff');
+    var fileEl = document.getElementById('fs-agr-file');
+    var effDate = (effEl && effEl.value || '').trim();
+    var file = fileEl && fileEl.files && fileEl.files[0];
+    if (!effDate) {
+      err.textContent = 'Effective date is required.';
+      err.style.display = 'block';
+      return;
+    }
+    if (!file) {
+      err.textContent = 'Pick the agreement PDF.';
+      err.style.display = 'block';
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      err.textContent = 'File too large (max 25 MB).';
+      err.style.display = 'block';
+      return;
+    }
+    err.style.display = 'none';
+    prog.style.display = 'block';
+
     var farmer = _fsState.farmers.find(function (x) { return x.id === farmerId; });
     var name = farmer ? farmer.name : 'farmer';
-    toast('📤 Uploading ' + file.name + '…');
+
     apiCall('GET', '/api/fish-schedule?action=get_agreement_upload_signature')
       .then(function (sig) {
         var fd = new FormData();
@@ -2416,11 +2504,15 @@
         fd.append('timestamp', String(sig.timestamp));
         fd.append('signature', sig.signature);
         fd.append('folder', sig.folder);
-        // PDFs go to Cloudinary's "raw" resource type — image/* uses "image".
-        // Use "auto" to let Cloudinary pick the right one.
         var url = 'https://api.cloudinary.com/v1_1/' + sig.cloud_name + '/auto/upload';
         return new Promise(function (resolve, reject) {
           var xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable && prog) {
+              var pct = Math.round((e.loaded / e.total) * 100);
+              prog.textContent = '📤 Uploading… ' + pct + '%';
+            }
+          };
           xhr.onload = function () {
             try {
               var r = JSON.parse(xhr.responseText);
@@ -2438,16 +2530,45 @@
           farmer_id: farmerId,
           file_url: result.secure_url,
           cloudinary_public_id: result.public_id,
-          filename: result.original_filename || file.name
+          filename: result.original_filename || file.name,
+          effective_date: effDate
         });
       })
       .then(function () {
+        var m = document.getElementById('fs-agr-modal'); if (m) m.remove();
         toast('✓ Agreement attached for ' + name);
         fsLoadAndRenderFarmers();
       })
-      .catch(function (err) {
-        toast('⚠️ Upload failed: ' + (err && err.message ? err.message : 'unknown'));
+      .catch(function (e) {
+        if (prog) prog.style.display = 'none';
+        err.textContent = 'Upload failed: ' + (e && e.message ? e.message : 'unknown');
+        err.style.display = 'block';
       });
+  }
+
+  // Fix-the-date-only flow: opens a small modal asking for the new
+  // effective date, no file picker. Useful for backfilling agreements
+  // that were uploaded before this column existed.
+  function fsEditAgreementDate(farmerId) {
+    var farmer = _fsState.farmers.find(function (x) { return x.id === farmerId; });
+    if (!farmer) return;
+    var current = farmer.agreement_effective_date || new Date().toISOString().split('T')[0];
+    var ans = prompt('Effective date for ' + farmer.name + ' (YYYY-MM-DD):', current);
+    if (ans == null) return;
+    var trimmed = String(ans).trim();
+    if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      toast('⚠️ Use YYYY-MM-DD format');
+      return;
+    }
+    apiCall('POST', '/api/fish-schedule?action=update_agreement_date', {
+      farmer_id: farmerId,
+      effective_date: trimmed || ''
+    }).then(function () {
+      toast('✓ Effective date updated');
+      fsLoadAndRenderFarmers();
+    }).catch(function (e) {
+      toast('⚠️ ' + (e && e.message ? e.message : 'failed'));
+    });
   }
 
   function fsDeleteAgreement(farmerId) {
@@ -2601,7 +2722,9 @@
   window.fsBulkRecalcStep2 = fsBulkRecalcStep2;
   // Producer-agreement upload (Cloudinary direct + URL save)
   window.fsAttachAgreement = fsAttachAgreement;
+  window.fsAgreementSave = fsAgreementSave;
   window.fsDeleteAgreement = fsDeleteAgreement;
+  window.fsEditAgreementDate = fsEditAgreementDate;
   // Fish Payable (invoice rollup)
   window.fsWeekNavPayable = fsWeekNavPayable;
   window.fsGoTodayPayable = fsGoTodayPayable;

@@ -63,6 +63,10 @@ async function ensureTables(sql) {
     await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_filename TEXT`;
     await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_uploaded_at TIMESTAMPTZ`;
     await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_uploaded_by TEXT`;
+    // Effective date — when the agreement was actually signed by both
+    // parties. Distinct from uploaded_at, since operators sometimes scan
+    // months-old documents. Expiration = effective_date + 1 year.
+    await sql`ALTER TABLE live_haul_farmers ADD COLUMN IF NOT EXISTS agreement_effective_date DATE`;
   } catch (e) { /* already present */ }
 
   // Per-day overrides. Every queried day doesn't need a row — only days with
@@ -341,7 +345,8 @@ module.exports = async function handler(req, res) {
       const farmers = await sql`
         SELECT id, name, color, active, notes,
                agreement_file_url, agreement_cloudinary_id,
-               agreement_filename, agreement_uploaded_at, agreement_uploaded_by
+               agreement_filename, agreement_uploaded_at, agreement_uploaded_by,
+               agreement_effective_date::text AS agreement_effective_date
         FROM live_haul_farmers
         WHERE company_id = ${companyId} AND active = true
         ORDER BY name
@@ -674,7 +679,8 @@ module.exports = async function handler(req, res) {
       const farmers = await sql`
         SELECT id, name, color, active, notes,
                agreement_file_url, agreement_cloudinary_id,
-               agreement_filename, agreement_uploaded_at, agreement_uploaded_by
+               agreement_filename, agreement_uploaded_at, agreement_uploaded_by,
+               agreement_effective_date::text AS agreement_effective_date
         FROM live_haul_farmers
         WHERE company_id = ${companyId} AND active = true
         ORDER BY name
@@ -783,7 +789,9 @@ module.exports = async function handler(req, res) {
 
     // ── POST save_agreement ──────────────────────────────────────────────
     // Persists the Cloudinary URL + metadata onto the farmer record after
-    // the browser finishes uploading. Manager+ only.
+    // the browser finishes uploading. Manager+ only. effective_date is the
+    // signing date (drives the +1 year expiration); upload time is captured
+    // separately as audit metadata.
     if (req.method === 'POST' && action === 'save_agreement') {
       if (!perms.canPerform(user, 'fishschedule', 'edit')) {
         return perms.deny(res, user, 'fishschedule', 'edit');
@@ -793,8 +801,11 @@ module.exports = async function handler(req, res) {
       const fileUrl = String(b.file_url || '').trim();
       const cloudId = String(b.cloudinary_public_id || '').trim() || null;
       const filename = String(b.filename || '').trim() || null;
+      const effDate = String(b.effective_date || '').trim();
       if (!farmerId) return res.status(400).json({ error: 'farmer_id required' });
       if (!fileUrl) return res.status(400).json({ error: 'file_url required' });
+      // YYYY-MM-DD validation; null permitted (legacy or skip-date case).
+      const effDateOrNull = (effDate && /^\d{4}-\d{2}-\d{2}$/.test(effDate)) ? effDate : null;
       const who = user.full_name || user.username || ('user#' + user.user_id);
       const [updated] = await sql`
         UPDATE live_haul_farmers
@@ -803,16 +814,49 @@ module.exports = async function handler(req, res) {
             agreement_filename = ${filename},
             agreement_uploaded_at = NOW(),
             agreement_uploaded_by = ${who},
+            agreement_effective_date = ${effDateOrNull}::date,
             updated_at = NOW()
         WHERE id = ${farmerId} AND company_id = ${companyId}
         RETURNING id, name, agreement_file_url, agreement_cloudinary_id,
-                  agreement_filename, agreement_uploaded_at, agreement_uploaded_by
+                  agreement_filename, agreement_uploaded_at, agreement_uploaded_by,
+                  agreement_effective_date
       `;
       if (!updated) return res.status(404).json({ error: 'Farmer not found' });
       await logAudit(sql, req, user, {
         action: 'fishschedule.save_agreement',
         resource_type: 'live_haul_farmer', resource_id: String(farmerId),
-        details: { filename: filename, by: who }
+        details: { filename: filename, effective_date: effDateOrNull, by: who }
+      });
+      return res.json({ ok: true, farmer: updated });
+    }
+
+    // ── POST update_agreement_date ───────────────────────────────────────
+    // Lets a manager fix the effective date without re-uploading the PDF.
+    // Useful for backfilling old agreements that were uploaded before this
+    // field existed, or correcting a typo. Manager+ only.
+    if (req.method === 'POST' && action === 'update_agreement_date') {
+      if (!perms.canPerform(user, 'fishschedule', 'edit')) {
+        return perms.deny(res, user, 'fishschedule', 'edit');
+      }
+      const b = req.body || {};
+      const farmerId = parseInt(b.farmer_id, 10);
+      const effDate = String(b.effective_date || '').trim();
+      if (!farmerId) return res.status(400).json({ error: 'farmer_id required' });
+      const effDateOrNull = (effDate && /^\d{4}-\d{2}-\d{2}$/.test(effDate)) ? effDate : null;
+      const [updated] = await sql`
+        UPDATE live_haul_farmers
+        SET agreement_effective_date = ${effDateOrNull}::date,
+            updated_at = NOW()
+        WHERE id = ${farmerId}
+          AND company_id = ${companyId}
+          AND agreement_file_url IS NOT NULL
+        RETURNING id, name, agreement_effective_date
+      `;
+      if (!updated) return res.status(404).json({ error: 'Farmer not found or no agreement on file' });
+      await logAudit(sql, req, user, {
+        action: 'fishschedule.update_agreement_date',
+        resource_type: 'live_haul_farmer', resource_id: String(farmerId),
+        details: { effective_date: effDateOrNull }
       });
       return res.json({ ok: true, farmer: updated });
     }
