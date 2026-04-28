@@ -613,14 +613,17 @@ function flavorRenderManage(){
             accent = '⚠ ';
             tooltip = 'TRUCK SAMPLE FAIL · ' + (st.latest ? st.latest.sample_date : '') + ' · contain immediately';
           }
-          // Pill: rounded, status-colored. Click the pill itself to quick-log a sample.
-          // In manage mode the ✎ / × buttons appear; otherwise they're hidden.
-          // Rounded-rectangle pill: larger, more readable, still color-coded.
-          // Click → quick-log a sample normally, OR open history when in readonly mode.
-          var pillClickHandler = _flavorReadonly
+          // Pill: rounded, status-colored. Click behavior depends on context:
+          //   - Dashboard tab → click opens the quick-log form (data entry mode)
+          //   - Farms & Ponds tab → click opens the pond's sample history
+          //     (inspection mode — operators come here to look up history)
+          //   - Readonly viewer → always opens history (no entry allowed)
+          //   - In manage mode (✎/× buttons visible) → no click on the pill
+          var historyClick = _flavorReadonly || _flavorTab === 'manage';
+          var pillClickHandler = historyClick
             ? ('flavorShowPondHistory(\''+p.id+'\')')
             : ('flavorQuickLog(\''+p.id+'\')');
-          var pillTooltipSuffix = _flavorReadonly
+          var pillTooltipSuffix = historyClick
             ? ' — click to view sample history'
             : (inManageMode ? '' : ' — click to log a sample');
           html += '<span style="background:'+cellBg+';color:'+cellColor+';padding:10px 16px;border-radius:10px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;min-width:100px;min-height:44px;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:'+((inManageMode&&!_flavorReadonly)?'default':'pointer')+';transition:transform .08s ease,box-shadow .08s ease" title="'+flavorEsc(tooltip)+pillTooltipSuffix+'"'
