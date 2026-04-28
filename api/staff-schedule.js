@@ -67,6 +67,27 @@ async function ensureTables(sql) {
   )`;
   await sql`CREATE INDEX IF NOT EXISTS sched_shift_teams_shift_idx
     ON sched_shift_teams(shift_id)`;
+
+  // Vacations / time-off — one row per absence span. employee_name is a
+  // free-text field since production workers don't have portal logins.
+  // team_id is optional (helps filter + color-code on the calendar).
+  // reason is also free-text but the UI suggests common values
+  // (vacation / sick / PTO / FMLA / jury / personal).
+  await sql`CREATE TABLE IF NOT EXISTS sched_vacations (
+    id SERIAL PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    employee_name TEXT NOT NULL,
+    team_id INTEGER REFERENCES sched_teams(id) ON DELETE SET NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'approved',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS sched_vacations_company_range_idx
+    ON sched_vacations(company_id, start_date, end_date)`;
 }
 
 // Format a Postgres TIME ("06:00:00") → "06:00" for the frontend's <input type="time">
@@ -112,19 +133,32 @@ module.exports = async function handler(req, res) {
     await ensureTables(sql);
 
     // ── GET get_state ─────────────────────────────────────────────────────
-    // Returns everything the manager UI needs in one shot — teams (active
-    // first, archived only if showArchived=1) plus shifts + assignments
-    // for the requested week (Sun-Sat).
+    // Returns everything the manager UI needs in one shot — teams plus
+    // shifts + assignments + vacations for the requested date range.
+    //
+    // Range params (preferred):
+    //   range_start=YYYY-MM-DD  range_end=YYYY-MM-DD
+    // Backward-compat: week_start=YYYY-MM-DD (auto-extends 6 days)
     if (req.method === 'GET' && action === 'get_state') {
-      const weekStart = cleanDate(url.searchParams.get('week_start'));
-      if (!weekStart) return res.status(400).json({ error: 'week_start required (YYYY-MM-DD)' });
+      let rangeStart = cleanDate(url.searchParams.get('range_start'));
+      let rangeEnd = cleanDate(url.searchParams.get('range_end'));
+      if (!rangeStart) {
+        const ws = cleanDate(url.searchParams.get('week_start'));
+        if (!ws) return res.status(400).json({ error: 'range_start+range_end (or week_start) required' });
+        rangeStart = ws;
+        const we = new Date(ws + 'T00:00:00');
+        we.setDate(we.getDate() + 6);
+        rangeEnd = we.toISOString().split('T')[0];
+      }
+      if (!rangeEnd) {
+        // If only start given, default to +6 days (single week)
+        const we = new Date(rangeStart + 'T00:00:00');
+        we.setDate(we.getDate() + 6);
+        rangeEnd = we.toISOString().split('T')[0];
+      }
+      const weekStart = rangeStart;
+      const weekEnd = rangeEnd;
       const showArchived = url.searchParams.get('show_archived') === '1';
-
-      // Compute weekEnd = weekStart + 6 days
-      const ws = new Date(weekStart + 'T00:00:00');
-      const we = new Date(ws);
-      we.setDate(we.getDate() + 6);
-      const weekEnd = we.toISOString().split('T')[0];
 
       const teams = showArchived
         ? await sql`
@@ -177,13 +211,129 @@ module.exports = async function handler(req, res) {
         s.teams = byShift[s.id] || [];
       });
 
+      // Pull any vacations that overlap the queried range. A vacation
+      // overlaps when start_date <= rangeEnd AND end_date >= rangeStart.
+      const vacations = await sql`
+        SELECT id, employee_name, team_id,
+               start_date::text AS start_date,
+               end_date::text   AS end_date,
+               reason, notes, status
+        FROM sched_vacations
+        WHERE company_id = ${companyId}
+          AND start_date <= ${weekEnd}::date
+          AND end_date   >= ${weekStart}::date
+        ORDER BY start_date, employee_name
+      `;
+
       return res.json({
         ok: true,
+        range_start: weekStart,
+        range_end: weekEnd,
+        // Back-compat aliases — older frontend keys.
         week_start: weekStart,
         week_end: weekEnd,
         teams,
-        shifts
+        shifts,
+        vacations
       });
+    }
+
+    // ── POST save_vacation ────────────────────────────────────────────────
+    // Create or update a vacation row. Manager+ only.
+    if (req.method === 'POST' && action === 'save_vacation') {
+      if (!perms.canPerform(user, 'staffschedule', 'edit')) {
+        return perms.deny(res, user, 'staffschedule', 'edit');
+      }
+      const b = req.body || {};
+      const employeeName = String(b.employee_name || '').trim();
+      const startDate = cleanDate(b.start_date);
+      const endDate = cleanDate(b.end_date);
+      if (!employeeName) return res.status(400).json({ error: 'employee_name required' });
+      if (!startDate) return res.status(400).json({ error: 'start_date required (YYYY-MM-DD)' });
+      if (!endDate) return res.status(400).json({ error: 'end_date required (YYYY-MM-DD)' });
+      if (endDate < startDate) return res.status(400).json({ error: 'end_date must be on or after start_date' });
+      const teamId = b.team_id ? parseInt(b.team_id, 10) : null;
+      const reason = String(b.reason || '').trim() || null;
+      const notes = String(b.notes || '').trim() || null;
+      const status = String(b.status || 'approved').trim() || 'approved';
+
+      if (b.id) {
+        const [updated] = await sql`
+          UPDATE sched_vacations
+          SET employee_name = ${employeeName}, team_id = ${teamId},
+              start_date = ${startDate}::date, end_date = ${endDate}::date,
+              reason = ${reason}, notes = ${notes}, status = ${status},
+              updated_at = NOW()
+          WHERE id = ${b.id} AND company_id = ${companyId}
+          RETURNING id, employee_name, team_id,
+                    start_date::text AS start_date,
+                    end_date::text   AS end_date,
+                    reason, notes, status
+        `;
+        if (!updated) return res.status(404).json({ error: 'Vacation not found' });
+        await logAudit(sql, req, user, {
+          action: 'staffschedule.save_vacation',
+          resource_type: 'sched_vacation', resource_id: String(b.id),
+          details: { employee_name: employeeName, start_date: startDate, end_date: endDate }
+        });
+        return res.json({ ok: true, vacation: updated });
+      }
+
+      const [created] = await sql`
+        INSERT INTO sched_vacations
+          (company_id, employee_name, team_id, start_date, end_date, reason, notes, status)
+        VALUES
+          (${companyId}, ${employeeName}, ${teamId}, ${startDate}::date, ${endDate}::date,
+           ${reason}, ${notes}, ${status})
+        RETURNING id, employee_name, team_id,
+                  start_date::text AS start_date,
+                  end_date::text   AS end_date,
+                  reason, notes, status
+      `;
+      await logAudit(sql, req, user, {
+        action: 'staffschedule.save_vacation',
+        resource_type: 'sched_vacation', resource_id: String(created.id),
+        details: { employee_name: employeeName, start_date: startDate, end_date: endDate, created: true }
+      });
+      return res.json({ ok: true, vacation: created });
+    }
+
+    // ── POST delete_vacation ──────────────────────────────────────────────
+    if (req.method === 'POST' && action === 'delete_vacation') {
+      if (!perms.canPerform(user, 'staffschedule', 'delete')) {
+        return perms.deny(res, user, 'staffschedule', 'delete');
+      }
+      const id = parseInt(req.body && req.body.id, 10);
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const [deleted] = await sql`
+        DELETE FROM sched_vacations
+        WHERE id = ${id} AND company_id = ${companyId}
+        RETURNING id, employee_name
+      `;
+      if (!deleted) return res.status(404).json({ error: 'Vacation not found' });
+      await logAudit(sql, req, user, {
+        action: 'staffschedule.delete_vacation',
+        resource_type: 'sched_vacation', resource_id: String(id),
+        details: deleted
+      });
+      return res.json({ ok: true });
+    }
+
+    // ── GET get_vacations_full ────────────────────────────────────────────
+    // Vacations across all dates (used for the Vacations tab list view).
+    // No range filter — returns everything sorted by start_date desc.
+    if (req.method === 'GET' && action === 'get_vacations_full') {
+      const vacations = await sql`
+        SELECT id, employee_name, team_id,
+               start_date::text AS start_date,
+               end_date::text   AS end_date,
+               reason, notes, status,
+               created_at, updated_at
+        FROM sched_vacations
+        WHERE company_id = ${companyId}
+        ORDER BY start_date DESC, employee_name
+      `;
+      return res.json({ ok: true, vacations });
     }
 
     // ── POST save_team ────────────────────────────────────────────────────
