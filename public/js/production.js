@@ -64,6 +64,12 @@
     var names = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     return names[new Date(iso + 'T00:00:00').getDay()];
   }
+  // Format an ISO date (YYYY-MM-DD) as US-style MM-DD-YYYY for display.
+  function fmtUS(iso) {
+    if (!iso) return '';
+    var p = String(iso).split('-');
+    return p.length === 3 ? (p[1] + '-' + p[2] + '-' + p[0]) : iso;
+  }
 
   // ═══ ENTRY ════════════════════════════════════════════════════════════
   function buildProductionWidget() {
@@ -691,7 +697,7 @@
       + '<button style="' + BTN_SUB + '" onclick="prWeekStep(-1)">← Prev Week</button>'
       + '<button style="' + BTN_SUB + '" onclick="prThisWeek()">This Week</button>'
       + '<button style="' + BTN_SUB + '" onclick="prWeekStep(1)">Next Week →</button>'
-      + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:.94rem;margin-left:10px">Week of ' + esc(_ps.weekStart) + '</div>'
+      + '<div style="flex:1;font-weight:700;color:#1a3a6b;font-size:.94rem;margin-left:10px">Week ending ' + esc(fmtUS(addDays(_ps.weekStart, 6))) + '</div>'
       + '</div>';
 
     // Pool pills
