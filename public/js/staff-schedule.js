@@ -510,9 +510,12 @@
       + '<div style="margin-bottom:10px">'
       + '<label style="display:block;font-size:.7rem;color:#475569;font-weight:600;margin-bottom:3px">Notes <span style="color:#94a3b8;font-weight:400">(optional)</span></label>'
       + '<input data-field="notes" type="text" value="' + esc(s.notes || '') + '" placeholder="e.g., Heavy day, both lines" style="' + INP + '"></div>'
+      // Quote sid as a string — temp ids for un-saved shifts are strings
+      // ("new-1234567890") and must be passed as JS string literals, not
+      // bare expressions. Numeric ids work either way; quoting is safer.
       + '<div style="display:flex;gap:8px;justify-content:flex-end">'
-      + '<button onclick="ssDeleteShift(' + sid + ',\'' + iso + '\')" style="' + BTN_D + ';padding:6px 12px;font-size:.74rem">🗑 Delete</button>'
-      + '<button onclick="ssSaveShift(' + sid + ',\'' + iso + '\')" style="' + BTN_P + ';padding:6px 14px;font-size:.78rem">💾 Save</button>'
+      + '<button onclick="ssDeleteShift(\'' + sid + '\',\'' + iso + '\')" style="' + BTN_D + ';padding:6px 12px;font-size:.74rem">🗑 Delete</button>'
+      + '<button onclick="ssSaveShift(\'' + sid + '\',\'' + iso + '\')" style="' + BTN_P + ';padding:6px 14px;font-size:.78rem">💾 Save</button>'
       + '</div>'
       + '</div>';
   }
